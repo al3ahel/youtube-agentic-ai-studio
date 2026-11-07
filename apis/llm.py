@@ -1,17 +1,44 @@
 """
-LLM fallback chain — used when Gemini has no key or every Gemini model is
-out of quota. All three speak the OpenAI chat-completions format.
+Hosted free-tier fallback chain, used when Gemini is unavailable.
 
   groq          free key   · very fast Llama models
   openrouter    free key   · ":free" community models
-  pollinations  keyless    · optional last fallback, subject to service limits
+The retired unauthenticated Pollinations generation URL is never contacted.
 """
 import time
+import threading
 from decimal import Decimal
 
 import config
 from apis.http import post_json
 from apis import openrouter
+
+_DEFAULT_GROQ_MODEL = "openai/gpt-oss-120b"
+_GROQ_REPLACEMENTS = {
+    "llama-3.3-70b-versatile": "openai/gpt-oss-120b",
+    "llama-3.1-8b-instant": "openai/gpt-oss-20b",
+}
+_migration_lock = threading.Lock()
+_announced_migrations = set()
+
+
+def effective_groq_model(value=None):
+    """Retired free-tier defaults migrate at runtime; other choices stay intact."""
+    selected = getattr(config, "GROQ_MODEL", _DEFAULT_GROQ_MODEL) if value is None else value
+    selected = selected.strip() if isinstance(selected, str) else ""
+    return _GROQ_REPLACEMENTS.get(selected, selected or _DEFAULT_GROQ_MODEL)
+
+
+def _announce_groq_migration(model):
+    saved = getattr(config, "GROQ_MODEL", "")
+    saved = saved.strip() if isinstance(saved, str) else ""
+    if saved not in _GROQ_REPLACEMENTS:
+        return
+    with _migration_lock:
+        if saved in _announced_migrations:
+            return
+        _announced_migrations.add(saved)
+    print(f"   → Saved Groq model {saved} retired from the free tier; using {model}.")
 
 
 def _real_key(value: str) -> bool:
@@ -24,7 +51,7 @@ def providers() -> list:
     groq = getattr(config, "GROQ_API_KEY", "")
     if _real_key(groq):
         out.append(("groq", "https://api.groq.com/openai/v1/chat/completions",
-                    getattr(config, "GROQ_MODEL", "llama-3.3-70b-versatile"),
+                    effective_groq_model(),
                     {"Authorization": f"Bearer {groq}"}))
     orouter = getattr(config, "OPENROUTER_API_KEY", "")
     if _real_key(orouter):
@@ -33,14 +60,19 @@ def providers() -> list:
                     {"Authorization": f"Bearer {orouter}",
                      "HTTP-Referer": "https://github.com/raunakpatil/youtube-agentic-ai-studio",
                      "X-Title": "YT Agentic Studio"}))
-    if getattr(config, "KEYLESS_LLM_FALLBACK", True):
-        out.append(("pollinations", "https://text.pollinations.ai/openai", "openai", {}))
     return out
 
 
-def chat(prompt: str, temperature: float = 0.9) -> str:
+def chat(prompt: str, temperature: float = 0.9, stop_event=None) -> str:
+    if getattr(config, "LLM_ROUTE", "auto") == "local":
+        from apis.local_llm import generate
+        return generate(prompt, temperature=temperature, stop_event=stop_event)
     errors = []
     for name, url, model, headers in providers():
+        if name == "groq":
+            _announce_groq_migration(model)
+        if stop_event is not None and stop_event.is_set():
+            raise InterruptedError("Stopped before AI generation")
         if name == "openrouter":
             try:
                 # A legacy saved model may be paid or have disappeared. Never
@@ -51,7 +83,7 @@ def chat(prompt: str, temperature: float = 0.9) -> str:
                 print(f"   ⚠ OpenRouter skipped: {exc}")
                 errors.append(f"openrouter: {exc.code}; select openrouter/free in Settings")
                 continue
-        attempts = 2 if name == "openrouter" else 3
+        attempts = 2
         for attempt in range(attempts):
             try:
                 print(f"   → Fallback LLM: {name} ({openrouter._redact(str(model))})…")
@@ -63,7 +95,9 @@ def chat(prompt: str, temperature: float = 0.9) -> str:
                     "model": model,
                     "messages": [{"role": "user", "content": openrouter._redact(prompt)}],
                     "temperature": temperature,
-                }, timeout=180, headers=headers)
+                }, timeout=60, headers=headers)
+                if stop_event is not None and stop_event.is_set():
+                    raise InterruptedError("Stopped after AI generation")
                 if name == "openrouter":
                     usage = d.get("usage") or {}
                     cost = Decimal(str(usage.get("cost", "0"))) if isinstance(usage, dict) else Decimal("NaN")
@@ -75,6 +109,8 @@ def chat(prompt: str, temperature: float = 0.9) -> str:
                     return text
                 errors.append(f"{name}: empty response")
                 break
+            except InterruptedError:
+                raise
             except Exception as e:
                 msg = str(e)
                 if isinstance(e, openrouter.OpenRouterError):
@@ -96,12 +132,15 @@ def chat(prompt: str, temperature: float = 0.9) -> str:
                     print(f"   ⚠ OpenRouter unavailable: {reason}")
                     errors.append(f"openrouter: {reason}")
                     break
-                # Free tiers rate-limit bursts (Pollinations answers 402/429) — back off and retry
-                if attempt < 2 and any(c in msg for c in ("402", "429", "503", "Max retries",
-                                                           "NameResolution", "timed out", "Connection")):
-                    wait = 20 * (attempt + 1)
-                    print(f"   ⚠ {name} is rate-limiting — retrying in {wait}s…")
-                    time.sleep(wait)
+                # Daily free quotas cannot be repaired by sleeping and repeating.
+                if status not in {401, 402, 403, 429} and attempt + 1 < attempts and any(
+                        c in msg for c in ("503", "502", "504", "timed out", "Connection")):
+                    print(f"   ⚠ {name} temporarily unavailable — retrying once…")
+                    if stop_event is not None:
+                        if stop_event.wait(.25):
+                            raise InterruptedError("Stopped before retrying AI generation")
+                    else:
+                        time.sleep(.25)
                     continue
                 # Provider exception bodies can contain request text or keys.
                 # Keep diagnostic HTTP status, never the arbitrary raw body.
@@ -109,4 +148,4 @@ def chat(prompt: str, temperature: float = 0.9) -> str:
                 print(f"   ⚠ {name} failed: {reason}")
                 errors.append(f"{name}: {reason}")
                 break
-    raise RuntimeError("All fallback LLMs failed — " + " | ".join(errors or ["none configured"]))
+    raise RuntimeError("Free AI is unavailable — " + " | ".join(errors or ["configure a free provider key or an installed local Ollama model"]))

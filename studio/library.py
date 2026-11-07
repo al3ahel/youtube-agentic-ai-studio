@@ -130,6 +130,14 @@ def archive_project(allow_draft=False):
     rendered_path = state.get("preview_path") if draft else state.get("video_path")
     if (draft and not allow_draft) or (state.get("visual_plan") and state.get("stages", {}).get("video") != "done") or not (rendered_path and os.path.exists(rendered_path)):
         return None
+    from agents.visual_director import plan_uses_project_photos
+    from studio.visual_assets import save_binding, validate_binding
+    image_sources = state.get("image_map") or {}
+    if state.get("visual_mode") == "motion" and not plan_uses_project_photos(state.get("visual_plan")):
+        image_sources = {}
+    owner = state.get("profile_id") or "default"
+    if image_sources and validate_binding(config.OUTPUT_DIR, image_sources, script, owner) is False:
+        raise ValueError("Saved photos no longer match this project. Reload its archive or regenerate its images before archiving.")
     pid = time.strftime("%Y%m%d-%H%M%S") + "-" + slug(script.get("title")) + "-" + uuid.uuid4().hex[:6]
     d = os.path.join(LIB_DIR, pid)
     os.makedirs(d, exist_ok=True)
@@ -156,6 +164,8 @@ def archive_project(allow_draft=False):
     files["mixed_audio"] = _put(os.path.join(config.OUTPUT_DIR, mixed_name), mixed_name) if mixed_name else None
     files["render_audio_manifest"] = _put(os.path.join(config.OUTPUT_DIR, "render_audio.json"), "render_audio.json")
     files["audio_credits"] = _put(os.path.join(config.OUTPUT_DIR, "audio_credits.json"), "audio_credits.json")
+    for name in ("sound_design", "audio_master"):
+        files[name] = _put(os.path.join(config.OUTPUT_DIR, name + ".json"), name + ".json")
     render_audio = state.get("render_audio_path") or audio_path
     if render_audio and os.path.isfile(render_audio):
         if audio_path and os.path.abspath(render_audio) == os.path.abspath(audio_path):
@@ -202,7 +212,7 @@ def archive_project(allow_draft=False):
         files["video_credits"] = "video_credits.json"
     image_map = {}
     photo_names = {}
-    for section, paths in (state.get("image_map") or {}).items():
+    for section, paths in image_sources.items():
         kept = []
         for index, path in enumerate(paths if isinstance(paths, list) else [paths]):
             if not path or not Path(path).is_file():
@@ -220,12 +230,14 @@ def archive_project(allow_draft=False):
         image_map[str(section)] = kept
     _write_json(Path(d) / "image_map.json", image_map)
     files["image_map"] = "image_map.json"
-    cover = state.get("thumb_bg") or next((p for v in (state.get("image_map") or {}).values()
+    save_binding(d, image_map, script, owner)
+    files["image_binding"] = "image_binding.json"
+    cover = state.get("thumb_bg") or next((p for v in image_sources.values()
                                             for p in (v if isinstance(v, list) else [v]) if p and os.path.exists(p)), None)
     files["cover"] = _put(cover, "cover.jpg")
     # keep a few of the video's photos so the thumbnail can be redesigned later
     os.makedirs(os.path.join(d, "photos"), exist_ok=True)
-    for i, p in enumerate(thumb_backgrounds(state.get("image_map"))[:8]):
+    for i, p in enumerate(thumb_backgrounds(image_sources)[:8]):
         shutil.copy2(p, os.path.join(d, "photos", f"{i + 1:02d}.jpg"))
     # Video credits have their own portable manifest above. Keep photo credits
     # separate so loading a project never merges it with another video's assets.
@@ -362,10 +374,11 @@ def library_load(pid):
         return _load_project(pid)
 
 
-_PROJECT_CACHE = ("script.json", "research.json", "project_profile.json", "workspace.json", "image_map.json", "credits.json", "video_credits.json", "audio_credits.json", "narration.srt",
+_PROJECT_CACHE = ("script.json", "research.json", "project_profile.json", "workspace.json", "image_map.json", "image_binding.json", "credits.json", "video_credits.json", "audio_credits.json", "sound_design.json", "audio_master.json", "narration.srt",
                   "narration.wav", "narration.mp3", "narration.m4a", "narration.ogg", "narration.timings.json",
-                  "timeline.json", "scene_plan.json", "visual_qa.json", "motion", "assets", "images",
+                  "timeline.json", "scene_plan.json", "visual_qa.json", "motion", "assets", "images", "soundtracks",
                   "motion_preview.mp4", "narration_with_music.mp3", "narration_mixed.mp3", "narration_mixed.wav", "narration_effects.wav", "audio_mixed.mp3",
+                  "narration_ambience.wav", "narration_mastered.wav",
                   "render_audio.wav", "render_audio.mp3", "render_audio.m4a", "render_audio.ogg", "render_audio.json")
 
 
@@ -420,7 +433,9 @@ def _load_project(pid):
             _write_json(staging / "research.json", research)
             from studio.project_identity import write_project_identity
             write_project_identity(staging, profile["id"], profile["name"])
-            for archive_name, current_name in (("credits.json", "credits.json"), ("audio_credits.json", "audio_credits.json"), ("captions.srt", "narration.srt")):
+            for archive_name, current_name in (("credits.json", "credits.json"), ("audio_credits.json", "audio_credits.json"),
+                                               ("sound_design.json", "sound_design.json"), ("audio_master.json", "audio_master.json"),
+                                               ("captions.srt", "narration.srt")):
                 if (archive / archive_name).exists():
                     shutil.copy2(_relative_file(archive, archive_name), staging / current_name)
             narration = files.get("narration") or next((name for name in ("narration.wav", "narration.mp3", "narration.m4a", "narration.ogg") if (archive / name).is_file()), None)
@@ -463,13 +478,17 @@ def _load_project(pid):
                 if not isinstance(manifest, dict):
                     raise ValueError("Invalid archived soundtrack manifest")
                 manifest["path"] = render_audio_name
+                for report_key in ("sound_design", "audio_master"):
+                    if isinstance(manifest.get(report_key), dict):
+                        manifest[report_key]["path"] = render_audio_name
                 _write_json(staging / "render_audio.json", manifest)
-            if render_audio_name and (staging / "audio_credits.json").exists():
-                credits = json.loads((staging / "audio_credits.json").read_text(encoding="utf-8"))
-                if not isinstance(credits, dict):
-                    raise ValueError("Invalid archived audio credits")
-                credits["path"] = render_audio_name
-                _write_json(staging / "audio_credits.json", credits)
+            for name in ("audio_credits.json", "sound_design.json", "audio_master.json"):
+                if render_audio_name and (staging / name).exists():
+                    report = json.loads((staging / name).read_text(encoding="utf-8"))
+                    if not isinstance(report, dict):
+                        raise ValueError("Invalid archived audio report")
+                    report["path"] = render_audio_name
+                    _write_json(staging / name, report)
             if (archive / "timeline.json").exists():
                 timeline = json.loads(_relative_file(archive, "timeline.json").read_text(encoding="utf-8"))
                 from video.timeline import script_signature
@@ -495,7 +514,11 @@ def _load_project(pid):
                     qa = json.loads(_relative_file(archive, "visual_qa.json").read_text(encoding="utf-8"))
                     _write_json(staging / "visual_qa.json", qa)
             raw_image_map = _json(archive / "image_map.json")
+            from studio.visual_assets import save_binding, validate_binding
             if isinstance(raw_image_map, dict):
+                photo_binding = validate_binding(archive, raw_image_map, script, profile["id"])
+                if photo_binding is False or (files.get("image_binding") and photo_binding is not True):
+                    raise ValueError("Archived photos do not match the saved script, channel or photo map")
                 for section, paths in raw_image_map.items():
                     if not isinstance(paths, list):
                         raise ValueError("Invalid archived image list")
@@ -508,7 +531,10 @@ def _load_project(pid):
                         destination.parent.mkdir(parents=True, exist_ok=True)
                         shutil.copy2(source, destination)
                         restored_images[section].append(str(output / relative))
-            else:
+            elif (os.path.lexists(archive / "image_map.json") or os.path.lexists(archive / "image_binding.json")
+                    or files.get("image_map") or files.get("image_binding")):
+                raise ValueError("The archived photo map is missing or invalid")
+            elif mode == "classic":
                 photos = sorted(glob.glob(lib_path(pid, "photos", "*.jpg")))
                 if photos:
                     image_reuse_note = "This old archive has photos but no section map. Recovered photos were distributed across scenes; check that each picture matches its narration before publishing."
@@ -522,10 +548,38 @@ def _load_project(pid):
                     destination.parent.mkdir(parents=True, exist_ok=True)
                     shutil.copy2(photos[index % len(photos)], destination)
                     restored_images[str(section_id)] = [str(output / relative)]
-            _write_json(staging / "image_map.json", {
-                str(section): [str(Path(path).relative_to(output)) for path in paths]
+            elif plan:
+                from agents.visual_director import plan_uses_project_photos
+                if plan_uses_project_photos(plan):
+                    section_ids = {str(section.get("id", index + 1))
+                                   for index, section in enumerate(script.get("sections", []))}
+                    for scene in plan["scenes"]:
+                        image = scene.get("image")
+                        if not image:
+                            continue
+                        section_id = str(scene.get("section_id", ""))
+                        if section_id not in section_ids:
+                            raise ValueError("An archived photo scene does not match the saved script sections")
+                        # These are the exact scene references already checked
+                        # and copied above, not guessed thumbnail/section files.
+                        relative = Path(image["path"]).relative_to(output)
+                        source = _relative_file(staging, relative.as_posix())
+                        if source.suffix.lower() not in {".jpg", ".jpeg", ".png", ".webp"}:
+                            raise ValueError("An archived photo scene must reference a picture")
+                        restored = str(output / relative)
+                        photos = restored_images.setdefault(section_id, [])
+                        if restored not in photos:
+                            photos.append(restored)
+                    if restored_images:
+                        image_reuse_note = "This older storyboard had no photo map. Its exact saved scene pictures were restored to their original sections."
+            staged_images = {
+                str(section): [Path(path).relative_to(output).as_posix() for path in paths]
                 for section, paths in restored_images.items()
-            })
+            }
+            _write_json(staging / "image_map.json", staged_images)
+            # Opening an archive is an explicit project action. Validate its
+            # original binding first, then bind the remapped portable files.
+            save_binding(staging, staged_images, script, profile["id"])
             video_credits = _json(archive / "video_credits.json", [])
             if not isinstance(video_credits, list):
                 raise ValueError("Invalid video credit manifest")

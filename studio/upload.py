@@ -66,6 +66,13 @@ def upload_route():
             return jsonify({"ok": False, "error": "client_secret.json is missing — download it from Google Cloud and save it in the project folder (SETUP.md step 4)"})
         script = deepcopy(state.get("script") or {})
         description = state.get("description", script.get("description", ""))
+        from studio.description import ensure_audio_credits
+        try:
+            description = ensure_audio_credits(description, state.get("timeline"))
+        except ValueError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+        # The reviewed/persisted description must match what YouTube receives.
+        state["description"] = description
         thumb_path = state.get("thumb_path")
         state.update(uploading=True, upload_pct=0, yt_url=None, upload_warning=None, error=None)
 

@@ -1,17 +1,12 @@
 """
 LLM Client — shared across all agents.
 
-1. Gemini / Gemma: tries models in order starting from config.GEMINI_MODEL,
+1. Gemini: tries supported text models starting from config.GEMINI_MODEL,
    falling back through the rest of the chain on quota / overload errors.
-2. If there's no Gemini key, or every Gemini model fails, hands over to the
-   free fallback chain in apis/llm.py: Groq → OpenRouter → Pollinations
-   (keyless), so generation always has somewhere to go.
-
-Free-tier daily limits (approximate):
-  gemini-2.5-flash      → 500 req/day
-  gemini-2.0-flash      → 1,500 req/day
-  gemini-2.0-flash-lite → 1,500 req/day
-  gemma-4-31b-it        → 500 req/day
+2. Installed local Ollama models can run without an API key. Local-only mode
+   never sends a prompt to a hosted provider.
+3. Configured Gemini/Groq free-tier accounts and strictly free OpenRouter models
+   provide hosted options. Quota exhaustion never upgrades an account/model.
 """
 import time
 import config
@@ -20,14 +15,10 @@ import config
 # The actual runtime order is determined by build_chain() below,
 # which rotates this list so config.GEMINI_MODEL comes first.
 _ALL_MODELS = [
+    "gemini-3.8-flash",
+    "gemini-3.1-flash-lite",
     "gemini-2.5-flash",
     "gemini-2.5-flash-lite",
-    "gemma-4-31b-it",        # Gemma 4 31B dense — strong reasoning, free tier
-    "gemini-2.0-flash",
-    "gemini-2.0-flash-lite",
-    "gemma-3-27b-it",
-    "gemini-1.5-flash-001",
-    "gemini-1.5-pro-001",
 ]
 
 # Which provider answered the last call — shown in the GUI
@@ -61,7 +52,8 @@ def _get_client():
     global _client, _client_key
     if _client is None or _client_key != config.GEMINI_API_KEY:
         from google import genai
-        _client = genai.Client(api_key=config.GEMINI_API_KEY)
+        from google.genai import types
+        _client = genai.Client(api_key=config.GEMINI_API_KEY, http_options=types.HttpOptions(timeout=60000))
         _client_key = config.GEMINI_API_KEY
     return _client
 
@@ -85,35 +77,50 @@ def _should_switch_model(err: Exception) -> bool:
     ])
 
 
-def _generate_gemini(prompt: str, starting_model: str | None) -> str:
+def _generate_gemini(prompt: str, starting_model: str | None, stop_event=None) -> str:
     global last_provider
     from google.genai import types
     client = _get_client()
     chain  = build_chain(starting_model or getattr(config, "GEMINI_MODEL", None))
 
     for model in chain:
-        for attempt in range(3):   # up to 3 attempts per model before moving on
+        for attempt in range(2):
             try:
+                if stop_event is not None and stop_event.is_set():
+                    raise InterruptedError("Stopped before AI generation")
                 print(f"   → Using {model}…")
                 response = client.models.generate_content(
                     model=model,
                     contents=prompt,
                     config=types.GenerateContentConfig(temperature=0.9),
                 )
+                if stop_event is not None and stop_event.is_set():
+                    raise InterruptedError("Stopped after AI generation")
+                if not isinstance(response.text, str) or not response.text.strip():
+                    raise ValueError("The model returned no text.")
+                from apis.openrouter import _redact
                 last_provider = model
-                return response.text.strip()
+                return _redact(response.text).strip()
 
+            except InterruptedError:
+                raise
             except Exception as e:
                 if _is_gone(e):
                     print(f"   ⚠ {model} unavailable — trying next model…")
                     break
                 if _should_switch_model(e):
-                    if attempt < 2:
-                        wait = 15 * (attempt + 1)   # 15s then 30s
-                        print(f"   ⚠ {model} error (attempt {attempt+1}/3) — waiting {wait}s…")
-                        time.sleep(wait)
+                    if any(code in str(e) for code in ("429", "RESOURCE_EXHAUSTED", "quota", "rate limit")):
+                        print(f"   ⚠ {model} free quota unavailable — trying the next free option…")
+                        break
+                    if attempt == 0:
+                        print(f"   ⚠ {model} temporarily unavailable — retrying once…")
+                        if stop_event is not None:
+                            if stop_event.wait(.5):
+                                raise InterruptedError("Stopped before retrying AI generation")
+                        else:
+                            time.sleep(.5)
                     else:
-                        print(f"   ⚠ {model} failed 3 times — trying next model…")
+                        print(f"   ⚠ {model} unavailable — trying the next free option…")
                 else:
                     raise   # auth error or bug — surface immediately
 
@@ -123,29 +130,51 @@ def _generate_gemini(prompt: str, starting_model: str | None) -> str:
     )
 
 
-def generate(prompt: str, starting_model: str | None = None) -> str:
+def generate(prompt: str, starting_model: str | None = None, *, stop_event=None) -> str:
     global last_provider
     from apis import llm
+
+    if not isinstance(prompt, str) or not prompt.strip() or len(prompt) > 60000:
+        raise ValueError("AI requests must contain 1–60,000 characters.")
+    from apis.openrouter import _redact
+    prompt = _redact(prompt)
+    route = getattr(config, "LLM_ROUTE", "auto")
+    if route == "local" or getattr(config, "OLLAMA_MODEL", ""):
+        from apis import local_llm
+        try:
+            text = local_llm.generate(prompt, stop_event=stop_event)
+            last_provider = "Ollama · " + config.OLLAMA_MODEL
+            return text
+        except InterruptedError:
+            raise
+        except local_llm.LocalLLMError:
+            if route == "local":
+                raise
+            print("   ⚠ Local model unavailable — trying configured free cloud providers…")
 
     gemini_err = None
     if gemini_configured():
         try:
-            return _generate_gemini(prompt, starting_model)
+            return _generate_gemini(prompt, starting_model, stop_event)
+        except InterruptedError:
+            raise
         except Exception as e:
             gemini_err = e
             if not llm.providers():
-                raise
-            print(f"   ⚠ Gemini unavailable ({str(e)[:120]}) — switching to fallback LLMs…")
+                raise RuntimeError("The configured free Gemini models are unavailable. Check the key and free quota, or select an installed local Ollama model.") from None
+            print("   ⚠ Gemini unavailable — trying the configured free fallback providers…")
     else:
-        print("   → No Gemini key set — using free fallback LLMs")
+        print("   → Using configured free fallback LLMs")
 
     try:
-        text = llm.chat(prompt)
+        text = llm.chat(prompt, stop_event=stop_event)
         last_provider = "fallback"
         return text
+    except InterruptedError:
+        raise
     except Exception as e:
         if gemini_err:
-            raise RuntimeError(f"Gemini failed: {gemini_err}\nFallbacks failed: {e}") from e
+            raise RuntimeError(f"Gemini is unavailable. {_redact(str(e))}") from None
         raise RuntimeError(
-            f"{e}\nAdd a free Gemini key in Settings (aistudio.google.com/apikey)."
-        ) from e
+            f"{_redact(str(e))}\nChoose a local Ollama model or add a free-tier Gemini, Groq or OpenRouter key in Settings."
+        ) from None

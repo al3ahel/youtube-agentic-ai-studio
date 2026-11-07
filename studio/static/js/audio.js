@@ -1,5 +1,6 @@
 /* Local audio imports and selections belong to the Settings form's profile. */
 let audioLibraryProfileId = null, audioLibraryAssets = [], audioLibraryLoadSerial = 0, audioImportPending = false;
+let reviewSoundMode = "auto";
 const AUDIO_CONTENT_ID = { unknown: "Content ID not checked", registered: "Content ID registered", not_registered: "Not registered, as listed by the source" };
 
 function setAudioTrackSelection(kind, value) {
@@ -81,11 +82,19 @@ async function loadAudioLibrary(profileId = settingsProfileId) {
 }
 
 function updateAudioSettingsControls() {
+  const mode = $("#s-sound_mode").value || "auto";
+  $("#manual-audio-settings").hidden = mode !== "manual";
+  $("#sound-intensity-field").hidden = mode !== "auto";
+  $("#sound-direction-note").textContent = mode === "auto"
+    ? "Automatic uses the script and this channel's style to choose suitable music, ambience and timed effects. No track selection is required. Save these defaults, then use Review to regenerate an existing draft's sound."
+    : mode === "manual" ? "Choose exact tracks and levels below. Save Settings, then apply them from Review to keep your recorded voice and visuals."
+      : "The Music step keeps narration and removes added music, ambience and effects. Save Settings, then apply this choice from Review to update an existing draft.";
   $("#audio-effect-mode-note").textContent = $("#s-sfx_mode").value === "ambience"
     ? "Ambience loops the selected effect beneath the narration."
     : "Transitions plays the selected effect briefly between script sections.";
 }
 $("#s-sfx_mode").addEventListener("change", updateAudioSettingsControls);
+$("#s-sound_mode").addEventListener("change", updateAudioSettingsControls);
 $("#audio-library-refresh").onclick = () => loadAudioLibrary();
 
 function readAudioFile(file) {
@@ -122,7 +131,7 @@ $("#audio-import-form").addEventListener("submit", async event => {
     if (settingsProfileId === profileId) {
       $("#audio-import-form").reset(); $("#audio-import-kind").value = body.kind;
       await loadAudioLibrary(profileId);
-      if (settingsProfileId === profileId) message.textContent = `Imported “${result.asset.title || file.name}”. Select it above, enable the layer and save Settings.`;
+      if (settingsProfileId === profileId) message.textContent = `Imported “${result.asset.title || file.name}”. Choose Manual sound direction to select this exact track, enable its layer and save Settings.`;
     }
     toast(`Audio imported for ${profileName(profileId)}`, "ok");
   } catch (error) {
@@ -135,18 +144,60 @@ $("#audio-import-form").addEventListener("submit", async event => {
   }
 });
 
-function renderReviewAudio(credits, st) {
+function reviewSoundAction() {
+  return reviewSoundMode === "auto" ? "Regenerate sound design" : reviewSoundMode === "off" ? "Remove added sound from draft" : "Apply music & effects to current draft";
+}
+
+function audioTime(value) {
+  if (!Number.isFinite(value) || value < 0) return "";
+  const minutes = Math.floor(value / 60), seconds = (value % 60).toFixed(1).padStart(4, "0");
+  return `${minutes}:${seconds}`;
+}
+
+function renderReviewAudio(data, st) {
+  const credits = data.audio_credits, design = data.sound_design, master = data.audio_master;
+  reviewSoundMode = ["auto", "manual", "off"].includes(data.sound_preferences?.mode) ? data.sound_preferences.mode : "auto";
+  const sound = $("#review-sound-design");
+  sound.replaceChildren();
+  if (design && typeof design === "object" && !Array.isArray(design)) {
+    const details = [];
+    for (const [key, label] of [["music", "Music"], ["ambience", "Ambience"]]) {
+      const layer = design[key];
+      if (layer && typeof layer === "object") details.push({label: `${label}: ${layer.asset?.title || layer.title || layer.label || "selected layer"}`, reason: layer.reason, start: layer.start, duration: layer.duration});
+    }
+    if (Array.isArray(design.events)) details.push(...design.events.filter(event => event && typeof event === "object").slice(0, 100));
+    const planner = design.planner && typeof design.planner === "object" ? design.planner : {};
+    const plannerLabel = ["fallback", "local"].includes(planner.status) ? "Local editorial choices" : planner.status === "ai" || planner.status === "planned" ? "AI planned" : "";
+    sound.innerHTML = `${typeof design.summary === "string" ? `<p>${esc(design.summary)}</p>` : ""}${typeof design.intent === "string" && design.intent !== design.summary ? `<p class="hint">${esc(design.intent)}</p>` : ""}${plannerLabel || planner.provider ? `<p class="hint">${esc([plannerLabel, planner.provider].filter(Boolean).join(" · "))}</p>` : ""}`
+      + (details.length ? `<details class="more"><summary>Sound choices &amp; timing</summary><ul class="sound-cue-list">${details.map(event => {
+        const start = audioTime(event.start), end = Number.isFinite(event.duration) && Number.isFinite(event.start) ? audioTime(event.start + event.duration) : "";
+        return `<li>${start ? `<span class="mono">${esc(start)}${end ? `–${esc(end)}` : ""}</span> ` : ""}<b>${esc(event.label || event.title || event.asset?.title || "Sound effect")}</b>${typeof event.reason === "string" && event.reason ? `<p class="hint">${esc(event.reason)}</p>` : ""}</li>`;
+      }).join("")}</ul></details>` : "");
+    if (Array.isArray(design.warnings)) {
+      for (const warning of design.warnings.filter(value => typeof value === "string").slice(0, 3)) {
+        const note = document.createElement("p"); note.className = "hint"; note.textContent = warning; sound.append(note);
+      }
+    }
+  } else sound.innerHTML = `<p class="hint">${reviewSoundMode === "auto" ? "No sound design report yet. Regenerate sound design to let the audio agent choose layers and timing for this story." : "No sound design report for this draft yet. Apply the channel's saved sound settings to update its soundtrack."}</p>`;
+  const masterNote = $("#review-audio-master");
+  masterNote.hidden = !master || typeof master !== "object";
+  if (!masterNote.hidden) {
+    const levels = [Number.isFinite(master.output_lufs) ? `${master.output_lufs.toFixed(1)} LUFS` : "", Number.isFinite(master.output_true_peak_dbtp) ? `${master.output_true_peak_dbtp.toFixed(1)} dBTP` : ""].filter(Boolean).join(" · ");
+    const warnings = Array.isArray(master.warnings) ? master.warnings.filter(warning => typeof warning === "string").slice(0, 2).join(" ") : "";
+    masterNote.textContent = `${master.status === "applied" ? "Soundtrack level checked" : master.status === "target_shortfall" ? "Soundtrack dynamics preserved" : master.status === "silent" ? "Soundtrack is silent" : master.status === "disabled" ? "Audio finishing is off" : "Mastering unavailable"}${levels ? ` · ${levels}` : ""}.${warnings ? ` ${warnings}` : ""}`;
+  }
   const imported = Array.isArray(credits) ? credits.filter(asset => asset && ["music", "sfx"].includes(asset.kind)) : [];
   $("#review-audio-credits").innerHTML = imported.length ? imported.map(asset => {
     const source = audioSourceURL(asset.source_url), title = asset.title || asset.filename || "Imported audio";
     const label = asset.kind === "music" ? "Music" : asset.mode === "ambience" ? "Ambience" : "Transition effect";
     return `<div><span class="tag">${label}</span> ${source ? `<a class="link" href="${esc(source)}" target="_blank" rel="noopener">${esc(title)} ↗</a>` : esc(title)}${asset.creator ? `<span class="hint"> · ${esc(asset.creator)}</span>` : ""}</div>`;
-  }).join("") : '<p class="hint">Imported soundtrack credits appear here after an audio mix is applied.</p>';
+  }).join("") : "";
   const classic = st.visual_mode === "classic";
   $("#apply-review-audio").hidden = classic;
+  $("#apply-review-audio").textContent = reviewSoundAction();
   $("#review-audio-note").textContent = classic
-    ? `Save audio choices for ${profileName(reviewProfileId)} in Settings. To apply them to this Classic video, clear the topic on Home and select only Music and Render under More options. Your recorded voice is reused.`
-    : `Save audio choices for ${profileName(reviewProfileId)} in Settings, then apply them to this draft. Your script, recorded voice and storyboard stay the same.`;
+    ? `Uses saved sound settings for ${profileName(reviewProfileId)}. To update this Classic video, clear the topic on Home and select only Music and Render under More options. Your recorded voice is reused.`
+    : `Uses saved ${reviewSoundMode === "auto" ? "automatic" : reviewSoundMode} sound settings for ${profileName(reviewProfileId)}. Your script, recorded voice and storyboard stay the same. Save any Settings changes before applying them here.`;
 }
 
 $("#review-audio-settings").onclick = async () => {

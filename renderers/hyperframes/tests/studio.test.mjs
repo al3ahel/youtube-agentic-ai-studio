@@ -54,6 +54,15 @@ def fixture_profiles():
                 channel={"id": "UC" + "n" * 22, "title": "News channel · fixture", "thumbnail": ""})
     return jsonify(payload)
 app.view_functions["channels.channels_list_route"] = fixture_profiles
+local_requests = []
+@app.get("/api/tags")
+def fixture_local_catalogue():
+    local_requests.append("tags")
+    return jsonify(models=[{"name": "fixture-small:latest", "size": 1024 ** 3,
+        "digest": "a" * 64, "details": {"format": "gguf", "family": "fixture"}}])
+@app.get("/_fixture/local-requests")
+def fixture_local_requests():
+    return jsonify(local_requests)
 server = make_server("127.0.0.1", 0, app, threaded=True)
 print("YAAS_UI_ORIGIN=http://127.0.0.1:" + str(server.server_port), flush=True)
 server.serve_forever()
@@ -175,6 +184,12 @@ test("studio: profiles keep identities, defaults and recurring jobs separate", {
   await page.waitForSelector("#channel-dialog[open]");
   assert.equal(await page.$eval("#profile-voice-rate", node => node.value), "-15%");
   assert.equal(await page.$eval("#profile-music", node => node.checked), false);
+  assert.equal(await page.$eval("#profile-sound-mode", node => node.value), "auto");
+  assert.equal(await page.$eval("#profile-manual-sound", node => node.hidden), true);
+  await page.select("#profile-sound-mode", "manual");
+  assert.equal(await page.$eval("#profile-manual-sound", node => node.hidden), false);
+  await page.select("#profile-sound-mode", "auto");
+  await page.select("#profile-sound-intensity", "balanced");
   await page.select("#profile-voice-rate", "+10%");
   assert.equal(voiceRequests.length, 0, "Editing a voice must not contact a speech provider");
   const voiceRequested = page.waitForRequest(request => new URL(request.url()).pathname === "/api/voice-preview");
@@ -187,7 +202,15 @@ test("studio: profiles keep identities, defaults and recurring jobs separate", {
   await page.waitForSelector("#voice-preview-status.error");
   assert.match(await page.$eval("#voice-preview-status", node => node.textContent), /Voice provider unavailable/);
   assert.equal(await page.$eval("#preview-profile-voice", node => node.disabled), false);
-  await page.click('#channel-dialog [data-close-dialog="channel-dialog"]');
+  await page.select("#profile-voice-rate", "-15%");
+  const calmId = await page.$eval(".channel-choice.active", node => node.dataset.profileId);
+  const profileSaved = page.waitForResponse(response => new URL(response.url()).pathname === `/api/channels/${calmId}` && response.request().method() === "PATCH");
+  await page.click("#save-channel");
+  assert.equal((await profileSaved).status(), 200);
+  await page.waitForFunction(() => !document.querySelector("#channel-dialog").open && !channelMutation);
+  assert.match(await page.$eval("#channel-identity", node => node.textContent), /automatic sound/);
+  assert.equal((await (await fetch(`${origin}/api/settings?profile_id=${calmId}`)).json()).sound_intensity, "balanced");
+  assert.equal((await (await fetch(`${origin}/api/settings?profile_id=${newsId}`)).json()).sound_intensity, "low");
   await page.click(`[data-profile-id="${newsId}"]`);
   await page.waitForFunction(() => document.querySelector("#active-channel-title").textContent === "Morning Brief" && !!document.querySelector(".schedule-item"));
   assert.equal(await page.$eval("#topic-input", node => node.value), "A morning news topic draft");
@@ -371,6 +394,77 @@ test("studio: Motion selection survives delayed defaults and a new video resets 
   await page.close();
 });
 
+test("studio: automatic sound and local model discovery are profile-pinned and never generate", {skip: skipped}, async () => {
+  const create = async name => (await (await fetch(`${origin}/api/channels`, {
+    method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({name}),
+  })).json()).profile;
+  const first = await create("Automatic sound fixture"), second = await create("Local settings isolation fixture");
+  await fetch(`${origin}/api/channels/${first.id}/activate`, {method: "POST", headers: {"Content-Type": "application/json"}, body: "{}"});
+  const runs = [], discoveries = [];
+  let delay = false, delayed;
+  const {page, errors} = await openStudio(request => {
+    const url = new URL(request.url());
+    if (url.pathname === "/api/run") runs.push(request.postData());
+    if (url.pathname === "/api/local-models") {
+      discoveries.push({profile: url.searchParams.get("profile_id"), body: JSON.parse(request.postData())});
+      if (delay) { delayed = request; delay = false; return true; }
+    }
+    return false;
+  });
+  await page.click("#settings-btn");
+  await page.waitForFunction(id => settingsProfileId === id, {}, first.id);
+  assert.equal(await page.$eval("#s-sound_mode", node => node.value), "auto");
+  assert.equal(await page.$eval("#s-sound_intensity", node => node.value), "low");
+  assert.equal(await page.$eval("#manual-audio-settings", node => node.hidden), true);
+  assert.equal(await page.$eval("#audio-library-details", node => node.open), false);
+  assert.equal(await page.$("#s-keyless_llm"), null);
+  assert.equal(await page.$("#bg-ai"), null);
+  assert.equal(await page.$('#img-sources input[value="pollinations"]'), null);
+  await page.select("#s-sound_intensity", "balanced");
+  await page.select("#s-caption_style", "highlight");
+  await page.select("#s-llm_route", "local");
+  await fill(page, "#s-ollama_base_url", origin);
+  const response = page.waitForResponse(response => new URL(response.url()).pathname === "/api/local-models");
+  await page.click("#discover-local-models");
+  const result = await response;
+  assert.equal(result.status(), 200, await result.text());
+  await page.waitForFunction(() => document.querySelector("#local-model-discovery-status").textContent.includes("1 installed model"));
+  assert.deepEqual(await page.$$eval("#local-models option", nodes => nodes.map(node => node.value)), ["fixture-small:latest"]);
+  assert.deepEqual(discoveries, [{profile: first.id, body: {base_url: origin}}]);
+  await fill(page, "#s-ollama_model", "fixture-small:latest");
+  const saving = page.waitForResponse(response => new URL(response.url()).pathname === "/api/save-settings");
+  await page.click("#savebar-save");
+  assert.equal((await saving).status(), 200);
+  await page.waitForFunction(() => !settingsSavePending && !settingsDirty());
+  const saved = await (await fetch(`${origin}/api/settings?profile_id=${first.id}`)).json();
+  assert.equal(saved.sound_mode, "auto"); assert.equal(saved.sound_intensity, "balanced");
+  assert.equal(saved.llm_route, "local"); assert.equal(saved.ollama_base_url, origin);
+  assert.equal(saved.ollama_model, "fixture-small:latest"); assert.equal(saved.caption_style, "highlight");
+  await page.setViewport({width: 390, height: 844});
+  await page.$eval("#settings-audio", node => window.scrollTo({top: window.scrollY + node.getBoundingClientRect().top - 80, behavior: "instant"}));
+  await page.waitForFunction(() => Number(getComputedStyle(document.querySelector("#settings-audio")).opacity) > .99);
+  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
+  await page.screenshot({path: path.join(screenshots, "studio-automatic-sound-mobile.png")});
+  await page.setViewport({width: 1440, height: 1100});
+  await page.$eval("#discover-local-models", node => node.scrollIntoView({block: "center", behavior: "instant"}));
+  await page.waitForFunction(() => !document.querySelector("#discover-local-models").disabled);
+  delay = true;
+  const pending = page.waitForRequest(request => new URL(request.url()).pathname === "/api/local-models", {timeout: 5000});
+  await page.click("#discover-local-models"); await pending;
+  await page.click(`[data-profile-id="${second.id}"]`);
+  await page.waitForFunction(id => settingsProfileId === id, {}, second.id);
+  await delayed.respond({status: 200, contentType: "application/json", body: JSON.stringify({ok: true, models: [{name: "stale-model:latest", size: 123}]})});
+  await page.waitForFunction(() => !document.querySelector("#discover-local-models").disabled);
+  assert.equal(await page.$eval("#s-llm_route", node => node.value), "auto");
+  assert.equal(await page.$eval("#s-sound_intensity", node => node.value), "low");
+  assert.deepEqual(await page.$$eval("#local-models option", nodes => nodes.map(node => node.value)), []);
+  assert.doesNotMatch(await page.$eval("#local-model-discovery-status", node => node.textContent), /installed model found|stale-model/);
+  assert.deepEqual(await (await fetch(`${origin}/_fixture/local-requests`)).json(), ["tags"], "Discovery only reads the local catalogue; it never pulls or runs a model");
+  assert.equal(runs.length, 0);
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
 test("studio: real audio imports, previews and selections stay with their channel", {skip: skipped}, async () => {
   const create = async name => (await (await fetch(`${origin}/api/channels`, {
     method: "POST", headers: {"Content-Type": "application/json"},
@@ -397,6 +491,7 @@ test("studio: real audio imports, previews and selections stay with their channe
   });
   await page.click("#settings-btn");
   await page.waitForFunction(id => settingsProfileId === id && document.querySelector("#audio-library-status").textContent.startsWith("No imported audio"), {}, project.id);
+  await page.click("#audio-library-details > summary");
   assert.equal(await page.$eval("#s-sfx_enabled", node => node.checked), false);
   const importAudio = async (kind, title, contentId) => {
     await (await page.$("#audio-import-file")).uploadFile(filename);
@@ -434,6 +529,7 @@ test("studio: real audio imports, previews and selections stay with their channe
   await page.waitForFunction(id => document.querySelector(`[data-audio-id="${id}"] audio`).readyState >= 1, {}, music.id);
   assert.equal(await page.$eval(`[data-audio-id="${music.id}"] audio`, audio => audio.paused), true);
 
+  await page.select("#s-sound_mode", "manual");
   await page.select("#s-music_track", music.id);
   await page.select("#s-sfx_track", effect.id);
   await page.click('#settings-audio label:has(#s-music_enabled)'); await page.click('#settings-audio label:has(#s-sfx_enabled)');
@@ -580,7 +676,7 @@ test("studio: legacy photo conversion preserves the reviewed project channel and
   await page.close();
 });
 
-async function openSceneReview({visualMode = "hybrid", useProjectPhotos, legacyImage = false} = {}) {
+async function openSceneReview({visualMode = "hybrid", useProjectPhotos, legacyImage = false, soundMode = "auto"} = {}) {
   let profiles = await (await fetch(`${origin}/api/channels`)).json();
   let project = profiles.profiles.find(profile => profile.name === "Review fixture");
   if (!project) project = (await (await fetch(`${origin}/api/channels`, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({name: "Review fixture"})})).json()).profile;
@@ -595,7 +691,7 @@ async function openSceneReview({visualMode = "hybrid", useProjectPhotos, legacyI
     active_profile_id: "default", video_type: "shorts", visual_mode: visualMode, preview_only: true,
     has_preview: true, has_storyboard: true, has_audio: true, has_script: true, has_thumb: false,
     plan_revision: "1".repeat(64), preview_revision: "mp4-before"};
-  const fixture = {regenerations: [], runs: [], regenerationError: null, startError: null, audioCredits: []};
+  const fixture = {regenerations: [], runs: [], regenerationError: null, startError: null, audioCredits: [], soundMode, soundDesign: null, audioMaster: null, scriptQuality: null};
   let revision = 1, holdVisuals = null, holdRegeneration = null;
   const visuals = () => ({ok: true, plan: structuredClone(plan), revision, plan_revision: st.plan_revision,
     preview_revision: `html-${revision}`, visual_mode: visualMode, preview_url: "/api/visuals/preview/index.html?preview=1"});
@@ -603,7 +699,7 @@ async function openSceneReview({visualMode = "hybrid", useProjectPhotos, legacyI
     const url = new URL(request.url());
     const respond = (data, code = 200) => { request.respond({status: code, contentType: "application/json", body: JSON.stringify(data)}); return true; };
     if (url.pathname === "/api/status") return respond({...st});
-    if (url.pathname === "/api/output") return respond({title: "Saved title", description: "Saved description", tags: ["saved tag"], sections: [{narration: "The recorded narration stays unchanged."}], audio_credits: fixture.audioCredits});
+    if (url.pathname === "/api/output") return respond({title: "Saved title", description: "Saved description", tags: ["saved tag"], sections: [{narration: "The recorded narration stays unchanged."}], audio_credits: fixture.audioCredits, sound_preferences: {mode: fixture.soundMode, intensity: "low"}, sound_design: fixture.soundDesign, audio_master: fixture.audioMaster, script_quality: fixture.scriptQuality});
     if (url.pathname === "/api/visuals") {
       const data = visuals();
       if (holdVisuals) { const resolve = holdVisuals; holdVisuals = null; resolve(() => request.respond({status: 200, contentType: "application/json", body: JSON.stringify(data)})); return true; }
@@ -615,6 +711,7 @@ async function openSceneReview({visualMode = "hybrid", useProjectPhotos, legacyI
         if (fixture.regenerationError) { st.visual_editing = false; return respond({ok: false, error: fixture.regenerationError}, 422); }
         revision++;
         plan.scenes[1] = {...plan.scenes[1], title: "Updated second scene", template: "comparison"};
+        plan.last_edit = {scene_id: "scene-two", status: "local", changes: ["Changed to a comparison layout", "Used another saved photo"]};
         Object.assign(st, {has_preview: false, has_video: false, preview_revision: null, visual_editing: false, plan_revision: String(revision).repeat(64)});
         return respond(visuals());
       };
@@ -651,7 +748,7 @@ async function openSceneReview({visualMode = "hybrid", useProjectPhotos, legacyI
 }
 
 test("studio: applying saved audio and both retry paths keep the narration, scenes and unsaved metadata", {skip: skipped}, async () => {
-  const fixture = await openSceneReview(), {page, errors} = fixture;
+  const fixture = await openSceneReview({soundMode: "manual"}), {page, errors} = fixture;
   await fill(page, "#edit-title", "Unsaved title during audio mix");
   await fill(page, "#edit-desc", "Unsaved description during audio mix");
   await page.click("#apply-review-audio");
@@ -717,6 +814,40 @@ test("studio: Review renders preserve graphics-only and legacy photo policies", 
   }
 });
 
+test("studio: automatic sound report, safe cue text and regeneration preserve the current plan", {skip: skipped}, async () => {
+  const fixture = await openSceneReview({visualMode: "motion", useProjectPhotos: false}), {page, errors} = fixture;
+  assert.equal(await page.$eval("#apply-review-audio", node => node.textContent), "Regenerate sound design");
+  await fill(page, "#edit-title", "Unsaved automatic sound title");
+  await page.click("#apply-review-audio");
+  await page.waitForFunction(() => reviewRender && !reviewRender.starting);
+  assert.deepEqual(fixture.runs[0].steps, ["music", "video"]);
+  assert.equal(fixture.runs[0].profile_id, fixture.profileId);
+  assert.equal(fixture.runs[0].use_project_photos, false);
+  assert.equal(fixture.runs[0].expected_plan_revision, "1".repeat(64));
+  fixture.soundDesign = {mode: "auto", planner: {status: "ai", provider: "Local model fixture"}, summary: "A quiet bed supports the explanation.",
+    music: {start: 0, duration: 14, asset: {title: "Soft keys"}, reason: "Keep the focus on speech."},
+    events: [{start: 7, duration: 1.2, label: "<img src=x onerror=alert(1)>", reason: "Mark the second section gently."}]};
+  fixture.audioMaster = {status: "applied", output_lufs: -16.1, output_true_peak_dbtp: -1.6};
+  fixture.scriptQuality = {status: "reviewed", score: 88, rewritten: true, issues: ["Check the supplied source for this claim."]};
+  await fixture.finish();
+  await page.waitForFunction(() => !reviewRender && document.querySelector("#review-render-status").textContent.startsWith("Updated draft ready"));
+  assert.equal(await page.$eval("#edit-title", node => node.value), "Unsaved automatic sound title");
+  assert.match(await page.$eval("#review-sound-design", node => node.textContent), /0:07\.0–0:08\.2/);
+  assert.match(await page.$eval("#review-sound-design", node => node.textContent), /Mark the second section gently/);
+  assert.equal(await page.$("#review-sound-design img"), null);
+  assert.match(await page.$eval("#review-audio-master", node => node.textContent), /-16\.1 LUFS · -1\.6 dBTP/);
+  assert.match(await page.$eval("#editorial-checks-content", node => node.textContent), /Writing check: 88\/100/);
+  await page.click("#review-sound-design summary");
+  await page.$eval("#rv-audio", node => window.scrollTo({top: window.scrollY + node.getBoundingClientRect().top - 80, behavior: "instant"}));
+  await page.waitForFunction(() => Number(getComputedStyle(document.querySelector("#rv-audio")).opacity) > .99);
+  await page.screenshot({path: path.join(screenshots, "studio-automatic-sound-review.png")});
+  fixture.soundMode = "off";
+  await page.evaluate(() => loadReview({preserveEdits: true}));
+  assert.equal(await page.$eval("#apply-review-audio", node => node.textContent), "Remove added sound from draft");
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
 test("studio: scene regeneration refreshes the preview and automatically renders and seeks the draft", {skip: skipped, timeout: 60000}, async () => {
   const fixture = await openSceneReview(), {page, errors} = fixture;
   const before = await page.$eval("#player video", video => video.getAttribute("src"));
@@ -747,6 +878,7 @@ test("studio: scene regeneration refreshes the preview and automatically renders
   assert.equal(fixture.runs[0].video_type, "shorts");
   assert.equal(fixture.runs[0].preview_only, true);
   assert.equal(fixture.runs[0].expected_plan_revision, "2".repeat(64));
+  assert.match(await page.$eval("#scene-edit-result", node => node.textContent), /Changed to a comparison layout; Used another saved photo/);
   assert.equal(new URL(page.url()).hash, "#review");
   assert.equal(await page.$("#player video"), null, "The previous draft must not masquerade as the updated render");
   assert.equal(await page.$eval("#regenerate-scene", node => node.disabled), true);

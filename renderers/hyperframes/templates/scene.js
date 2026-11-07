@@ -8,6 +8,12 @@
   const designWidth = portrait ? 1080 : 1920;
   const designHeight = portrait ? 1920 : 1080;
   const visualWidth = portrait ? 916 : 1720;
+  const looks = new Set(["editorial", "blueprint", "studio", "botanical", "poster"]);
+  const rhythms = new Set(["calm", "measured", "brisk"]);
+  const compositions = new Set(["default", "split", "stack", "focus"]);
+  const planLook = looks.has(plan.visual_direction?.look) ? plan.visual_direction.look : "legacy";
+  const planRhythm = rhythms.has(plan.visual_direction?.rhythm) ? plan.visual_direction.rhythm : "measured";
+  root.dataset.look = planLook;
   root.classList.toggle("portrait", portrait);
   canvas.style.width = `${designWidth}px`;
   canvas.style.height = `${designHeight}px`;
@@ -81,6 +87,7 @@
   }
 
   function flow(context) {
+    if (context.composition !== "default") return arrangedCards(context, true);
     const {scene, stage, height, width} = context;
     const count = scene.items.length;
     if (!count) return;
@@ -196,6 +203,7 @@
   }
 
   function explanation(context) {
+    if (context.composition !== "default") return arrangedCards(context, false);
     const {scene, stage, height} = context;
     if (!scene.items.length) return;
     if (context.imageLayout) {
@@ -237,6 +245,62 @@
       const x1 = hubX + size / 2, y1 = hubY + size / 2;
       const x2 = x + width / 2, y2 = y + nodeHeight / 2;
       context.links.push(link(lines, `M${x1} ${y1} L${x2} ${y2}`));
+    });
+  }
+
+  function arrangedCards(context, sequential) {
+    const {scene, stage, width, height, composition} = context;
+    const count = scene.items.length;
+    if (!count) return;
+    stage.classList.add("arranged-stage", `arranged-${composition}`);
+    const gap = portrait ? 24 : 26;
+    const positions = [];
+    if (composition === "focus" && count > 1) {
+      const rest = count - 1;
+      if (portrait || context.imageLayout) {
+        const heroHeight = height * (count > 4 ? .27 : .36);
+        positions.push({x: 0, y: 0, width, height: heroHeight});
+        const columns = rest > 3 ? 2 : 1, rows = Math.ceil(rest / columns);
+        const cardWidth = (width - gap * (columns - 1)) / columns;
+        const cardHeight = (height - heroHeight - gap * rows) / rows;
+        for (let index = 0; index < rest; index++) positions.push({
+          x: index % columns * (cardWidth + gap), y: heroHeight + gap + Math.floor(index / columns) * (cardHeight + gap), width: cardWidth, height: cardHeight,
+        });
+      } else {
+        const heroWidth = width * .42;
+        positions.push({x: 0, y: 0, width: heroWidth, height});
+        const columns = rest > 3 ? 2 : 1, rows = Math.ceil(rest / columns);
+        const cardWidth = (width - heroWidth - gap * columns) / columns;
+        const cardHeight = (height - gap * (rows - 1)) / rows;
+        for (let index = 0; index < rest; index++) positions.push({
+          x: heroWidth + gap + index % columns * (cardWidth + gap), y: Math.floor(index / columns) * (cardHeight + gap), width: cardWidth, height: cardHeight,
+        });
+      }
+    } else {
+      const columns = composition === "split" ? Math.min(!portrait && !context.imageLayout && count > 4 ? 3 : 2, count)
+        : (!portrait && count > 3 ? 2 : 1);
+      const rows = Math.ceil(count / columns);
+      const cardWidth = (width - gap * (columns - 1)) / columns;
+      const cardHeight = (height - gap * (rows - 1)) / rows;
+      for (let index = 0; index < count; index++) positions.push({
+        x: index % columns * (cardWidth + gap), y: Math.floor(index / columns) * (cardHeight + gap), width: cardWidth, height: cardHeight,
+      });
+    }
+    const lines = sequential ? graph(stage, width, height) : null;
+    if (sequential) positions.slice(0, -1).forEach((point, index) => {
+      const next = positions[index + 1];
+      const sameRow = Math.abs(point.y - next.y) < 1;
+      const x1 = sameRow ? point.x + point.width : point.x + point.width / 2;
+      const y1 = sameRow ? point.y + point.height / 2 : point.y + point.height;
+      const x2 = sameRow ? next.x : next.x + next.width / 2;
+      const y2 = sameRow ? next.y + next.height / 2 : next.y;
+      context.links.push(link(lines, `M${x1} ${y1} L${x2} ${y2}`));
+    });
+    scene.items.forEach((item, index) => {
+      const position = positions[index];
+      const node = box(element("article", `node-card arranged-card${composition === "focus" && index === 0 ? " focus-card" : ""}`), position.x, position.y, position.width, position.height);
+      node.append(numberLabel(index), label(item.label));
+      stage.append(registerItem(context, node, index));
     });
   }
 
@@ -354,27 +418,37 @@
   function animate(context) {
     const {scene, node, title, items} = context;
     const start = scene.start, end = start + scene.duration;
-    const revealLength = Math.min(.6, scene.duration * .16);
+    const pace = context.rhythm === "calm" ? 1.45 : context.rhythm === "brisk" ? .7 : 1;
+    const lift = context.rhythm === "calm" ? 5 : context.rhythm === "brisk" ? 20 : 14;
+    const itemLift = context.rhythm === "measured" ? 12 : lift;
+    const revealLength = Math.min(.6 * pace, scene.duration * .16 * pace);
     // A word/cue near the section boundary may leave only part of a frame.
     // Shorten its effect, never extend the narration clock or the next scene.
     const remaining = at => Math.max(0, end - at);
+    const previous = context.index ? plan.scenes[context.index - 1] : scene;
+    const previousLook = looks.has(previous.look) ? previous.look : planLook;
+    const fullMedia = candidate => candidate.template === "footage" || (candidate.template === "text" && candidate.image) ? "full" : "none";
+    // Bounded, zero-time theme changes share the same seekable clock as scenes.
+    // fromTo also restores the previous scene's theme when seeking backwards.
+    timeline.fromTo(root, {attr: {"data-look": previousLook, "data-media": fullMedia(previous)}},
+      {attr: {"data-look": context.look, "data-media": fullMedia(scene)}, duration: 0, immediateRender: false}, start);
     gsap.set(node, {opacity: 0});
     timeline.fromTo(node, {opacity: 0}, {opacity: 1, duration: .00001, immediateRender: false}, start);
     timeline.fromTo(node, {opacity: 1}, {opacity: 0, duration: .00001, immediateRender: false}, end - .00001);
-    gsap.set(title, {y: 14, opacity: 0});
+    gsap.set(title, {y: lift, opacity: 0});
     const titleBeat = scene.beats.find(beat => beat.target === "title" && beat.action === "reveal");
     const titleAt = Math.min(end, start + (titleBeat ? titleBeat.time : .04));
-    timeline.fromTo(title, {y: 14, opacity: 0}, {y: 0, opacity: 1, duration: Math.min(revealLength, remaining(titleAt)), ease: "power2.out", immediateRender: false}, titleAt);
+    timeline.fromTo(title, {y: lift, opacity: 0}, {y: 0, opacity: 1, duration: Math.min(revealLength, remaining(titleAt)), ease: "power2.out", immediateRender: false}, titleAt);
     items.forEach((item, index) => {
-      gsap.set(item.node, {opacity: 0, y: 12, scale: 1});
+      gsap.set(item.node, {opacity: 0, y: itemLift, scale: 1});
       const at = start + beatTime(context, index);
-      timeline.fromTo(item.node, {opacity: 0, y: 12, scale: 1}, {
+      timeline.fromTo(item.node, {opacity: 0, y: itemLift, scale: 1}, {
         opacity: 1, y: 0, scale: 1, duration: Math.min(revealLength, remaining(at)), ease: "power2.out", immediateRender: false,
       }, at);
       if (item.bar) {
         gsap.set(item.bar, {scaleX: 0});
         item.number.textContent = "0";
-        const barDuration = Math.min(.9, scene.duration / 3, remaining(at));
+        const barDuration = Math.min(.9 * pace, scene.duration / 3, remaining(at));
         timeline.fromTo(item.bar, {scaleX: 0}, {scaleX: 1, duration: barDuration, ease: "power3.out", immediateRender: false}, at);
         if (!scene.beats.some(beat => beat.action === "count" && targetItems(context, beat.target).includes(item))) {
           chartCount(item, at, barDuration);
@@ -383,7 +457,8 @@
     });
     context.links.forEach((entry, index) => {
       if (!scene.beats.some(beat => ["draw", "connect"].includes(beat.action) && targetLinks(context, beat).includes(entry))) {
-        drawLink(entry, start + Math.min(scene.duration * .75, .6 + index * .6), Math.min(.6, scene.duration / 4));
+        const at = start + Math.min(scene.duration * .75, .6 + index * .6);
+        drawLink(entry, at, Math.min(.6 * pace, scene.duration / 4, remaining(at)));
       }
     });
     context.draws.forEach(entry => {
@@ -391,13 +466,13 @@
       if (!scene.beats.some(beat => ["draw", "connect"].includes(beat.action))) {
         const at = start + Math.min(.3, scene.duration * .15);
         timeline.fromTo(entry.node, {[entry.property]: 0}, {
-          [entry.property]: 1, duration: Math.min(1.6, scene.duration * .55, remaining(at)), ease: "power2.inOut", immediateRender: false,
+          [entry.property]: 1, duration: Math.min(1.6 * pace, scene.duration * .55, remaining(at)), ease: "power2.inOut", immediateRender: false,
         }, at);
       }
     });
     for (const beat of scene.beats) {
       const at = start + beat.time;
-      const length = Math.min(.75, remaining(at));
+      const length = Math.min(.75 * pace, remaining(at));
       const targets = beat.target === "title" ? [{node: title}] : targetItems(context, beat.target);
       if (["highlight", "emphasize"].includes(beat.action)) {
         targets.forEach(item => {
@@ -421,6 +496,10 @@
 
   function makeScene(scene, index) {
     const node = element("section", `scene ${scene.template}-scene`);
+    const look = looks.has(scene.look) ? scene.look : planLook;
+    const rhythm = rhythms.has(scene.rhythm) ? scene.rhythm : planRhythm;
+    const composition = compositions.has(scene.composition) ? scene.composition : "default";
+    node.classList.add(`composition-${composition}`);
     node.classList.toggle("dense-items", scene.items.length > 4);
     node.id = `scene-${index}`;
     // These are animation groups, not HyperFrames media clips. Their visibility
@@ -435,17 +514,101 @@
     const stage = element("div", "scene-visual");
     node.append(header, element("div", "scene-number", `${String(index + 1).padStart(2, "0")} / ${String(plan.scenes.length).padStart(2, "0")}`), stage);
     mount.append(node);
-    return {scene, index, node, header, title, stage, items: [], links: [], draws: [], width: visualWidth, height: portrait ? 970 : 400};
+    return {scene, index, node, header, title, stage, look, rhythm, composition, items: [], links: [], draws: [], width: visualWidth, height: portrait ? 970 : 400};
   }
 
   function buildCaptions() {
+    if (plan.caption_style === "off") return;
+    const words = plan.caption_style === "highlight" && plan.timing_source === "measured_sections"
+      ? (plan.words || []).filter(word => {
+        const section = plan.sections.find(item => String(item.id) === String(word.section_id));
+        return section?.caption_timing === "word" && Number.isFinite(word.start) && Number.isFinite(word.end)
+          && word.start >= section.start && word.end <= section.start + section.duration + 1 / plan.fps
+          && word.end > word.start && typeof word.word === "string" && word.word.length;
+      }).sort((left, right) => left.start - right.start || left.end - right.end) : [];
+    let firstWord = 0;
     for (const cue of plan.captions) {
       const node = element("div", "caption-cue", cue.text);
+      node.dir = "auto";
+      while (firstWord < words.length && words[firstWord].end <= cue.start) firstWord++;
+      const events = [];
+      for (let index = firstWord; index < words.length && words[index].start < cue.end; index++) {
+        if (words[index].end > cue.start) events.push(words[index]);
+      }
+      let cursor = 0;
+      const matches = [];
+      for (const word of events) {
+        const index = cue.text.indexOf(word.word, cursor);
+        if (index < cursor || !/^[\s\p{P}\p{S}]*$/u.test(cue.text.slice(cursor, index))) { matches.length = 0; break; }
+        matches.push({word, index}); cursor = index + word.word.length;
+      }
+      // Match actual cue text, including its punctuation and whitespace. If a
+      // word event is missing or the text differs, keep a plain phrase instead
+      // of guessing karaoke timing or changing the displayed narration.
+      if (matches.length && /^[\s\p{P}\p{S}]*$/u.test(cue.text.slice(cursor))) {
+        node.replaceChildren(); cursor = 0;
+        for (const {word, index} of matches) {
+          node.append(document.createTextNode(cue.text.slice(cursor, index)));
+          const span = element("span", "caption-word", word.word);
+          node.append(span); cursor = index + word.word.length;
+          const start = Math.max(cue.start, word.start), end = Math.min(cue.end, word.end);
+          const plain = {color: "#ffffff", backgroundColor: "rgba(255, 213, 128, 0)"};
+          const active = {color: "#ffd580", backgroundColor: "rgba(255, 213, 128, .14)"};
+          gsap.set(span, plain);
+          timeline.fromTo(span, plain, {...active, duration: 0, immediateRender: false}, start);
+          timeline.fromTo(span, active, {...plain, duration: 0, immediateRender: false}, end);
+        }
+        node.append(document.createTextNode(cue.text.slice(cursor)));
+      }
       if (cue.text.length > (portrait ? 100 : 130)) node.classList.add("long-caption");
       captionMount.append(node);
       gsap.set(node, {opacity: 0});
       timeline.fromTo(node, {opacity: 0}, {opacity: 1, duration: .00001, immediateRender: false}, cue.start);
       timeline.fromTo(node, {opacity: 1}, {opacity: 0, duration: .00001, immediateRender: false}, cue.end - .00001);
+    }
+  }
+
+  function fitArrangedContent(context) {
+    if (context.composition === "default") return;
+    for (const card of context.stage.querySelectorAll(".arranged-card")) {
+      if (card.clientHeight < 180) {
+        card.style.padding = "12px 18px";
+        card.style.gap = "8px";
+      }
+      const text = card.querySelector(".item-label");
+      let size = parseFloat(getComputedStyle(text).fontSize);
+      const minimum = portrait ? 23 : 20;
+      const fits = () => {
+        const style = getComputedStyle(card), rect = card.getBoundingClientRect();
+        const children = [...card.children].map(node => node.getBoundingClientRect());
+        const scale = plan.width / designWidth;
+        return children.every(child => child.top >= rect.top - .1 && child.bottom <= rect.bottom - parseFloat(style.paddingBottom) * scale + .5
+          && child.right <= rect.right - parseFloat(style.paddingRight) * scale + .5);
+      };
+      while (size > minimum && !fits()) { size -= 1; text.style.fontSize = `${size}px`; }
+    }
+    if (context.scene.template === "text" && !context.node.classList.contains("photo-hero")) {
+      const stage = context.stage, headline = stage.querySelector(".kinetic-title");
+      const overflows = () => {
+        const bounds = stage.getBoundingClientRect();
+        const nodes = [...stage.children, ...stage.querySelectorAll(".kinetic-title,.keyword")];
+        return nodes.some(node => {
+          const rect = node.getBoundingClientRect();
+          const range = document.createRange(); range.selectNodeContents(node);
+          const text = node.textContent.trim() ? range.getBoundingClientRect() : null;
+          return rect.top < bounds.top - .1 || rect.bottom > bounds.bottom + .1 || rect.right > bounds.right + .1
+            || (text && (text.top < bounds.top - .1 || text.bottom > bounds.bottom + .1 || text.right > bounds.right + .1));
+        });
+      };
+      let size = parseFloat(getComputedStyle(headline).fontSize);
+      while (size > (portrait ? 54 : 42) && overflows()) {
+        size -= 2; headline.style.fontSize = `${size}px`;
+      }
+      const keywords = [...stage.querySelectorAll(".keyword")];
+      let wordSize = keywords.length ? parseFloat(getComputedStyle(keywords[0]).fontSize) : 0;
+      while (wordSize > (portrait ? 24 : 20) && overflows()) {
+        wordSize -= 1; keywords.forEach(keyword => { keyword.style.fontSize = `${wordSize}px`; });
+      }
     }
   }
 
@@ -456,6 +619,7 @@
     await document.fonts.ready;
     await Promise.all([...document.querySelectorAll("#media-bank img")].map(image => image.decode()));
     for (const context of scenes) {
+      root.dataset.look = context.look;
       if (!["text", "footage"].includes(context.scene.template)) {
         const top = Math.max(portrait ? 560 : 390, context.header.offsetTop + context.header.offsetHeight + 38);
         const bottom = portrait ? 1530 : 800;
@@ -465,6 +629,7 @@
       }
       if (context.scene.image && !["chart", "footage"].includes(context.scene.template)) picture(context);
       builders[context.scene.template](context);
+      fitArrangedContent(context);
       animate(context);
     }
     buildCaptions();
@@ -472,6 +637,8 @@
     // Keep the playhead exactly as long as narration, even when the final visual is still.
     timeline.to({time: 0}, {time: plan.duration, duration: plan.duration, ease: "none"}, 0);
     document.getElementById("chapter-count").textContent = `${String(plan.scenes.length).padStart(2, "0")} SCENES`;
+    root.dataset.look = scenes[0].look;
+    root.dataset.media = scenes[0].scene.template === "footage" || (scenes[0].scene.template === "text" && scenes[0].scene.image) ? "full" : "none";
     timeline.pause(0);
     window.__timelines = window.__timelines || {};
     window.__timelines["yaas-motion"] = timeline;

@@ -5,7 +5,7 @@ until one returns results, so videos still get B-roll with no Pexels key.
   pixabay       Pixabay API (free key)               — Pixabay Content License
   nasa          NASA Image & Video Library (keyless)  — public domain, space topics only
   openverse     Openverse / WordPress (keyless)       — CC licences, attribution kept
-  pollinations  Pollinations.ai (keyless)             — AI-generated, last resort
+  pollinations  legacy identifier only               — retired route, no requests
 
 Each candidate carries a `credit` dict; stock.py writes them to credits.json
 and the description builder turns them into an attribution block.
@@ -85,14 +85,9 @@ def pollinations_url(prompt: str, width: int = 1280, height: int = 720,
 
 
 def _pollinations(query: str, orientation: str, count: int) -> list:
-    w, h = (1080, 1920) if orientation == "portrait" else (1920, 1080)
-    prompt = f"cinematic documentary photograph, {query}, dramatic lighting, high detail, no text"
-    return [{
-        "url": pollinations_url(prompt, w, h),
-        "timeout": 120,
-        "credit": {"source": "Pollinations AI", "author": "AI-generated",
-                   "license": "Pollinations terms", "link": "https://pollinations.ai"},
-    } for _ in range(count)]
+    # Old saved settings may still contain this provider. Its former keyless
+    # generation URL is no longer a supported free source; do not guess paid APIs.
+    return []
 
 
 PROVIDERS = {

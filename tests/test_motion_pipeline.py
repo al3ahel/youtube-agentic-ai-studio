@@ -19,6 +19,9 @@ def job(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "OUTPUT_DIR", str(tmp_path))
     monkeypatch.setattr(config, "IMAGES_DIR", str(tmp_path / "images"))
     monkeypatch.setattr(config, "MUSIC_ENABLED", False)
+    monkeypatch.setattr(config, "SOUND_MODE", "manual")
+    monkeypatch.setattr(config, "AUDIO_MASTERING", False)
+    monkeypatch.setattr(config, "SCRIPT_REVIEW_ENABLED", False)
     monkeypatch.setattr(config, "MUSIC_TRACK", "")
     monkeypatch.setattr(config, "SFX_ENABLED", False)
     monkeypatch.setattr(config, "SFX_TRACK", "")
@@ -507,7 +510,8 @@ def test_fresh_topic_does_not_inherit_previous_plan_or_images(job, monkeypatch, 
                                use_project_photos=saved_photo_opt_in)
 
     assert state["error"] is None and requested_topics == ["New ocean topic"]
-    assert state["script"] == new_script and len(rendered) == 1
+    assert {key: state["script"][key] for key in new_script} == new_script and len(rendered) == 1
+    assert state["script"]["quality_review"]["status"] == "disabled"
     assert rendered[0]["script_signature"] != old_plan["script_signature"]
     assert rendered[0]["title"] == "New ocean video"
     assert not any(scene.get("image") for scene in rendered[0]["scenes"])
@@ -546,6 +550,7 @@ def test_apply_audio_uses_project_profile_and_retains_edits_and_prepared_mix(job
     selected_music = _import_audio_fixture(owner["id"], output, "music", 700)
     selected_effect = _import_audio_fixture(owner["id"], output, "sfx", 1200)
     channels.update_profile_defaults(owner["id"], {
+        "sound_mode": "manual", "audio_mastering": False,
         "music_enabled": True, "music_track": selected_music["id"], "music_volume": .08,
         "sfx_enabled": True, "sfx_track": selected_effect["id"], "sfx_mode": "ambience", "sfx_volume": .12,
     })
@@ -603,22 +608,26 @@ def test_apply_audio_uses_project_profile_and_retains_edits_and_prepared_mix(job
     assert seen_profiles == [(owner["id"], selected_music["id"], "music"),
                              (owner["id"], selected_effect["id"], "sfx")]
     assert channels.active_profile_id() == other["id"]
-    assert rendered_audio == [str(output / "narration_effects.wav")]
+    soundtrack_manifest = json.loads((output / "render_audio.json").read_text(encoding="utf-8"))
+    soundtrack_path = output / soundtrack_manifest["path"]
+    assert soundtrack_path.parent == output / "soundtracks"
+    assert rendered_audio == [str(soundtrack_path)]
     assert state["visual_plan"] == plan and plan_revision(state["visual_plan"]) == revision
     original_hash = hashlib.sha256(retained[output / "narration.wav"]).hexdigest()
     credits_path = output / "audio_credits.json"
     credits = json.loads(credits_path.read_text(encoding="utf-8"))
-    assert credits["audio_sha256"] == original_hash and credits["path"] == "narration_effects.wav"
+    assert credits["audio_sha256"] == original_hash and credits["path"] == soundtrack_manifest["path"]
     assert [(asset["id"], asset["mode"]) for asset in credits["assets"]] == [
         (selected_music["id"], "bed"), (selected_effect["id"], "ambience")]
     assert all(asset["creator"] == "Offline fixture" and asset["source_url"] == "https://pixabay.com/"
                for asset in credits["assets"])
-    soundtrack_manifest = json.loads((output / "render_audio.json").read_text(encoding="utf-8"))
-    assert soundtrack_manifest == {"path": "narration_effects.wav", "audio_sha256": original_hash}
+    assert soundtrack_manifest["version"] == 2 and soundtrack_manifest["audio_sha256"] == original_hash
+    assert soundtrack_manifest["soundtrack_sha256"] == hashlib.sha256(soundtrack_path.read_bytes()).hexdigest()
+    assert soundtrack_manifest["credits"] == credits["assets"]
     with wave.open(rendered_audio[0], "rb") as recording:
         assert recording.getnframes() == 6 * 48000
     retained.update({path: path.read_bytes() for path in (
-        credits_path, output / "render_audio.json", output / "narration_effects.wav",
+        credits_path, output / "render_audio.json", soundtrack_path,
     )})
 
     monkeypatch.setattr(audio_library, "resolve_audio_asset", forbidden)
@@ -630,8 +639,10 @@ def test_apply_audio_uses_project_profile_and_retains_edits_and_prepared_mix(job
         runner.run_pipeline_thread(steps, visual_mode="motion", preview_only=True,
                                    profile_id=owner["id"], use_project_photos=False)
         assert state["error"] is None
-    assert rendered_audio == [str(output / "narration_effects.wav")] * 3
-    assert state["description"] == "" and state["thumb_path"] == str(thumbnail)
+    assert rendered_audio == [str(soundtrack_path)] * 3
+    from studio.description import ensure_audio_credits
+    assert state["description"] == ensure_audio_credits("", state["timeline"])
+    assert state["thumb_path"] == str(thumbnail)
     assert all(path.read_bytes() == data for path, data in retained.items())
 
 

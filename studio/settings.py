@@ -31,6 +31,15 @@ _SETTINGS = {
     "sfx_track":        ("SFX_TRACK",          str),
     "sfx_volume":       ("SFX_VOLUME",         float),
     "sfx_mode":         ("SFX_MODE",           str),
+    "sound_mode":       ("SOUND_MODE",         str),
+    "sound_intensity":  ("SOUND_INTENSITY",    str),
+    "audio_mastering":  ("AUDIO_MASTERING",    bool),
+    "caption_style":    ("CAPTION_STYLE",      str),
+    "script_review_enabled": ("SCRIPT_REVIEW_ENABLED", bool),
+    "voice_cache_enabled": ("VOICE_CACHE_ENABLED", bool),
+    "llm_route":        ("LLM_ROUTE",          str),
+    "ollama_base_url":  ("OLLAMA_BASE_URL",    str),
+    "ollama_model":     ("OLLAMA_MODEL",       str),
     "channel_name":     ("CHANNEL_NAME",       str),
     "show_brand":       ("SHOW_CHANNEL_BRAND", bool),
     "thumb_style":      ("THUMB_STYLE",        str),
@@ -74,6 +83,8 @@ def get_settings():
     out["channel_desc"]  = config.CHANNEL_DESCRIPTION.strip()
     out["music_library"] = getattr(config, "MUSIC_LIBRARY_DIR", "")
     out["banned_topics"] = load_banned_topics()
+    from apis.llm import effective_groq_model
+    out["groq_model"] = effective_groq_model()
     return jsonify(out)
 
 @bp.route("/api/save-settings", methods=["POST"])
@@ -136,7 +147,7 @@ def _save_settings():
     try:
         validate_defaults(profile_updates)
         combined = {**get_profile(profile_id)["defaults"], **profile_updates}
-        if combined.get("sfx_enabled") and not combined.get("sfx_track"):
+        if combined.get("sound_mode", "manual") == "manual" and combined.get("sfx_enabled") and not combined.get("sfx_track"):
             raise ValueError("Choose an imported sound effect before enabling sound effects.")
         for key, kind in (("music_track", "music"), ("sfx_track", "sfx")):
             if profile_updates.get(key):
@@ -174,6 +185,22 @@ def _save_settings():
     from apis import youtube_stats
     youtube_stats.channel_stats.cache_clear()
     return jsonify({"ok": True, "profile_id": profile_id})
+
+
+@bp.post("/api/local-models")
+def local_models():
+    """Discover installed local models without pulling or running one."""
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict) or set(body) - {"base_url"}:
+        return jsonify({"ok": False, "error": "Choose a local Ollama endpoint."}), 400
+    base_url = body.get("base_url", config.OLLAMA_BASE_URL)
+    if not config._valid_setting("OLLAMA_BASE_URL", base_url):
+        return jsonify({"ok": False, "error": "Use an Ollama endpoint on localhost, for example http://127.0.0.1:11434."}), 400
+    from apis.local_llm import LocalLLMError, list_models
+    try:
+        return jsonify({"ok": True, "models": list_models(base_url=base_url)})
+    except LocalLLMError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 503
 
 @bp.route("/api/banned-topics")
 def get_banned_topics():

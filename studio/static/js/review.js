@@ -80,7 +80,10 @@ async function loadReview({ preserveEdits = false, expectedPlanRevision = null, 
     $("#legacy-motion-card").hidden = st.visual_mode !== "classic" || !st.has_audio || !st.has_script;
     updateReviewMedia(st);
     $("#rv-audio").hidden = !st.has_audio || !st.has_script;
-    if (typeof renderReviewAudio === "function") renderReviewAudio(d.audio_credits, st);
+    if (typeof renderReviewAudio === "function") renderReviewAudio(d, st);
+    renderEditorialChecks(d.script_quality);
+    $("#description-warning").hidden = !d.description_warning;
+    $("#description-warning").textContent = typeof d.description_warning === "string" ? d.description_warning : "";
     $("#thumb-wrap").innerHTML = st.has_thumb ? `<img src="/thumbnail/${Date.now()}" alt="Thumbnail">` : `<div class="empty">No thumbnail yet</div>`;
     if (st.has_thumb) loadThumb();
     $("#rv-thumb").hidden = !st.has_thumb;
@@ -121,6 +124,16 @@ async function loadReview({ preserveEdits = false, expectedPlanRevision = null, 
   }
 }
 $("#review-retry")?.addEventListener("click", () => loadReview());
+function renderEditorialChecks(report) {
+  const box = $("#editorial-checks"), content = $("#editorial-checks-content");
+  box.hidden = !report || typeof report !== "object" || Array.isArray(report);
+  if (box.hidden) { content.replaceChildren(); return; }
+  const checked = ["reviewed", "local_checks", "original_kept", "suggestions"].includes(report.status);
+  const score = checked && Number.isFinite(report.score) ? `Writing check: ${Math.max(0, Math.min(100, report.score))}/100. ` : "";
+  const status = report.status === "disabled" ? "Editorial checks were turned off." : !checked ? "Editorial checks were unavailable for this script." : report.rewritten ? "The script was revised before recording." : report.status === "suggestions" ? "Editorial suggestions are available; the original factual narration was kept." : report.status === "local_checks" ? "Local writing checks were applied before recording." : "The saved script was checked before recording.";
+  const issues = Array.isArray(report.issues) ? report.issues.filter(issue => typeof issue === "string").slice(0, 10) : [];
+  content.innerHTML = `<p>${esc(score + status)}</p><p class="hint">This is a writing check, not a factual accuracy or audience prediction score.</p>${issues.length ? `<ul>${issues.map(issue => `<li>${esc(issue)}</li>`).join("")}</ul>` : ""}`;
+}
 function sourcesHTML(sources) {
   sources = Array.isArray(sources) ? sources.filter(source => source && typeof source === "object") : [];
   if (!sources.length) return `<div class="hint">No fact-check sources for this video.</div>`;
@@ -188,11 +201,12 @@ $("#title-lab-btn").onclick = async () => {
 };
 async function saveMeta() {
   const c = currentMeta();
+  const titleChanged = c.title !== saved?.title;
   await api("/api/save-output", { title: c.title, description: c.desc, tags: c.tags });
   saved = { ...c, tags: [...c.tags] };
   edited(true); toast("Saved", "ok");
   // a thumbnail using the title as its text should follow a title change
-  if (thumb && !thumb.custom_text) loadThumb();
+  if (titleChanged && thumb && !thumb.custom_text) await thumbPost({previews: true});
 }
 window.addEventListener("beforeunload", e => { if (metaDirty() || settingsDirty()) { e.preventDefault(); e.returnValue = ""; } });
 $("#regen-desc").onclick = async () => {
@@ -211,8 +225,13 @@ async function loadThumb() {
   $("#thumb-styles").innerHTML = "";        // rebuild tiles in the right shape
   $("#thumb-ideas").innerHTML = "";
   renderStyles(0); bgNote();
-  thumbPost({ previews: true });          // fresh previews of every style for this video
 }
+$("#thumb-preview-btn").onclick = async () => {
+  if (status.running || status.visual_editing || status.uploading || thumbBusy) return toast("Wait for the current job before generating thumbnail previews.");
+  const button = $("#thumb-preview-btn"); busy(button, true, "Generating previews…");
+  try { await thumbPost({previews: true}); }
+  finally { busy(button, false); await pollOnce(); }
+};
 // swap an image in only once the new one has loaded, so nothing flashes blank
 function swapImg(el, src) {
   const im = new Image();
@@ -256,11 +275,6 @@ async function thumbPost(body) {
 $("#thumb-text").oninput = () => { clearTimeout(thumbTimer); thumbTimer = setTimeout(() => thumbPost({ text: $("#thumb-text").value, previews: true }), 700); };
 $("#bg-next").onclick = () => thumbPost({ bg: "next", previews: true });
 $("#bg-prev").onclick = () => thumbPost({ bg: "prev", previews: true });
-$("#bg-ai").onclick = async () => {
-  const b = $("#bg-ai"); busy(b, true, "Painting… (~20 s)");
-  await thumbPost({ bg: "ai", previews: true });
-  busy(b, false);
-};
 $("#thumb-ideas-btn").onclick = async () => {
   const b = $("#thumb-ideas-btn"); busy(b, true, "Thinking…");
   const r = await api("/api/thumbnail-ideas", {}).catch(e => ({ ok: false, error: e.message }));

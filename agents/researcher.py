@@ -110,8 +110,8 @@ Separate confirmed facts, allegations, uncertainty and predictions. Avoid sensat
         return """CALM / ASMR PROFILE: Plan a gentle, low-stimulation session matching the channel.
 No startling revelations, urgency, suspense, cliffhangers, forced re-hooks or aggressive calls to action.
 Choose calm visual subjects and soft-spoken, unhurried narration. Ordinary text-to-speech does not
-produce binaural or environmental ASMR recordings: do not promise those sounds. The creator must
-supply real recordings when desired. Do not make medical, sleep-treatment or therapeutic guarantees."""
+produce binaural ASMR recordings: do not promise those sounds. The audio director can choose an
+appropriate licensed ambience recording later. Do not make medical, sleep-treatment or therapeutic guarantees."""
     return """GENERAL PROFILE: Follow this channel's actual niche, audience and description.
 Choose a clear, useful topic and an accurate title. Do not force science, existential themes or
 exaggerated viral hooks onto a channel about a different subject."""

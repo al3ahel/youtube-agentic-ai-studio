@@ -11,7 +11,7 @@ import time
 from flask import Blueprint, abort, jsonify, request
 
 import config
-from studio.description import build_description, load_audio_credits, load_credits, research_sources
+from studio.description import build_description, ensure_audio_credits, load_audio_credits, load_credits, load_sound_report, research_sources
 from studio.files import send
 from studio.library import sync_library
 from studio.state import is_shorts, job_lock, state
@@ -50,11 +50,18 @@ def get_output():
     s = state.get("script") if isinstance(state.get("script"), dict) else {}
     r = state.get("research") if isinstance(state.get("research"), dict) else {}
     description = state.get("description")
-    if not isinstance(description, str):
-        description = build_description(s, r, state.get("video_type", "normal"), timeline=state.get("timeline")) if s else ""
+    description_warning = None
+    try:
+        if not isinstance(description, str):
+            description = build_description(s, r, state.get("video_type", "normal"), timeline=state.get("timeline")) if s else ""
+        description = ensure_audio_credits(description, state.get("timeline"))
+    except ValueError as exc:
+        description = description if isinstance(description, str) else ""
+        description_warning = str(exc)
     return jsonify({
         "title":       s.get("title", ""),
         "description": description,
+        "description_warning": description_warning,
         "tags":        [tag for tag in s.get("tags", []) if isinstance(tag, str)] if isinstance(s.get("tags"), list) else [],
         "sections":    [section for section in s.get("sections", []) if isinstance(section, dict)] if isinstance(s.get("sections"), list) else [],
         "topic":       r.get("topic", ""),
@@ -66,6 +73,10 @@ def get_output():
         "sources":     research_sources(r),
         "credits":     load_credits(),
         "audio_credits": load_audio_credits(state.get("timeline")),
+        "sound_design": load_sound_report("sound_design.json", state.get("timeline")),
+        "audio_master": load_sound_report("audio_master.json", state.get("timeline")),
+        "sound_preferences": {"mode": config.SOUND_MODE, "intensity": config.SOUND_INTENSITY},
+        "script_quality": s.get("quality_review") if isinstance(s.get("quality_review"), dict) else None,
         "video_type":  state.get("video_type", "normal"),
     })
 

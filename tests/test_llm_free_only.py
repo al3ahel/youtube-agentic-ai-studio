@@ -9,6 +9,8 @@ from apis import llm, openrouter
 
 @pytest.fixture(autouse=True)
 def configured(monkeypatch):
+    monkeypatch.setattr(llm.config, "LLM_ROUTE", "auto", raising=False)
+    monkeypatch.setattr(llm, "_announced_migrations", set())
     monkeypatch.setattr(llm.config, "GROQ_API_KEY", "", raising=False)
     monkeypatch.setattr(llm.config, "OPENROUTER_API_KEY", "test-key-secret-123456789", raising=False)
     monkeypatch.setattr(llm.config, "OPENROUTER_MODEL", "openrouter/free", raising=False)
@@ -107,3 +109,30 @@ def test_reported_charge_stops_response_without_fallback_to_paid(monkeypatch):
     with pytest.raises(RuntimeError, match="unexpected_cost"):
         llm.chat("Explain this")
     assert len(calls) == 1
+
+
+@pytest.mark.parametrize("saved,expected", [
+    ("llama-3.3-70b-versatile", "openai/gpt-oss-120b"),
+    ("llama-3.1-8b-instant", "openai/gpt-oss-20b"),
+    ("openai/gpt-oss-120b", "openai/gpt-oss-120b"),
+    ("custom/future-model", "custom/future-model"),
+    ("", "openai/gpt-oss-120b"),
+])
+def test_groq_runtime_migrates_only_known_retired_defaults(monkeypatch, saved, expected):
+    monkeypatch.setattr(llm.config, "GROQ_API_KEY", "groq-free-account-test-key")
+    monkeypatch.setattr(llm.config, "GROQ_MODEL", saved)
+    providers = llm.providers()
+    assert providers[0][0] == "groq" and providers[0][2] == expected
+    assert llm.config.GROQ_MODEL == saved  # No settings mutation while routing.
+
+
+def test_retired_groq_model_is_not_submitted_and_migration_note_is_once(monkeypatch, capsys):
+    monkeypatch.setattr(llm.config, "GROQ_API_KEY", "groq-free-account-test-key")
+    monkeypatch.setattr(llm.config, "GROQ_MODEL", "llama-3.3-70b-versatile")
+    calls = []
+    monkeypatch.setattr(llm, "post_json", lambda url, payload, **kwargs: calls.append(payload["model"]) or response())
+    assert llm.chat("First prompt") == "Useful explanation"
+    assert llm.chat("Second prompt") == "Useful explanation"
+    assert calls == ["openai/gpt-oss-120b", "openai/gpt-oss-120b"]
+    assert capsys.readouterr().out.count("retired from the free tier") == 1
+    assert llm.config.GROQ_MODEL == "llama-3.3-70b-versatile"

@@ -38,6 +38,11 @@ DEFAULT_CONFIG_MAP = {
     "music_enabled": "MUSIC_ENABLED", "music_volume": "MUSIC_VOLUME",
     "music_track": "MUSIC_TRACK", "sfx_enabled": "SFX_ENABLED", "sfx_track": "SFX_TRACK",
     "sfx_volume": "SFX_VOLUME", "sfx_mode": "SFX_MODE",
+    "sound_mode": "SOUND_MODE", "sound_intensity": "SOUND_INTENSITY",
+    "audio_mastering": "AUDIO_MASTERING", "caption_style": "CAPTION_STYLE",
+    "script_review_enabled": "SCRIPT_REVIEW_ENABLED",
+    "voice_cache_enabled": "VOICE_CACHE_ENABLED", "llm_route": "LLM_ROUTE",
+    "ollama_base_url": "OLLAMA_BASE_URL", "ollama_model": "OLLAMA_MODEL",
     "music_library": "MUSIC_LIBRARY_DIR", "visual_mode": "VISUAL_MODE",
     "visual_ai_enabled": "VISUAL_AI_ENABLED", "visual_planner_model": "VISUAL_PLANNER_MODEL",
     "visual_review_model": "VISUAL_REVIEW_MODEL", "visual_review_enabled": "VISUAL_REVIEW_ENABLED",
@@ -88,7 +93,9 @@ def _base_defaults():
 
 def _fresh_audio_defaults(preset):
     return {"music_track": "", "sfx_track": "", "sfx_enabled": False, "sfx_volume": .08,
-            "sfx_mode": "ambience" if preset == "asmr" else "transitions"}
+            "sfx_mode": "ambience" if preset == "asmr" else "transitions",
+            "sound_mode": "auto", "sound_intensity": "low", "audio_mastering": True,
+            "caption_style": "plain" if preset == "asmr" else "highlight"}
 
 
 def _preset_defaults(preset, name):
@@ -108,7 +115,7 @@ def _preset_defaults(preset, name):
     elif preset == "asmr":
         result.update(
             channel_desc="Calm, low-stimulation sessions with slow visuals, quiet delivery and a restful pace. "
-                         "Use the creator's own recordings for ASMR or ambient sounds; do not claim that "
+                         "Use suitable licensed recordings selected by the audio director for ambience; do not claim that "
                          "ordinary text-to-speech creates authentic ASMR triggers.",
             voice_id="en-US-BrianNeural", voice_rate="-15%", voice_pitch="+0Hz",
             music_enabled=False, visual_mode="classic", fact_grounding=False,
@@ -137,7 +144,7 @@ def validate_defaults(values):
     if not isinstance(values, dict) or values.keys() - PROFILE_DEFAULT_KEYS:
         raise ChannelProfileError("Unknown or invalid channel default settings.")
     out = {}
-    bools = {"show_brand", "credit_yaas", "music_enabled", "sfx_enabled", "visual_ai_enabled",
+    bools = {"show_brand", "credit_yaas", "music_enabled", "sfx_enabled", "visual_ai_enabled", "audio_mastering", "script_review_enabled", "voice_cache_enabled",
              "visual_review_enabled", "fact_grounding"}
     choices = {
         "visual_mode": {"motion", "hybrid", "classic"},
@@ -145,6 +152,9 @@ def validate_defaults(values):
         "thumb_style": {"impact", "cinematic", "split", "studio"},
         "motion_quality": {"draft", "standard", "high"},
         "sfx_mode": {"transitions", "ambience"},
+        "sound_mode": {"auto", "manual", "off"}, "sound_intensity": {"low", "balanced"},
+        "caption_style": {"highlight", "plain", "off"},
+        "llm_route": {"auto", "local"},
         "render_preset": {"ultrafast", "superfast", "veryfast", "faster", "fast", "medium", "slow", "slower", "veryslow"},
     }
     numbers = {"music_volume": (0, 1), "sfx_volume": (0, 1), "overlay": (0, .95), "kb_start": (1, 2), "kb_end": (1, 2),
@@ -175,6 +185,9 @@ def validate_defaults(values):
                 raise ChannelProfileError("Choose a valid voice identifier.")
         elif key == "music_library":
             value = _local_path(value, "the music library")
+        elif key in {"ollama_base_url", "ollama_model"}:
+            if not config._valid_setting(DEFAULT_CONFIG_MAP[key], value):
+                raise ChannelProfileError("Choose a loopback Ollama address and an installed local model.")
         elif key in {"music_track", "sfx_track"}:
             if not isinstance(value, str) or (value and not re.fullmatch(r"[a-f0-9]{32}", value)):
                 raise ChannelProfileError("Choose an imported audio track from this channel's library.")
@@ -196,7 +209,7 @@ def validate_defaults(values):
 
 
 def _validate_combination(defaults):
-    if defaults.get("sfx_enabled") and not defaults.get("sfx_track"):
+    if defaults.get("sound_mode", "manual") == "manual" and defaults.get("sfx_enabled") and not defaults.get("sfx_track"):
         raise ChannelProfileError("Choose an imported sound effect before enabling sound effects.")
     if defaults.get("broll_xfade", 0) >= defaults.get("broll_interval", 10):
         raise ChannelProfileError("The image crossfade must be shorter than the image interval.")
@@ -284,6 +297,10 @@ def _resolved(profile):
     if result["id"] != "default":
         # Profiles saved before audio imports existed have no explicit keys yet.
         base.update(_fresh_audio_defaults(result["preset"]))
+        if "sound_mode" not in defaults and (
+                defaults.get("music_enabled") and defaults.get("music_track")
+                or defaults.get("sfx_enabled") and defaults.get("sfx_track")):
+            base["sound_mode"] = "manual"
     result["defaults"] = {**base, **defaults}
     return result
 

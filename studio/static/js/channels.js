@@ -8,8 +8,8 @@ const channelTopicDrafts = new Map();
 const CHANNEL_PRESETS = { general: "General", news: "News", asmr: "ASMR / calm" };
 const PRESET_NOTES = {
   general: "A balanced starting point. Choose your own voice, visuals and music after creating the profile.",
-  news: "Clear, natural narration, Hybrid visuals and music off. Add the subjects and audience your news channel covers.",
-  asmr: "Slower, calm narration, gentle photo motion and music off. This is a calm speech preset; a true ASMR recording needs an appropriate audio source.",
+  news: "Clear narration, Hybrid visuals and restrained automatic sound. Add the subjects and audience your news channel covers.",
+  asmr: "Slower, calm narration, gentle visuals and quiet automatic sound. This is a calm speech preset; a true ASMR recording needs an appropriate audio source.",
 };
 
 function activeChannelProfile() {
@@ -62,7 +62,8 @@ function renderChannelProfiles() {
       ? `<span class="channel-verified"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="8"/><path d="m6 10 3 3 5-6"/></svg>${validChannel ? `<a href="https://www.youtube.com/channel/${esc(channel.id)}" target="_blank" rel="noopener">${channelTitle} ↗</a>` : channelTitle}</span>`
       : '<span>Create locally; connect when you want to publish.</span>';
     const mode = { motion: "Motion", hybrid: "Hybrid", classic: "Classic" }[defaults.visual_mode] || "Motion";
-    $("#channel-identity").innerHTML = `${channelAvatar(active, true)}<div><div class="channel-eyebrow">Creating for · ${esc(CHANNEL_PRESETS[active.preset] || "General")}</div><h2 id="active-channel-title">${esc(active.name)}</h2><div class="channel-details">${identity}<span>${mode} · ${defaults.music_enabled ? "music on" : "music off"}</span></div></div>`;
+    const sound = defaults.sound_mode === "off" ? "sound off" : defaults.sound_mode === "manual" ? "manual sound" : "automatic sound";
+    $("#channel-identity").innerHTML = `${channelAvatar(active, true)}<div><div class="channel-eyebrow">Creating for · ${esc(CHANNEL_PRESETS[active.preset] || "General")}</div><h2 id="active-channel-title">${esc(active.name)}</h2><div class="channel-details">${identity}<span>${mode} · ${sound}</span></div></div>`;
     $("#edit-channel").textContent = "Profile settings";
     $("#connect-channel").textContent = connected ? "Reconnect YouTube" : "Connect YouTube";
     $("#refresh-channel").hidden = !active.token_present;
@@ -203,6 +204,13 @@ function setSelectValue(selector, value) {
   select.value = text;
 }
 
+function syncProfileSoundControls() {
+  const mode = $("#profile-sound-mode").value;
+  $("#profile-manual-sound").hidden = mode !== "manual";
+  $("#profile-sound-intensity-field").hidden = mode !== "auto";
+  $("#profile-music-level").hidden = !$("#profile-music").checked;
+}
+
 function openChannelEditor(id = null) {
   if (profileIsBusy()) return toast("Wait for the current job before changing profiles.");
   if (typeof settingsDirty === "function" && settingsDirty()) return toast("Save or undo your Settings changes first.", "err");
@@ -212,7 +220,7 @@ function openChannelEditor(id = null) {
   $("#channel-form").reset();
   showChannelFormError("");
   $("#channel-dialog-title").textContent = profile ? "Profile settings" : "Add a channel";
-  $("#channel-dialog-intro").textContent = profile ? `Voice, visuals and music for ${profile.name}. Your publishing connection belongs to this profile.` : "Give each channel its own voice, visual style and publishing connection.";
+  $("#channel-dialog-intro").textContent = profile ? `Voice, visuals and sound for ${profile.name}. Your publishing connection belongs to this profile.` : "Give each channel its own voice, visual style and publishing connection.";
   $("#profile-name").value = profile?.name || "";
   $("#profile-preset").value = profile?.preset || "general";
   $("#profile-preset").disabled = !!profile;
@@ -228,11 +236,13 @@ function openChannelEditor(id = null) {
     $("#profile-format").value = defaults.video_type || "normal";
     $("#profile-duration").value = defaults.duration_mins || 8;
     $("#profile-privacy").value = defaults.privacy || "private";
+    $("#profile-sound-mode").value = defaults.sound_mode || "auto";
+    $("#profile-sound-intensity").value = defaults.sound_intensity || "low";
     $("#profile-music").checked = !!defaults.music_enabled;
     $("#profile-music-volume").value = Math.round((defaults.music_volume ?? .08) * 100);
     $("#profile-music-value").textContent = $("#profile-music-volume").value + "%";
     $("#profile-music-library").value = defaults.music_library || "";
-    $("#profile-music-level").hidden = !defaults.music_enabled;
+    syncProfileSoundControls();
   }
   $("#profile-client-secret").value = "";
   $("#profile-bound-channel").hidden = !profile?.channel;
@@ -298,6 +308,7 @@ $("#channel-form").addEventListener("submit", async event => {
       visual_mode: $("#profile-visual-mode").value, video_type: $("#profile-format").value,
       duration_mins: +$("#profile-duration").value,
       privacy: $("#profile-privacy").value, music_enabled: $("#profile-music").checked,
+      sound_mode: $("#profile-sound-mode").value, sound_intensity: $("#profile-sound-intensity").value,
       music_volume: +$("#profile-music-volume").value / 100,
       music_library: $("#profile-music-library").value.trim(),
     };
@@ -377,7 +388,8 @@ $("#channel-select").onchange = event => activateChannel(event.target.value);
 $("#connect-channel").onclick = () => channelConnection("connect");
 $("#refresh-channel").onclick = () => channelConnection("refresh");
 $("#profile-preset").onchange = event => $("#profile-preset-note").textContent = PRESET_NOTES[event.target.value] || PRESET_NOTES.general;
-$("#profile-music").onchange = event => $("#profile-music-level").hidden = !event.target.checked;
+$("#profile-music").onchange = syncProfileSoundControls;
+$("#profile-sound-mode").onchange = syncProfileSoundControls;
 $("#profile-music-volume").oninput = event => $("#profile-music-value").textContent = event.target.value + "%";
 
 $$('[data-close-dialog]').forEach(button => button.addEventListener("click", () => {

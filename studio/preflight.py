@@ -83,7 +83,8 @@ def check_environment(steps, visual_mode=None):
             _pip_fix([f'"{package}"']))
 
     motion = mode in {"motion", "hybrid"} and bool(selected & {"visuals", "video"})
-    mixing = "music" in selected and (config.MUSIC_ENABLED or getattr(config, "SFX_ENABLED", False))
+    mixing = "music" in selected and (getattr(config, "SOUND_MODE", "auto") == "auto"
+        or config.MUSIC_ENABLED or getattr(config, "SFX_ENABLED", False) or getattr(config, "AUDIO_MASTERING", True))
     if "narration" in selected or motion or mixing:
         path = shutil.which("ffmpeg")
         add("ffmpeg", bool(path), f"ffmpeg: {path or 'not on PATH'}",

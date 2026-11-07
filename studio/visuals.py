@@ -147,6 +147,15 @@ def regenerate(scene_id):
         script = deepcopy(state.get("script") or {})
         image_map = deepcopy(state.get("image_map") or {})
         output = _output_root()
+        binding = output / "image_binding.json"
+        if any(scene.get("image") for scene in plan.get("scenes", [])) and (binding.exists() or binding.is_symlink()):
+            from studio.visual_assets import validate_binding
+            try:
+                saved_map = json.loads((output / "image_map.json").read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                saved_map = {}
+            if validate_binding(output, saved_map, script, state.get("profile_id") or "default") is not True:
+                return jsonify({"ok": False, "error": "The saved photos no longer match this project. Rebuild as Motion graphics, or regenerate Images and Visuals, before editing this photo storyboard."}), 409
         audio_path = state.get("render_audio_path") or state.get("audio_path")
         audio = Path(audio_path).resolve() if audio_path else None
         if not audio or not audio.is_relative_to(output) or not audio.is_file():
@@ -193,6 +202,7 @@ def regenerate(scene_id):
         except OSError:
             pass
         return jsonify({"ok": True, "plan": updated, "revision": state["visual_revision"],
+                        "changes": updated.get("last_edit", {}).get("changes", []),
                         "plan_revision": plan_revision(updated),
                         "preview_revision": file_revision(output / "motion" / "index.html"),
                         "preview_url": "/api/visuals/preview/index.html?preview=1"})

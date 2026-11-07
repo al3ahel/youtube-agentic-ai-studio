@@ -255,10 +255,12 @@
   </article>
 
   <article class="card s24 flat review-part" id="rv-audio" hidden>
-    <div class="card-label">Music &amp; effects</div>
+    <div class="card-label">Sound design</div>
+    <div id="review-sound-design" class="review-sound-design"></div>
+    <p class="hint" id="review-audio-master" hidden></p>
     <div id="review-audio-credits" class="review-audio-credits"></div>
     <p class="hint" id="review-audio-note">Save this channel's audio choices in Settings, then apply them to the current draft. Your script and recorded voice stay the same.</p>
-    <div class="draft-actions" style="margin-top:12px"><button class="btn btn-white" type="button" id="apply-review-audio">Apply music &amp; effects to current draft</button><button class="btn btn-ghost" type="button" id="review-audio-settings">Choose audio in Settings</button></div>
+    <div class="draft-actions" style="margin-top:12px"><button class="btn btn-white" type="button" id="apply-review-audio">Regenerate sound design</button><button class="btn btn-ghost" type="button" id="review-audio-settings">Sound settings</button></div>
   </article>
 
   <article class="card s24 review-part" id="rv-storyboard" hidden>
@@ -282,7 +284,7 @@
         <div id="scene-details" class="scene-details"></div>
         <label class="label" for="scene-instructions">Change this scene</label>
         <textarea id="scene-instructions" maxlength="1000" rows="3" placeholder="For example: show the two ideas side by side and highlight each difference."></textarea>
-        <div class="hint">Describe the visual change. Timing and narration stay in place.</div>
+        <div class="hint">Describe the visual change, or ask for an editorial, blueprint, studio, botanical or poster look. Try a split, stack or focus layout. Timing and narration stay in place.</div>
         <label class="scene-photo-option"><input type="checkbox" id="replace-scene-image" aria-describedby="replace-scene-image-note"> Use another saved photo</label>
         <div class="hint" id="replace-scene-image-note">Choose a different photo already downloaded for this section.</div>
         <button class="btn btn-ghost" id="regenerate-scene">Regenerate scene &amp; draft</button>
@@ -332,6 +334,7 @@
     <div class="field">
       <div class="label">Description <span style="display:flex;gap:10px;align-items:center"><span class="counter" id="desc-count">0/5000</span><button class="btn btn-ghost btn-xs" id="regen-desc">✦ Rewrite with AI</button></span></div>
       <textarea id="edit-desc" rows="12" placeholder="Video description…"></textarea>
+      <p id="description-warning" class="hint description-warning" role="status" hidden></p>
       <div class="hint">Chapters, sources and image credits are added for you. Keep them: they help viewers, and some images require credit.</div>
     </div>
     <div class="field">
@@ -358,6 +361,7 @@
 
     <div class="field">
       <div class="label">Style <small>click one to use it</small></div>
+      <button class="btn btn-ghost btn-sm" type="button" id="thumb-preview-btn">Generate style previews</button>
       <div class="styles" id="thumb-styles"></div>
     </div>
 
@@ -366,7 +370,6 @@
       <div style="display:flex;gap:6px;flex-wrap:wrap">
         <button class="btn btn-ghost btn-sm" id="bg-prev">← Previous photo</button>
         <button class="btn btn-ghost btn-sm" id="bg-next">Next photo →</button>
-        <button class="btn btn-ghost btn-sm" id="bg-ai">✦ New AI artwork</button>
       </div>
     </div>
   </article>
@@ -395,6 +398,7 @@
 
   <article class="card s10 review-part">
     <div class="card-label"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg>Script &amp; sources</div>
+    <details class="more" id="editorial-checks" hidden><summary>Editorial checks</summary><div class="more-body" id="editorial-checks-content"></div></details>
     <details class="more">
       <summary>Read the script, section by section</summary>
       <div class="more-body sections" id="sections"></div>
@@ -429,7 +433,7 @@
 
   <article class="card s12 r2">
     <div class="card-label"><svg viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M17 6l3 3"/></svg>Free API keys</div>
-    <p class="card-intro">All optional. The first one makes the biggest difference.</p>
+    <p class="card-intro">Choose a free-tier writing provider here or set up Ollama below. Media and publishing keys are optional for the features you use.</p>
     <div id="key-fields"></div>
   </article>
 
@@ -480,9 +484,14 @@
   </article>
 
   <article class="card s24" id="settings-audio" aria-labelledby="audio-library-title">
-    <div class="card-label" id="audio-library-title">Audio library <span class="tag" id="audio-library-channel"></span></div>
-    <p class="card-intro">Import music or sound effects you downloaded, listen to them here, then choose this channel's soundtrack.</p>
-    <div class="draft-actions"><a class="btn btn-ghost btn-sm" href="https://pixabay.com/music/" target="_blank" rel="noopener">Browse Pixabay music ↗</a><a class="btn btn-ghost btn-sm" href="https://pixabay.com/sound-effects/" target="_blank" rel="noopener">Browse Pixabay sound effects ↗</a></div>
+    <div class="card-label" id="audio-library-title">Sound design <span class="tag" id="audio-library-channel"></span></div>
+    <p class="card-intro">Let the audio agent choose a soundtrack and time effects to the story. Your recorded voice stays at the centre.</p>
+    <div class="audio-direction-grid">
+      <div class="field"><label class="label" for="s-sound_mode">Sound direction</label><select id="s-sound_mode"><option value="auto">Automatic — let the agent choose</option><option value="manual">Manual — choose music and effects</option><option value="off">Off — narration only</option></select></div>
+      <div class="field" id="sound-intensity-field"><label class="label" for="s-sound_intensity">Intensity</label><select id="s-sound_intensity"><option value="low">Low — subtle and calm</option><option value="balanced">Balanced — more emphasis</option></select></div>
+    </div>
+    <p class="hint" id="sound-direction-note">Automatic uses the script and this channel's style to choose suitable music, ambience and timed effects. No track selection is required.</p>
+    <div id="manual-audio-settings" hidden>
     <div class="audio-settings-grid">
       <div>
         <label class="toggle first"><span><b>Background music</b><small>Loop beneath the narration at the level below</small></span><input type="checkbox" id="s-music_enabled"><span class="switch"></span></label>
@@ -500,6 +509,12 @@
       </div>
     </div>
     <p class="hint">Importing or selecting a file does not turn it on. Enable the layer and save Settings. Use Review to apply saved choices to an existing draft.</p>
+    </div>
+    <details class="more" id="audio-library-details">
+      <summary>Audio library <span class="hint">optional imported tracks</span></summary>
+      <div class="more-body">
+    <p class="hint">Import downloaded music or effects for this channel. Use Manual sound direction to choose exact tracks.</p>
+    <div class="draft-actions"><a class="btn btn-ghost btn-sm" href="https://pixabay.com/music/" target="_blank" rel="noopener">Browse Pixabay music ↗</a><a class="btn btn-ghost btn-sm" href="https://pixabay.com/sound-effects/" target="_blank" rel="noopener">Browse Pixabay sound effects ↗</a></div>
     <details class="more audio-import" open>
       <summary>Import a downloaded audio file</summary>
       <form id="audio-import-form" class="more-body">
@@ -524,6 +539,19 @@
     <div class="audio-library-heading"><h3>Imported tracks</h3><button class="btn btn-ghost btn-xs" id="audio-library-refresh" type="button">Refresh library</button></div>
     <p class="hint" id="audio-library-status" role="status" aria-live="polite">Loading this channel's audio…</p>
     <div class="audio-library-list" id="audio-library-list"></div>
+      </div>
+    </details>
+  </article>
+
+  <article class="card s12" id="settings-models">
+    <div class="card-label">Writing models</div>
+    <div class="field"><label class="label" for="s-llm_route">Model route</label><select id="s-llm_route"><option value="auto">Automatic — configured free providers</option><option value="local">Local only — Ollama</option></select></div>
+    <p class="hint" id="local-model-route-note">Automatic uses configured providers. Gemini and Groq need their free-tier accounts; OpenRouter uses free models. Ollama runs a model on this computer without an API fee.</p>
+    <div class="field"><label class="label" for="s-ollama_base_url">Ollama address</label><input id="s-ollama_base_url" type="url" maxlength="300" placeholder="http://127.0.0.1:11434" spellcheck="false"></div>
+    <div class="field"><label class="label" for="s-ollama_model">Installed local model</label><input id="s-ollama_model" type="text" maxlength="200" list="local-models" placeholder="Choose an installed model" spellcheck="false"><datalist id="local-models"></datalist></div>
+    <div class="model-discovery"><button class="btn btn-ghost btn-sm" id="discover-local-models" type="button">Find local models</button><div class="hint" id="local-model-discovery-status" role="status" aria-live="polite">Lists installed models only. Start Ollama and install a model first.</div></div>
+    <label class="toggle"><span><b>Review scripts before recording</b><small>Check clarity and pacing before making the voice track</small></span><input type="checkbox" id="s-script_review_enabled"><span class="switch"></span></label>
+    <label class="toggle"><span><b>Reuse unchanged narration</b><small>Cache voice recordings when the text and voice settings match</small></span><input type="checkbox" id="s-voice_cache_enabled"><span class="switch"></span></label>
   </article>
 
   <article class="card s12">
@@ -544,6 +572,7 @@
     <div class="field"><label class="label" for="s-visual_review_model">Visual reviewer</label><input id="s-visual_review_model" type="text" maxlength="200" list="free-reviewer-models" placeholder="openrouter/free"><datalist id="free-reviewer-models"></datalist></div>
     <div class="model-discovery"><button class="btn btn-ghost btn-sm" id="discover-models">Find available free models</button><div class="hint" id="model-discovery-status" aria-live="polite">Loads a model catalogue only. No generation or frame upload.</div></div>
     <div class="motion-setting-grid">
+      <div class="field"><label class="label" for="s-caption_style">Motion &amp; Hybrid captions</label><select id="s-caption_style"><option value="highlight">Highlight measured words</option><option value="plain">Plain phrases</option><option value="off">Off</option></select><p class="hint">Applies to new or rebuilt scenes. Word highlighting uses measured timing only; older narration keeps phrase captions.</p></div>
       <div class="field"><label class="label" for="s-motion_quality">Motion quality</label><select id="s-motion_quality"><option value="draft">Draft</option><option value="standard">Standard</option><option value="high">High</option></select></div>
       <div class="field"><label class="label" for="s-motion_workers">Render workers</label><select id="s-motion_workers"><option value="1">1 — low memory use</option><option value="2">2</option><option value="3">3</option><option value="4">4</option></select></div>
     </div>
@@ -554,7 +583,6 @@
     <details class="more">
       <summary>AI models, image sources and video style</summary>
       <div class="more-body">
-        <label class="toggle first"><span><b>Free backup AI</b><small>If every other AI fails, Pollinations writes the script (no key)</small></span><input type="checkbox" id="s-keyless_llm"><span class="switch"></span></label>
         <label class="toggle"><span><b>Check facts</b><small>Wikipedia + arXiv lookups before writing</small></span><input type="checkbox" id="s-fact_grounding"><span class="switch"></span></label>
         <div class="field" style="margin-top:12px">
           <div class="label">Image sources after Pexels <small>tried in this order</small></div>
@@ -562,17 +590,14 @@
             <label class="chip"><input type="checkbox" value="pixabay">Pixabay</label>
             <label class="chip"><input type="checkbox" value="nasa">NASA</label>
             <label class="chip"><input type="checkbox" value="openverse">Openverse (CC)</label>
-            <label class="chip"><input type="checkbox" value="pollinations">AI-generated</label>
           </div>
         </div>
         <div class="field"><div class="label">Gemini model to try first</div>
           <select id="s-gemini_model">
-            <option value="gemini-2.5-flash">gemini-2.5-flash — best quality</option>
-            <option value="gemini-2.5-flash-lite">gemini-2.5-flash-lite — fast + smart</option>
-            <option value="gemma-4-31b-it">gemma-4-31b-it</option>
-            <option value="gemini-2.0-flash">gemini-2.0-flash — most free quota</option>
-            <option value="gemini-2.0-flash-lite">gemini-2.0-flash-lite — fastest</option>
-            <option value="gemma-3-27b-it">gemma-3-27b-it</option>
+            <option value="gemini-3.8-flash">gemini-3.8-flash — current Flash</option>
+            <option value="gemini-3.1-flash-lite">gemini-3.1-flash-lite — lighter text model</option>
+            <option value="gemini-2.5-flash">gemini-2.5-flash — existing projects</option>
+            <option value="gemini-2.5-flash-lite">gemini-2.5-flash-lite — existing projects</option>
           </select></div>
         <div class="field"><div class="label">Groq model</div><input type="text" id="s-groq_model"></div>
         <div class="field"><div class="label">OpenRouter model</div><input type="text" id="s-openrouter_model"></div>
@@ -623,8 +648,15 @@
         <div class="voice-preview-heading"><button type="button" class="btn btn-ghost btn-sm" id="preview-profile-voice">Preview voice</button><span class="hint" id="voice-preview-status" aria-live="polite">Hear a short sample with these voice settings.</span></div>
         <audio id="profile-voice-audio" controls preload="none" aria-label="Narrator voice sample" hidden></audio>
       </div>
-      <label class="toggle"><span><b>Background music</b><small>Use this channel's saved music choice beneath the voice</small></span><input type="checkbox" id="profile-music"><span class="switch"></span></label>
-      <div class="field" id="profile-music-level"><label class="label" for="profile-music-volume">Music level</label><div class="range-row"><input type="range" id="profile-music-volume" min="0" max="100" step="1" value="8"><span id="profile-music-value">8%</span></div></div>
+      <div class="form-grid">
+        <div class="field"><label class="label" for="profile-sound-mode">Sound direction</label><select id="profile-sound-mode"><option value="auto">Automatic — choose for each script</option><option value="manual">Manual — use saved audio choices</option><option value="off">Off — narration only</option></select></div>
+        <div class="field" id="profile-sound-intensity-field"><label class="label" for="profile-sound-intensity">Automatic sound intensity</label><select id="profile-sound-intensity"><option value="low">Low — keep the voice prominent</option><option value="balanced">Balanced — a fuller soundtrack</option></select></div>
+      </div>
+      <p class="hint">Automatic chooses suitable music, ambience and cues for this channel's script. Manual music and effects can be selected in Settings.</p>
+      <div id="profile-manual-sound" hidden>
+        <label class="toggle"><span><b>Background music</b><small>Use this channel's saved music choice beneath the voice</small></span><input type="checkbox" id="profile-music"><span class="switch"></span></label>
+        <div class="field" id="profile-music-level"><label class="label" for="profile-music-volume">Music level</label><div class="range-row"><input type="range" id="profile-music-volume" min="0" max="100" step="1" value="8"><span id="profile-music-value">8%</span></div></div>
+      </div>
       <details class="more profile-advanced"><summary>More channel settings</summary><div class="more-body">
         <div class="field"><label class="label" for="profile-duration">Target long-video duration <small>minutes</small></label><input type="number" id="profile-duration" min="0.25" max="60" step="0.25" value="8"><p class="hint">Guides the script length. Shorts keep their shorter format.</p></div>
         <div class="field"><label class="label" for="profile-voice-pitch">Voice pitch</label><select id="profile-voice-pitch"><option value="-5Hz">Lower · −5 Hz</option><option value="+0Hz">Natural pitch</option><option value="+5Hz">Higher · +5 Hz</option></select></div>

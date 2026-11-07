@@ -1,10 +1,10 @@
 /* ═══════════════════════════ settings ═══════════════════════════ */
 const KEYS = [
-  ["gemini_key", "Google Gemini", "Writes much better scripts. Recommended, takes 1 minute.", "https://aistudio.google.com/apikey"],
+  ["gemini_key", "Google Gemini", "Writing through a Gemini free-tier account; quota and regional availability apply.", "https://aistudio.google.com/apikey"],
   ["pexels_key", "Pexels", "High-quality stock photos for your scenes.", "https://www.pexels.com/api/"],
   ["pixabay_key", "Pixabay", "Even more stock photos.", "https://pixabay.com/api/docs/"],
-  ["groq_key", "Groq", "Backup AI for when Gemini runs out of free quota.", "https://console.groq.com/keys"],
-  ["openrouter_key", "OpenRouter", "Free scene planning and optional visual review, plus a script backup.", "https://openrouter.ai/keys"],
+  ["groq_key", "Groq", "A free-tier account for writing and fallback within its quota.", "https://console.groq.com/keys"],
+  ["openrouter_key", "OpenRouter", "Free models for writing, scene planning and optional visual review. Availability changes.", "https://openrouter.ai/keys"],
   ["youtube_key", "YouTube Data API", "Shows your subscribers and views on Home.", "https://console.cloud.google.com/apis/library/youtube.googleapis.com"],
   ["youtube_channel", "Your channel", "Channel ID or @handle, used with the key above.", ""],
 ];
@@ -24,8 +24,8 @@ const RANGES = {
   broll_interval: { to: v => Math.round(v), from: v => +v, label: v => v + " s" },
   broll_xfade:    { to: v => Math.round(v * 10), from: v => v / 10, label: v => (v / 10).toFixed(1) + " s" },
 };
-const TEXT = ["channel_name", "channel_desc", "brand_text", "thumb_style", "gemini_model", "groq_model", "openrouter_model", "render_preset", "kb_start", "kb_end", "privacy", "voice_id", "trends_geo", "visual_mode", "visual_planner_model", "visual_review_model", "motion_quality", "motion_workers", "music_track", "sfx_track", "sfx_mode"];
-const BOOLS = ["fact_grounding", "keyless_llm", "music_enabled", "sfx_enabled", "show_brand", "credit_yaas", "visual_ai_enabled", "visual_review_enabled", "openrouter_free_only"];
+const TEXT = ["channel_name", "channel_desc", "brand_text", "thumb_style", "gemini_model", "groq_model", "openrouter_model", "render_preset", "kb_start", "kb_end", "privacy", "voice_id", "trends_geo", "visual_mode", "visual_planner_model", "visual_review_model", "motion_quality", "motion_workers", "caption_style", "music_track", "sfx_track", "sfx_mode", "sound_mode", "sound_intensity", "llm_route", "ollama_base_url", "ollama_model"];
+const BOOLS = ["fact_grounding", "music_enabled", "sfx_enabled", "show_brand", "credit_yaas", "visual_ai_enabled", "visual_review_enabled", "openrouter_free_only", "voice_cache_enabled", "script_review_enabled"];
 Object.entries(RANGES).forEach(([k, r]) => { const el = $("#r-" + k); el.addEventListener("input", () => $("#v-" + k).textContent = r.label(+el.value)); });
 
 let settingsSnap = "", settingsProfileId = null, settingsLoadSerial = 0, settingsSavePending = false;
@@ -71,13 +71,18 @@ async function loadSettings({ discardChanges = false } = {}) {
       : "Optional channel ID or @handle for the original profile's public statistics. Connecting YouTube verifies the publishing identity separately.";
     TEXT.forEach(k => {
       if (k === "music_track" || k === "sfx_track") setAudioTrackSelection(k === "music_track" ? "music" : "sfx", d[k]);
-      else { const el = $("#s-" + k); if (el && d[k] !== undefined) el.value = d[k]; }
+      else {
+        const el = $("#s-" + k);
+        if (el && d[k] !== undefined) el.value = k === "gemini_model" && !Array.from(el.options).some(option => option.value === d[k]) ? "gemini-3.8-flash" : d[k];
+      }
     });
     BOOLS.forEach(k => $("#s-" + k).checked = !!d[k]);
     Object.entries(RANGES).forEach(([k, r]) => { const v = r.to(d[k]); $("#r-" + k).value = v; $("#v-" + k).textContent = r.label(v); });
     $$("#img-sources input").forEach(i => { i.checked = (d.image_sources || []).includes(i.value); i.closest(".chip").classList.toggle("on", i.checked); });
     $("#s-banned").value = (d.banned_topics || []).filter(t => !["The Boltzmann Brain", "Simulation Theory", "Quantum Immortality"].includes(t)).join("\n");
     brandPreview();
+    $("#local-models").replaceChildren();
+    $("#local-model-discovery-status").textContent = "Lists installed models only. Start Ollama and install a model first.";
     settingsSnap = JSON.stringify(collectSettings());
   }
   $("#quick-voice").value = d.voice_id;
@@ -88,6 +93,7 @@ async function loadSettings({ discardChanges = false } = {}) {
   settingsChanged();
   renderChecklist();
   updateAudioSettingsControls();
+  updateLocalModelControls();
   loadAudioLibrary(settingsProfileId);
   return d;
 }
@@ -106,7 +112,7 @@ function brandPreview() {
 async function saveSettings() {
   if (settingsSavePending || !settingsProfileId) return;
   const profileId = settingsProfileId, body = collectSettings(), snapshot = JSON.stringify(body);
-  if (body.sfx_enabled && !body.sfx_track) {
+  if (body.sound_mode === "manual" && body.sfx_enabled && !body.sfx_track) {
     $("#s-sfx_track").focus();
     return toast("Choose a sound effect before enabling it, or turn Sound effects off.", "err");
   }
@@ -140,6 +146,34 @@ $("#discover-models").onclick = async () => {
     note.textContent = `${results[0].models.length} planners and ${results[1].models.length} reviewers loaded. Select a model in the fields above, then save. Availability can change.`;
   } catch (e) { note.textContent = e.message; }
   busy(button, false);
+};
+let localModelDiscoverySerial = 0;
+function updateLocalModelControls() {
+  $("#local-model-route-note").textContent = $("#s-llm_route").value === "local"
+    ? "Writing uses the installed Ollama model on this computer. It does not fall back to a cloud writing provider. Save the address and model after checking them."
+    : "Automatic uses configured providers. Gemini and Groq need their free-tier accounts; OpenRouter uses free models. Ollama runs a model on this computer without an API fee.";
+}
+$("#s-llm_route").addEventListener("change", updateLocalModelControls);
+$("#discover-local-models").onclick = async () => {
+  if (!settingsProfileId) return;
+  const profileId = settingsProfileId, baseURL = $("#s-ollama_base_url").value.trim();
+  const serial = ++localModelDiscoverySerial, loaded = settingsLoadSerial;
+  const button = $("#discover-local-models"), note = $("#local-model-discovery-status");
+  const current = () => serial === localModelDiscoverySerial && loaded === settingsLoadSerial
+    && settingsProfileId === profileId && $("#s-ollama_base_url").value.trim() === baseURL;
+  busy(button, true, "Checking Ollama…");
+  note.classList.remove("error"); note.textContent = "Reading the installed model list…";
+  try {
+    const result = await api("/api/local-models" + settingsProfileQuery(profileId), {base_url: baseURL});
+    if (!current()) return;
+    if (!result.ok || !Array.isArray(result.models)) throw new Error(result.error || "Ollama did not return a model list.");
+    const models = result.models.filter(model => model && typeof model.name === "string");
+    $("#local-models").innerHTML = models.map(model => `<option value="${esc(model.name)}">${esc(model.name)}${Number.isFinite(model.size) ? ` · ${(model.size / 1024 ** 3).toFixed(1)} GiB` : ""}</option>`).join("");
+    note.textContent = models.length ? `${models.length} installed model${models.length === 1 ? "" : "s"} found. Choose a model above, then save. No generation was started.`
+      : "Ollama is reachable but has no installed models. Install one in Ollama, then check again.";
+  } catch (error) {
+    if (current()) { note.classList.add("error"); note.textContent = `${error.message} Check that Ollama is running at the address above.`; }
+  } finally { if (serial === localModelDiscoverySerial) busy(button, false); }
 };
 $("#save-banned").onclick = async () => {
   const topics = $("#s-banned").value.split("\n").map(s => s.trim()).filter(Boolean);

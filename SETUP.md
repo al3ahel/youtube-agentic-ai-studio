@@ -121,11 +121,26 @@ available, unreserved port.
 The app binds to localhost. The process running `gui.py` also starts its scheduler;
 the browser is just its interface.
 
-## Step 3 — Add optional provider keys
+## Step 3 — Choose local or free-tier AI
+
+New scripts need an available text model. In **Settings → Writing models**, choose
+an installed Ollama model or add a hosted key below. **Find local models** lists
+installed models from your loopback Ollama server; it does not download weights
+or start inference. **Local only** applies to writing, sound direction and text
+visual planning and never falls through to a hosted model. Remote frame review
+is unavailable in that mode. Local model choices and routing belong to the channel;
+provider keys remain shared by the studio.
+
+Use a model your machine can run and whose license permits your intended use.
+The local address normally is `http://127.0.0.1:11434`. The app rejects remote
+hosts, cloud aliases and automatic model pulls. Ollama must already be installed
+and running. You can instead use a free-tier hosted account; check its tier and
+quota, because a key alone does not guarantee that billing is disabled.
 
 | Provider | Where to obtain a key | Purpose |
 | --- | --- | --- |
 | Gemini | [Google AI Studio](https://aistudio.google.com/apikey) | Research and script generation |
+| Groq | [Groq console](https://console.groq.com/keys) | Free-tier text fallback |
 | Pexels | [Pexels API](https://www.pexels.com/api/) | Stock pictures and Hybrid video footage |
 | OpenRouter | [OpenRouter keys](https://openrouter.ai/keys) | Optional free visual planning, text fallback and frame review |
 
@@ -141,7 +156,18 @@ OpenRouter planning defaults to `openrouter/free`; explicit choices are checked
 against the live free-model catalogue. Free providers can have quotas and changing
 availability. A vision model returns review text, not a finished generated video.
 Frame review is off until explicitly enabled, and sends selected rendered frames
-when enabled. Local motion templates can still run without an OpenRouter key.
+when enabled in a hosted route. Text visual planning can use the configured local,
+Gemini or Groq route without a separate OpenRouter key. Local motion templates can
+still run on a saved script/recording without any inference.
+
+The old keyless Pollinations generation fallback is retired.
+Gemini defaults to `gemini-3.8-flash`, with `gemini-3.1-flash-lite` and the 2.5
+Flash models in its fallback chain. Google restricts 2.5 access to previously
+active projects, so a new key should use a supported 3.x choice. See Google's
+[models](https://ai.google.dev/gemini-api/docs/models) and
+[free-tier pricing](https://ai.google.dev/gemini-api/docs/pricing).
+The Groq default is `openai/gpt-oss-120b`. Saved retired Groq Llama defaults migrate at runtime.
+These identifiers do not bypass account quotas or turn a paid account into a free one.
 
 ## Step 4 — Connect YouTube (optional)
 
@@ -198,7 +224,8 @@ and audience.
 Open **Profile settings** to adjust the narrator, speed, visual mode, format,
 duration, music and publishing defaults. **Preview voice** uses the currently
 selected voice, speed and pitch without saving them; save after choosing a voice.
-The default pitch is natural (`+0Hz`), and music starts off.
+The default pitch is natural (`+0Hz`). New profiles use Automatic sound design;
+the agent decides whether a suitable licensed bed, ambience or sparse effect fits.
 
 News starts with natural narration and Hybrid visuals. It uses retrieved background
 sources and trends; it does not verify live breaking news. ASMR/calm starts with
@@ -217,9 +244,12 @@ For more detail, see [Channels and schedules](docs/CHANNELS_AND_SCHEDULES.md).
 For a new video, select a channel, enter a topic, choose Motion/Hybrid/Classic,
 and press **Make video**. Use **Draft preview first** with Motion or Hybrid.
 
-All modes can use the original stock-picture pipeline. Motion animates those
-pictures alongside explanatory graphics; Hybrid can add real footage. Review's
-storyboard is the same composition used by HyperFrames during generation.
+Motion creates graphics without automatically attaching pictures or footage.
+Hybrid uses the original current-project photo pipeline and can add stock video;
+Classic retains the original photo renderer. Review's storyboard is the same
+composition used by Hyperframes during generation. New photo associations are
+bound to the channel, script and file contents, so an old filename cannot be
+assumed to belong to a new video.
 
 For an existing photo project, open **My videos → Open → Animate these photos**.
 This reuses its pictures and recording, imports saved SRT timing when available,
@@ -231,20 +261,31 @@ You do not have to regenerate unchanged old narration just to try Motion.
 Regenerate it if the spoken script changes or if you want fresh word events
 from the speech service, when available. See [the full Motion workflow](docs/MOTION_STUDIO.md).
 
-## Step 7 — Add optional music
+## Step 7 — Let the agent direct sound
 
-Place suitable local audio in `music library/`, or choose a different local
-directory in that profile's **More channel settings → Music folder**. Supported
-files include MP3, WAV, OGG, M4A and FLAC.
+Choose **Automatic** under sound design and save the profile. The agent reads the
+script and measured narration, chooses appropriate search terms or an owned
+recording, and can fetch declared CC0/Public Domain/CC BY audio from Wikimedia
+Commons without a key. You do not need to import tracks for this mode. An available
+free/local text model supplies AI choices; otherwise conservative local choices
+are explicitly identified. If no suitable licensed recording can be obtained,
+the draft retains narration and Review explains why.
 
-Turn **Background music** on for the profile. Its default level is **8%**.
-The FFmpeg mixer loops one readable track, fades the bed, lowers it beneath speech
-and limits peaks. Motion keeps the prepared soundtrack as a lossless WAV before
-encoding the MP4. No synthetic sound effects are added.
+On an existing Motion/Hybrid draft, click **Regenerate sound design** in Review.
+It rebuilds only the sound and MP4, retaining voice, storyboard and publishing
+prose. Review shows actual source credits, cue placement and measured loudness.
+Normal/news finishing targets −16 LUFS and ASMR −20 LUFS with bounded gain and
+true-peak headroom; targets are not forced when doing so would violate a limit.
 
-A render-only operation reuses its prepared audio. Select the Music step to
-rebuild the bed after changing music settings. Missing or unreadable music leaves
-the original narration intact.
+**Manual** supports exact imported tracks and the existing local music folder.
+Old enabled imported selections stay Manual on upgrade. **Off** removes added
+music/effects. Pixabay audio can still be downloaded/imported as an optional
+Manual source; its documented public API does not provide audio search.
+
+Video-only rendering reuses its committed soundtrack. An interrupted new sound
+pass cannot overwrite it. No synthesized noise/test-tone fallback is added to
+normal videos. Complete applied credits are preserved, including after archive
+reopening, and refreshed before publication.
 
 ## Step 8 — Schedule recurring videos
 
@@ -317,6 +358,30 @@ git pull --ff-only
 Reinstall `requirements.txt` in the project environment and run `pip check`, then
 run `npm ci --prefix renderers/hyperframes` again. The supported Python range
 remains 3.10–3.12.
+
+For an existing Windows checkout using `.venv-yaas312` and port 8765, stop YAAS
+with **Ctrl+C**, then run the following in the same PowerShell window. Keep the
+existing environment and local project data; an untracked `.venv-yaas312/`
+directory is not a code conflict.
+
+```powershell
+cd C:\Users\Admin\youtube-agentic-ai-studio
+git switch main
+git pull --ff-only origin main
+.\.venv-yaas312\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv-yaas312\Scripts\python.exe -m pip check
+npm ci --prefix renderers/hyperframes
+ffmpeg -version
+ffprobe -version
+$env:STUDIO_PORT = "8765"
+.\.venv-yaas312\Scripts\python.exe gui.py
+```
+
+Open `http://127.0.0.1:8765` and refresh the page after updating. In the selected
+channel's settings, choose **Automatic** sound for agent-selected music/ambience
+and effects. A previously enabled, explicitly selected track remains **Manual**
+on upgrade. Setting changes affect the next relevant generation step; an old
+render is not silently rebuilt just by changing a preference.
 
 Very old YAAS versions wrote settings into tracked `config.py`. Export that old
 file to `old_config.py`, then use the migration command:

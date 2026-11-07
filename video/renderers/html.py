@@ -33,6 +33,9 @@ RENDERER_DIR = Path(__file__).resolve().parents[2] / "renderers" / "hyperframes"
 HYPERFRAMES_VERSION = "0.9.19"
 TEMPLATES = {"flow", "comparison", "timeline", "chart", "explain", "text", "footage"}
 BEAT_ACTIONS = {"reveal", "highlight", "connect", "draw", "count", "emphasize"}
+VISUAL_LOOKS = {"editorial", "blueprint", "studio", "botanical", "poster"}
+VISUAL_RHYTHMS = {"calm", "measured", "brisk"}
+COMPOSITIONS = {"default", "split", "stack", "focus"}
 VIDEO_EXTENSIONS = {".mp4", ".webm", ".mov", ".m4v"}
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 AUDIO_EXTENSIONS = {".mp3", ".wav", ".m4a", ".ogg", ".aac", ".flac", ".opus"}
@@ -86,8 +89,25 @@ def _validate_plan(scene_plan: dict) -> dict:
         "version": 1, "fps": int(fps), "width": int(width), "height": int(height),
         "duration": duration, "title": _text(source.get("title", "Untitled"), "title", 240),
         "mode": _text(source.get("mode", "motion"), "mode", 40),
-        "sections": [], "scenes": [], "captions": [],
+        "sections": [], "scenes": [], "captions": [], "words": [],
     }
+    caption_style = source.get("caption_style", "plain")
+    if not isinstance(caption_style, str) or caption_style not in {"highlight", "plain", "off"}:
+        raise ValueError("Choose highlight, plain or off captions")
+    plan["caption_style"] = caption_style
+    if "visual_direction" in source:
+        direction = source["visual_direction"]
+        if (not isinstance(direction, dict) or type(direction.get("version")) is not int
+                or direction["version"] != 1
+                or set(direction) - {"version", "look", "rhythm", "rationale"}):
+            raise ValueError("Visual direction must contain version 1 and a supported look and rhythm")
+        for key, choices in (("look", VISUAL_LOOKS), ("rhythm", VISUAL_RHYTHMS)):
+            if not isinstance(direction.get(key), str) or direction[key] not in choices:
+                raise ValueError(f"Unsupported visual direction {key}")
+        plan["visual_direction"] = {
+            "version": 1, "look": direction["look"], "rhythm": direction["rhythm"],
+            "rationale": _text(direction.get("rationale", ""), "visual_direction.rationale", 400),
+        }
     if "use_project_photos" in source:
         if not isinstance(source["use_project_photos"], bool):
             raise ValueError("The saved-photo option must be true or false")
@@ -111,12 +131,15 @@ def _validate_plan(scene_plan: dict) -> dict:
     for index, section in enumerate(sections):
         if not isinstance(section, dict):
             raise ValueError("Each section must be an object")
-        plan["sections"].append({
+        clean_section = {
             "id": _text(str(section.get("id", index)), "section.id", 100),
             "start": _number(section.get("start", 0), "section.start"),
             "duration": _number(section.get("duration", duration), "section.duration"),
             "narration": _text(section.get("narration", ""), "section.narration", 50000),
-        })
+        }
+        if section.get("caption_timing") in {"word", "phrase", "estimated"}:
+            clean_section["caption_timing"] = section["caption_timing"]
+        plan["sections"].append(clean_section)
     scenes = source.get("scenes")
     if not isinstance(scenes, list) or not 1 <= len(scenes) <= 256:
         raise ValueError("Storyboard needs 1–256 scenes")
@@ -144,6 +167,11 @@ def _validate_plan(scene_plan: dict) -> dict:
         seen.add(scene["id"])
         if scene["template"] not in TEMPLATES:
             raise ValueError(f"Unsupported motion template: {scene['template']}")
+        for key, choices in (("composition", COMPOSITIONS), ("look", VISUAL_LOOKS), ("rhythm", VISUAL_RHYTHMS)):
+            if key in original:
+                if not isinstance(original[key], str) or original[key] not in choices:
+                    raise ValueError(f"Unsupported scene {key}")
+                scene[key] = original[key]
         items = original.get("items", [])
         if not isinstance(items, list) or len(items) > 6:
             raise ValueError("Each motion scene supports at most six items")
@@ -236,6 +264,26 @@ def _validate_plan(scene_plan: dict) -> dict:
         if end > start and text:
             plan["captions"].append({"start": start, "end": min(end, duration), "text": text})
     plan["captions"].sort(key=lambda caption: (caption["start"], caption["end"]))
+    words = source.get("words", [])
+    if not isinstance(words, list) or len(words) > 30000:
+        raise ValueError("words must contain at most 30,000 measured events")
+    sections_by_id = {section["id"]: section for section in plan["sections"]}
+    for word in words:
+        if not isinstance(word, dict):
+            raise ValueError("Word events must be objects")
+        start = _number(word.get("start"), "word.start", 0, duration)
+        end = _number(word.get("end"), "word.end", start, duration + tolerance)
+        text = _text(word.get("word", ""), "word.word", 100)
+        section_id = _text(str(word.get("section_id", "")), "word.section_id", 100)
+        section = sections_by_id.get(section_id)
+        # Section measurements alone do not prove word alignment. Only actual
+        # word-boundary events from a word-timed recording may be highlighted.
+        if (text and end > start and plan.get("timing_source") == "measured_sections"
+                and section and section.get("caption_timing") == "word"
+                and section["start"] <= start < end <= section["start"] + section["duration"] + tolerance):
+            plan["words"].append({"word": text, "start": start, "end": min(end, duration),
+                                  "section_id": section_id})
+    plan["words"].sort(key=lambda word: (word["start"], word["end"]))
     return plan
 
 
@@ -283,6 +331,16 @@ def _atomic_text(path: Path, content: str) -> None:
         temporary.unlink(missing_ok=True)
 
 
+def _atomic_copy(source: Path, destination: Path) -> None:
+    """A live preview must never receive a file while it is being truncated."""
+    temporary = destination.with_name(f".{destination.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        shutil.copy2(source, temporary)
+        temporary.replace(destination)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
 def _copy_vendor(project: Path) -> None:
     dependencies = RENDERER_DIR / "node_modules"
     gsap = dependencies / "gsap" / "dist" / "gsap.min.js"
@@ -294,12 +352,14 @@ def _copy_vendor(project: Path) -> None:
         )
     vendor = project / "vendor"
     files = vendor / "files"
+    if files.is_symlink():
+        raise ValueError("Motion output asset directories cannot be symbolic links")
     files.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(gsap, vendor / "gsap.min.js")
-    shutil.copy2(font / "wght.css", vendor / "fonts.css")
-    shutil.copy2(font / "LICENSE", vendor / "INTER-LICENSE.txt")
+    _atomic_copy(gsap, vendor / "gsap.min.js")
+    _atomic_copy(font / "wght.css", vendor / "fonts.css")
+    _atomic_copy(font / "LICENSE", vendor / "INTER-LICENSE.txt")
     for path in (font / "files").glob("*-wght-normal.woff2"):
-        shutil.copy2(path, files / path.name)
+        _atomic_copy(path, files / path.name)
 
 
 def prepare_motion_project(scene_plan: dict, audio_path: str, output_dir: str) -> Path:
@@ -334,7 +394,7 @@ def prepare_motion_project(scene_plan: dict, audio_path: str, output_dir: str) -
         folder.mkdir(parents=True, exist_ok=True)
     _copy_vendor(project)
     for filename in ("scene.js", "scene.css", "preview.js"):
-        shutil.copy2(RENDERER_DIR / "templates" / filename, project / filename)
+        _atomic_copy(RENDERER_DIR / "templates" / filename, project / filename)
     media_markup = []
     if audio:
         plan["audio"] = {"path": _copy_asset(audio, project / "assets", "narration")}

@@ -42,6 +42,7 @@ def model(identifier="example/planner:free", **changes):
 
 @pytest.fixture(autouse=True)
 def isolated_provider(monkeypatch):
+    monkeypatch.setattr(provider.config, "LLM_ROUTE", "auto", raising=False)
     monkeypatch.setattr(provider.config, "OPENROUTER_API_KEY", "", raising=False)
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     monkeypatch.setattr(provider.config, "VISUAL_PLANNER_MODEL", "openrouter/free", raising=False)
@@ -226,3 +227,90 @@ def test_optional_vision_review_resizes_and_rejects_invalid_frame_indices(monkey
     assert sent[0]["messages"][1]["content"][1]["image_url"]["url"].startswith("data:image/jpeg;base64,")
     invalid = provider.review_frames([image_path], "Check")
     assert invalid["reason"] == "invalid_response"
+
+
+def test_local_only_text_planning_uses_local_weights_without_hosted_key_or_quota(monkeypatch):
+    from apis import local_llm
+    monkeypatch.setattr(provider.config, "LLM_ROUTE", "local")
+    calls = []
+    monkeypatch.setattr(local_llm, "generate", lambda prompt, **kwargs: calls.append((prompt, kwargs)) or '{"title":"Local scene"}')
+    assert provider.plan_json("Describe the diagram", SCHEMA, model="openrouter/free") == {"title": "Local scene"}
+    assert len(calls) == 1 and "JSON schema:" in calls[0][0]
+    assert "Describe the diagram" in calls[0][0]
+    assert "model" not in calls[0][1]  # The local adapter uses OLLAMA_MODEL, not a stored cloud ID.
+    assert provider._usage == {}
+
+
+@pytest.mark.parametrize("content", ['not JSON', '{"title":"Fine","extra":"ignored?"}', '{"title":4}'])
+def test_local_visual_plan_keeps_the_same_strict_schema_boundary(monkeypatch, content):
+    from apis import local_llm
+    monkeypatch.setattr(provider.config, "LLM_ROUTE", "local")
+    calls = []
+    monkeypatch.setattr(local_llm, "generate", lambda *a, **k: calls.append(a) or content)
+    with pytest.raises(provider.OpenRouterError) as error:
+        provider.plan_json("Diagram", SCHEMA)
+    assert error.value.code == "invalid_response" and len(calls) == 1
+
+
+@pytest.mark.parametrize("schema", [{**SCHEMA, "anyOf": []}, {**SCHEMA, "description": KEY}])
+def test_local_planning_rejects_bad_schema_before_inference(monkeypatch, schema):
+    from apis import local_llm
+    enable(monkeypatch)
+    monkeypatch.setattr(provider.config, "LLM_ROUTE", "local")
+    monkeypatch.setattr(local_llm, "generate", lambda *a, **k: pytest.fail("Invalid schema reached local inference"))
+    with pytest.raises(provider.OpenRouterError) as error:
+        provider.plan_json("Diagram", schema)
+    assert error.value.code == "invalid_schema"
+
+
+def test_local_planning_failure_never_falls_through_to_hosted_provider(monkeypatch):
+    from apis import local_llm
+    enable(monkeypatch)
+    monkeypatch.setattr(provider.config, "LLM_ROUTE", "local")
+    def failed(*args, **kwargs):
+        raise local_llm.LocalLLMError("unavailable", "Local model unavailable")
+    monkeypatch.setattr(local_llm, "generate", failed)
+    with pytest.raises(provider.OpenRouterError) as error:
+        provider.plan_json("Diagram", SCHEMA)
+    assert error.value.code == "unavailable"
+    assert provider._usage == {}
+
+
+def test_local_planning_obeys_parent_operation_budget_without_hosted_quota(monkeypatch):
+    from apis import local_llm
+    monkeypatch.setattr(provider.config, "LLM_ROUTE", "local")
+    calls = []
+    monkeypatch.setattr(local_llm, "generate", lambda *a, **k: calls.append(a) or '{"title":"Valid"}')
+    with provider.call_budget(1):
+        provider.plan_json("First scene", SCHEMA)
+        with pytest.raises(provider.OpenRouterError) as error:
+            provider.plan_json("Second scene", SCHEMA)
+    assert error.value.code == "call_budget_exhausted" and len(calls) == 1
+    assert provider._usage == {}
+
+
+def test_local_visual_cancellation_remains_a_stop_instead_of_provider_fallback(monkeypatch):
+    from apis import local_llm
+    monkeypatch.setattr(provider.config, "LLM_ROUTE", "local")
+    def stopped(*args, **kwargs):
+        raise local_llm.LocalLLMError("cancelled", "Stopped")
+    monkeypatch.setattr(local_llm, "generate", stopped)
+    with pytest.raises(InterruptedError):
+        provider.plan_json("Diagram", SCHEMA)
+
+
+@pytest.mark.parametrize("images", [None, ["data:image/jpeg;base64,AAAA"]])
+def test_direct_remote_inference_boundary_refuses_local_only_mode(monkeypatch, images):
+    enable(monkeypatch)
+    monkeypatch.setattr(provider.config, "LLM_ROUTE", "local")
+    with pytest.raises(provider.OpenRouterError) as error:
+        provider._chat_json("Private material", SCHEMA, None, images=images)
+    assert error.value.code == "local_only" and provider._usage == {}
+
+
+def test_local_only_review_never_reads_frames_or_calls_remote_vision(monkeypatch):
+    enable(monkeypatch)
+    monkeypatch.setattr(provider.config, "LLM_ROUTE", "local")
+    monkeypatch.setattr(provider, "_chat_json", lambda *a, **k: pytest.fail("Local-only review reached a hosted provider"))
+    assert provider.review_frames(["/private/nonexistent.png"], "Review this frame") == {
+        "status": "unavailable", "reason": "local_only", "passed": None, "issues": []}

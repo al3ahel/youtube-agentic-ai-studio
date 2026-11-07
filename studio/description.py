@@ -2,6 +2,7 @@
 import json
 import math
 import os
+import re
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -63,62 +64,201 @@ def load_credits():
     return credits
 
 
-def load_audio_credits(timeline=None):
+def _safe_audio_url(source):
+    try:
+        parsed = urlsplit(source) if isinstance(source, str) else None
+        valid = (parsed and len(source) <= 4096 and parsed.scheme in {"http", "https"}
+                 and parsed.hostname and parsed.username is None and parsed.password is None
+                 and not any(character.isspace() or ord(character) < 32 for character in source))
+        if valid:
+            parsed.port
+        return source if valid else ""
+    except ValueError:
+        return ""
+
+
+def _current_soundtrack(timeline=None, *, strict=False):
+    """Validate the authoritative audio commit; older two-field receipts still work."""
+    output = Path(config.OUTPUT_DIR).resolve()
+    path = output / "render_audio.json"
+    if not path.exists():
+        return None
+    try:
+        if path.is_symlink() or path.stat().st_size > 2 * 1024 * 1024:
+            raise ValueError("Invalid soundtrack metadata")
+        manifest = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(manifest, dict):
+            raise ValueError("Invalid soundtrack metadata")
+        voice_hash = manifest.get("audio_sha256")
+        if not isinstance(voice_hash, str) or not voice_hash:
+            raise ValueError("Missing narration identity")
+        if isinstance(timeline, dict) and timeline.get("audio_sha256") != voice_hash:
+            return None
+        from studio.workspace import _fingerprint, _local_file
+        media = _local_file(output, manifest.get("path"), {".wav", ".mp3", ".m4a", ".ogg"}, relative=True)
+        if not media:
+            raise ValueError("The committed soundtrack is unavailable")
+        if manifest.get("version") == 2:
+            signature = manifest.get("soundtrack_sha256")
+            if not isinstance(signature, str) or _fingerprint(output, media)["sha256"] != signature:
+                raise ValueError("The committed soundtrack has changed")
+        return manifest
+    except (OSError, ValueError, TypeError, RuntimeError) as exc:
+        if strict:
+            raise ValueError("The current soundtrack and its credits could not be verified. Apply music and effects again before publishing.") from exc
+        return None
+
+
+def load_audio_credits(timeline=None, *, strict=False):
     """Read the audio actually mixed into this project, never channel defaults."""
     path = os.path.join(config.OUTPUT_DIR, "audio_credits.json")
     try:
-        if os.path.getsize(path) > 1024 * 1024:
+        soundtrack = _current_soundtrack(timeline, strict=strict)
+        if soundtrack is None:
             return []
-        with open(path, encoding="utf-8") as handle:
-            manifest = json.load(handle)
-        if not isinstance(manifest, dict) or manifest.get("version") != 1:
-            return []
-        if isinstance(timeline, dict) and manifest.get("audio_sha256") != timeline.get("audio_sha256"):
-            return []
-        output = Path(config.OUTPUT_DIR).resolve()
-        soundtrack_manifest = output / "render_audio.json"
-        if soundtrack_manifest.stat().st_size > 64 * 1024:
-            return []
-        soundtrack = json.loads(soundtrack_manifest.read_text(encoding="utf-8"))
-        relative = manifest.get("path")
-        if (not isinstance(soundtrack, dict) or not isinstance(relative, str) or not relative
-                or Path(relative).is_absolute() or soundtrack.get("path") != relative
-                or not manifest.get("audio_sha256")
-                or soundtrack.get("audio_sha256") != manifest["audio_sha256"]):
-            return []
-        applied_audio = (output / relative).resolve()
-        if output not in applied_audio.parents or not applied_audio.is_file() or not applied_audio.stat().st_size:
-            return []
-        assets = manifest.get("assets", [])
+        if soundtrack.get("version") == 2:
+            assets = soundtrack.get("credits")
+        else:
+            if not os.path.isfile(path):
+                return []
+            if os.path.getsize(path) > 1024 * 1024:
+                raise ValueError("Audio credits are too large to verify")
+            with open(path, encoding="utf-8") as handle:
+                manifest = json.load(handle)
+            if (not isinstance(manifest, dict) or manifest.get("version") != 1
+                    or manifest.get("path") != soundtrack.get("path")
+                    or manifest.get("audio_sha256") != soundtrack.get("audio_sha256")):
+                return []
+            assets = manifest.get("assets", [])
         if not isinstance(assets, list):
-            return []
+            raise ValueError("Invalid applied audio credits")
+        if len(assets) > 64 and strict:
+            raise ValueError("There are too many applied audio credits to verify")
         result = []
-        for asset in assets[:10]:
+        for asset in assets[:64]:
             if not isinstance(asset, dict) or asset.get("kind") not in {"music", "sfx"}:
                 continue
             clean = {"kind": asset["kind"]}
-            for key, limit in (("id", 32), ("title", 200), ("filename", 255),
-                               ("creator", 200), ("license_note", 2000), ("content_id", 32), ("mode", 32)):
+            for key, limit in (("id", 32), ("title", 500), ("filename", 255),
+                               ("creator", 500), ("license_note", 2000), ("content_id", 32), ("mode", 32),
+                               ("provider", 80), ("provider_id", 200), ("license", 160),
+                               ("license_url", 4096), ("attribution", 10000)):
                 value = asset.get(key, "")
-                clean[key] = value[:limit] if isinstance(value, str) else ""
-            source = asset.get("source_url", "")
-            try:
-                parsed = urlsplit(source) if isinstance(source, str) else None
-                valid_url = (parsed and len(source) <= 2048 and parsed.scheme in {"http", "https"}
-                             and parsed.hostname and parsed.username is None and parsed.password is None
-                             and not any(character.isspace() for character in source))
-                if valid_url:
-                    parsed.port
-                clean["source_url"] = source if valid_url else ""
-            except ValueError:
-                clean["source_url"] = ""
+                if strict and key in {"title", "creator", "license", "license_note", "attribution"} and isinstance(value, str) and len(value) > limit:
+                    raise ValueError("Applied audio attribution exceeds the supported metadata length")
+                if key in asset or key in {"id", "title", "filename", "creator", "license_note", "content_id", "mode"}:
+                    clean[key] = value[:limit] if isinstance(value, str) else ""
+            clean["source_url"] = _safe_audio_url(asset.get("source_url", ""))
+            if "license_url" in clean:
+                clean["license_url"] = _safe_audio_url(asset.get("license_url", ""))
             volume = asset.get("volume")
             if isinstance(volume, (int, float)) and not isinstance(volume, bool) and math.isfinite(volume) and 0 <= volume <= 1:
                 clean["volume"] = volume
             result.append(clean)
         return result
-    except (OSError, ValueError, TypeError, RuntimeError):
+    except (OSError, ValueError, TypeError, RuntimeError) as exc:
+        if strict:
+            raise ValueError("The applied audio credits could not be verified. Apply music and effects again before publishing.") from exc
         return []
+
+
+def load_sound_report(name, timeline=None):
+    """Expose bounded applied reports only while their exact soundtrack is current."""
+    if name not in {"sound_design.json", "audio_master.json"}:
+        return None
+    output = Path(config.OUTPUT_DIR).resolve()
+    try:
+        manifest = _current_soundtrack(timeline)
+        if manifest is None:
+            return None
+        if manifest.get("version") == 2:
+            value = manifest.get(name.removesuffix(".json"))
+        else:
+            path = output / name
+            if path.is_symlink() or path.stat().st_size > 1024 * 1024:
+                return None
+            value = json.loads(path.read_text(encoding="utf-8"))
+        if (not isinstance(value, dict) or value.get("version") != 1 or not isinstance(manifest, dict)
+                or not isinstance(value.get("path"), str) or value["path"] != manifest.get("path")
+                or not value.get("audio_sha256") or value["audio_sha256"] != manifest.get("audio_sha256")
+                or isinstance(timeline, dict) and timeline.get("audio_sha256") != value["audio_sha256"]):
+            return None
+        def public(item, depth=0):
+            if depth > 6:
+                return None
+            if isinstance(item, dict):
+                return {str(k)[:100]: public(v, depth + 1) for k, v in list(item.items())[:50]
+                        if k not in {"path", "audio_sha256", "script_signature"}}
+            if isinstance(item, list):
+                return [public(row, depth + 1) for row in item[:40]]
+            if isinstance(item, str):
+                return item[:2048]
+            if item is None or isinstance(item, bool):
+                return item
+            if isinstance(item, (int, float)) and math.isfinite(item):
+                return item
+            return None
+        return public(value)
+    except (OSError, ValueError, TypeError, RuntimeError):
+        return None
+
+
+AUDIO_CREDIT_START = "Audio credits (updated by YAAS)"
+AUDIO_CREDIT_END = "End audio credits"
+_MANAGED_AUDIO = re.compile(r"(?m)^" + re.escape(AUDIO_CREDIT_START) + r"\r?\n[\s\S]*?^"
+                            + re.escape(AUDIO_CREDIT_END) + r"[ \t]*(?:\r?\n|$)")
+
+
+def _audio_credit_block(assets):
+    if not assets:
+        return ""
+    lines = [AUDIO_CREDIT_START]
+    for asset in assets:
+        label = "Music" if asset["kind"] == "music" else "Sound effect"
+        license_name = asset.get("license", "")
+        if license_name.upper().startswith("CC BY") and not all(asset.get(key) for key in ("creator", "source_url", "license_url")):
+            raise ValueError("A used CC BY recording is missing its creator, source or license link. Apply music and effects again to restore its full credits before publishing.")
+        fields = (asset.get("title") or asset.get("filename"), asset.get("creator"), asset.get("source_url"),
+                  license_name, asset.get("license_url"))
+        attribution = " ".join(asset.get("attribution", "").split())
+        if attribution:
+            # Preserve extra attribution requirements from the source, including
+            # those not expressible as an artist/title/license tuple.
+            missing = [value for value in fields if value and value not in attribution]
+            detail = " · ".join([attribution, *missing])
+        else:
+            detail = " · ".join(value for value in fields if value)
+        if asset.get("license_note") and not license_name:
+            detail += (" · " if detail else "") + asset["license_note"]
+        if not detail:
+            detail = "Imported recording"
+        lines.append(f"{label}: " + " ".join(detail.split()))
+    lines.append("Audio adapted: excerpted or looped, faded and mixed beneath narration.")
+    lines.append(AUDIO_CREDIT_END)
+    return "\n".join(lines)
+
+
+def _with_audio_credits(description, assets):
+    if not isinstance(description, str):
+        raise ValueError("The video description must be text.")
+    prose = _MANAGED_AUDIO.sub("", description).rstrip()
+    block = _audio_credit_block(assets)
+    result = prose + ("\n\n" if prose and block else "") + block
+    if len(result) > 5000:
+        if len(block) > 5000:
+            raise ValueError("The applied audio credits alone exceed YouTube's 5,000-character description limit. Choose fewer attribution-required recordings and apply music and effects again; credits cannot be omitted.")
+        raise ValueError(f"The description and required audio credits exceed YouTube's 5,000-character limit by {len(result) - 5000} characters. Shorten your description and try again; the audio credits have not been removed.")
+    return result
+
+
+def ensure_audio_credits(description, timeline=None):
+    """Refresh only the managed credit block, keeping the creator's prose intact.
+
+    This is used for preserved descriptions and again immediately before upload.
+    It never truncates an attribution or silently shortens user-written text.
+    """
+    return _with_audio_credits(description, load_audio_credits(timeline, strict=True))
+
 
 def _credit_lines(credits, detailed=True):
     """Attribution block. CC images (Openverse) are listed individually — that's a licence requirement."""
@@ -229,16 +369,17 @@ def build_description(script, research, video_type: str = "normal", timeline=Non
         tail.insert(0, CREDIT_LINE + "\n")
 
     credits = load_credits()
-    audio_credit = []
-    for asset in load_audio_credits(timeline):
-        label = "Music" if asset["kind"] == "music" else "Sound effect"
-        detail = " · ".join(value for value in (asset.get("title") or asset.get("filename"),
-                                                   asset.get("creator"), asset.get("source_url")) if value)
-        if detail:
-            audio_credit.append(f"{label}: {detail}")
+    audio_assets = load_audio_credits(timeline, strict=True)
+    block = _audio_credit_block(audio_assets)
+    # Generated prose may be shortened, but complete attribution is reserved
+    # first. A user-written description goes through ensure_audio_credits and
+    # receives an actionable error instead of being shortened automatically.
+    prose_limit = min(4900, 5000 - len(block) - (2 if block else 0))
+    if prose_limit < 0:
+        return _with_audio_credits("", audio_assets)  # raises a clear length error
     for detailed in (True, False):
-        credit = _credit_lines(credits, detailed) + audio_credit
-        text = "\n".join(lines + (["─"*40] + credit + [""] if credit else []) + tail)
-        if len(text) <= 4900:      # YouTube's limit is 5000
-            return text
-    return text[:4900]
+        credit = _credit_lines(credits, detailed)
+        text = _MANAGED_AUDIO.sub("", "\n".join(lines + (["─"*40] + credit + [""] if credit else []) + tail)).rstrip()
+        if len(text) <= prose_limit:
+            return _with_audio_credits(text, audio_assets)
+    return _with_audio_credits(text[:prose_limit], audio_assets)

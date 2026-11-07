@@ -193,7 +193,7 @@ def _editable_plan(monkeypatch):
     (motion / "index.html").write_text("original preview", encoding="utf-8")
     audio = output / "narration.mp3"
     audio.write_bytes(b"audio")
-    from agents.visual_director import plan_scenes, validate_plan
+    from agents.visual_director import plan_scenes, plan_uses_project_photos, validate_plan
     script = {"title": "A script", "sections": [{
         "id": 1, "title": "Original", "narration": "First observe the pattern. Then compare the evidence.",
     }]}
@@ -204,6 +204,7 @@ def _editable_plan(monkeypatch):
                  audio_path=str(audio), video_path="previous-final.mp4")
     module = types.ModuleType("agents.visual_director")
     module.validate_plan = validate_plan
+    module.plan_uses_project_photos = plan_uses_project_photos
     def regenerate(original, scene_id, script, instructions=""):
         assert state["visual_editing"] and not state["running"]
         assert scene_id == "scene-001" and script["title"] == "A script"
@@ -285,6 +286,7 @@ def _forbid_review_mutations(monkeypatch):
 @pytest.mark.parametrize("route,options", [
     ("/api/visuals/scenes/scene-001/regenerate", {"instructions": "Updated"}),
     ("/api/run", {"steps": ["video"], "visual_mode": "motion", "preview_only": True}),
+    ("/api/run", {"steps": ["visuals", "video"], "visual_mode": "motion", "preview_only": True, "use_project_photos": False}),
 ])
 @pytest.mark.parametrize("revision", [False, 7, "not-a-revision", "a" * 63, "G" * 64])
 def test_malformed_storyboard_revision_rejects_before_any_mutation(
@@ -301,6 +303,7 @@ def test_malformed_storyboard_revision_rejects_before_any_mutation(
 @pytest.mark.parametrize("route,options", [
     ("/api/visuals/scenes/scene-001/regenerate", {"instructions": "Updated"}),
     ("/api/run", {"steps": ["video"], "visual_mode": "motion", "preview_only": True}),
+    ("/api/run", {"steps": ["visuals", "video"], "visual_mode": "motion", "preview_only": True, "use_project_photos": False}),
 ])
 def test_stale_storyboard_revision_rejects_without_losing_current_edits(
         client, monkeypatch, route, options):
@@ -318,6 +321,7 @@ def test_stale_storyboard_revision_rejects_without_losing_current_edits(
 @pytest.mark.parametrize("module,route,options", [
     (visuals, "/api/visuals/scenes/scene-001/regenerate", {"instructions": "Updated"}),
     (pipeline, "/api/run", {"steps": ["video"], "visual_mode": "motion", "preview_only": True}),
+    (pipeline, "/api/run", {"steps": ["visuals", "video"], "visual_mode": "motion", "preview_only": True, "use_project_photos": False}),
 ])
 def test_revision_guard_checks_current_storyboard_after_acquiring_job_lock(
         client, monkeypatch, module, route, options):
@@ -445,14 +449,49 @@ def test_photo_replacement_passes_isolated_saved_images_and_project_output(clien
     assert state["image_map"] == saved_images
 
 
-def test_storyboard_guard_cannot_be_used_to_replan_during_draft_render(client, monkeypatch):
+def test_storyboard_guard_cannot_be_used_to_generate_new_content(client, monkeypatch):
     _editable_plan(monkeypatch)
     revision = client.get("/api/visuals").json["plan_revision"]
     _forbid_review_mutations(monkeypatch)
     before, files = deepcopy(state), _review_files()
     response = client.post("/api/run", json={
-        "steps": ["visuals", "video"], "visual_mode": "motion", "preview_only": True,
+        "steps": ["research", "script", "narration", "visuals", "video"], "visual_mode": "motion", "preview_only": True,
         "expected_plan_revision": revision,
     })
     assert response.status_code == 400
     assert state == before and _review_files() == files
+
+
+@pytest.mark.parametrize("use_project_photos", [False, True])
+def test_guarded_visual_rebuild_accepts_existing_photo_storyboard(client, monkeypatch, use_project_photos):
+    from PIL import Image
+    _editable_plan(monkeypatch)
+    picture = Path(config.OUTPUT_DIR) / "saved-photo.png"
+    Image.new("RGB", (64, 36), "#266ca0").save(picture)
+    state["visual_plan"]["use_project_photos"] = True
+    state["visual_plan"]["scenes"][0]["image"] = {"path": str(picture), "source": "local"}
+    original = deepcopy(state["visual_plan"])
+    files = _review_files()
+    revision = client.get("/api/visuals").json["plan_revision"]
+    assert revision
+    received = []
+    def worker(*args, **kwargs):
+        received.append((args, kwargs))
+        state["running"] = False
+    class InlineThread:
+        def __init__(self, target, args, kwargs, **options):
+            self.target, self.args, self.kwargs = target, args, kwargs
+        def start(self):
+            self.target(*self.args, **self.kwargs)
+    monkeypatch.setattr(pipeline, "run_pipeline_thread", worker)
+    monkeypatch.setattr(pipeline.threading, "Thread", InlineThread)
+    response = client.post("/api/run", json={
+        "steps": ["visuals", "video"], "visual_mode": "motion", "preview_only": True,
+        "use_project_photos": use_project_photos, "expected_plan_revision": revision,
+    })
+    assert response.status_code == 200 and response.json["ok"]
+    assert len(received) == 1
+    assert received[0][0][:3] == (["visuals", "video"], "", "normal")
+    assert received[0][1]["use_project_photos"] is use_project_photos
+    assert received[0][1]["visual_mode"] == "motion" and received[0][1]["preview_only"]
+    assert state["visual_plan"] == original and _review_files() == files

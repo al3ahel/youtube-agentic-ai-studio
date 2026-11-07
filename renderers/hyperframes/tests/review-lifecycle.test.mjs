@@ -72,8 +72,11 @@ if mode == "live":
     prepare_motion_project(plan, str(audio), str(output))
     # This committed sample was rendered from the same 14s/12fps fixture.
     shutil.copyfile(Path.cwd() / "docs/samples/motion-landscape.mp4", output / "motion_preview.mp4")
+    from PIL import Image
+    Image.new("RGB", (320, 180), "#355849").save(output / "thumbnail.jpg")
     state.update(script=script, research=research, description=script["description"],
                  visual_plan=plan, timeline=timeline, audio_path=str(audio), render_audio_path=str(audio),
+                 thumb_path=str(output / "thumbnail.jpg"),
                  preview_path=str(output / "motion_preview.mp4"), preview_only=True, visual_mode="hybrid",
                  profile_id="default", profile_name="My AI Channel")
     state["stages"].update({stage: "done" for stage in state["stages"]})
@@ -124,7 +127,9 @@ def storyboard_only():
 
 jobs = []
 def next_job(steps, topic, video_type, *args, **kwargs):
-    jobs.append({"topic": topic, "steps": steps, "profile_id": kwargs.get("profile_id")})
+    jobs.append({"topic": topic, "steps": steps, "profile_id": kwargs.get("profile_id"),
+                 "visual_mode": kwargs.get("visual_mode"), "preview_only": kwargs.get("preview_only"),
+                 "use_project_photos": kwargs.get("use_project_photos")})
     state.update(running=False, error="External generation is disabled in this browser fixture.")
     state["stages"]["preparation"] = "error"
     log_queue.put(("error", state["error"]))
@@ -170,9 +175,10 @@ test("studio: real draft completion, Review retry, restart recovery and starting
   };
   const args = process.env.YAAS_TEST_CHROME_ARGS ? JSON.parse(process.env.YAAS_TEST_CHROME_ARGS) : [];
   browser = await puppeteer.launch({executablePath: browserPath, headless: true, args, timeout: 20000});
-  const page = await browser.newPage(), errors = [], responses = [];
+  const page = await browser.newPage(), errors = [], responses = [], thumbnailWrites = [];
   page.on("pageerror", error => errors.push(error.message));
   page.on("response", response => { if (new URL(response.url()).pathname === "/api/output") responses.push(response.status()); });
+  page.on("request", request => { if (new URL(request.url()).pathname === "/api/thumbnail" && request.method() === "POST") thumbnailWrites.push(request.postData()); });
   await page.setRequestInterception(true);
   page.on("request", request => request.url().startsWith(origin) ? request.continue() : request.abort());
   await page.setViewport({width: 1440, height: 1000});
@@ -191,6 +197,14 @@ test("studio: real draft completion, Review retry, restart recovery and starting
   assert.equal(await page.$eval("#edit-desc", node => node.value), "Saved description from the real output API.");
   assert.deepEqual(responses, [200], "The real output endpoint must supply Review metadata");
   assert.equal(await page.$eval("#review-empty", node => node.hidden), true);
+  await page.waitForFunction(() => thumb && !thumbBusy);
+  assert.deepEqual(thumbnailWrites, [], "Opening Review must not regenerate thumbnails or take the scene-edit lock");
+  assert.equal((await (await fetch(origin + "/api/status")).json()).visual_editing, false);
+  const thumbnailPreview = page.waitForResponse(response => new URL(response.url()).pathname === "/api/thumbnail" && response.request().method() === "POST");
+  await page.$eval("#thumb-preview-btn", node => node.click());
+  assert.equal((await thumbnailPreview).status(), 200);
+  await page.waitForFunction(() => !thumbBusy);
+  assert.equal(thumbnailWrites.length, 1, "The explicit preview action still generates style choices");
 
   await post("/_fixture/output-failure", {enabled: true});
   await page.click('#tabs a[data-view="home"]');
@@ -202,6 +216,7 @@ test("studio: real draft completion, Review retry, restart recovery and starting
   await page.click("#review-retry");
   await page.waitForFunction(() => document.querySelector("#review-feedback").hidden && document.querySelector("#player video")?.readyState >= 2);
   assert.deepEqual(responses, [200, 503, 200]);
+  assert.equal(thumbnailWrites.length, 1, "Retrying Review remains read-only");
 
   await page.click('#tabs a[data-view="home"]');
   await server.close();
@@ -260,5 +275,51 @@ test("studio: real draft completion, Review retry, restart recovery and starting
   assert.equal(jobs.length, 1);
   assert.equal(jobs[0].topic, "A new video from Home");
   assert.ok(jobs[0].steps.includes("research") && jobs[0].steps.includes("script") && jobs[0].steps.includes("video"));
+  assert.deepEqual(errors, []);
+});
+
+test("studio: existing photo storyboard rebuild buttons pass the real guarded run route", {skip: skipped, timeout: 30000}, async t => {
+  const directory = await mkdtemp(path.join(tmpdir(), "yaas-review-rebuild-"));
+  let server, browser;
+  t.after(async () => { if (browser) await browser.close(); if (server) await server.close(); await rm(directory, {recursive: true, force: true}); });
+  server = await startServer(directory, "live");
+  const origin = server.origin;
+  const completed = await fetch(origin + "/_fixture/complete", {method: "POST", headers: {"Content-Type": "application/json"}, body: "{}"});
+  assert.equal(completed.status, 200);
+  const original = await (await fetch(origin + "/api/visuals")).json();
+  assert.ok(original.plan.scenes.some(scene => scene.image), "The real saved storyboard must already contain a photo");
+  assert.match(original.plan_revision, /^[a-f0-9]{64}$/);
+  const retained = await Promise.all(["script.json", "narration.wav", "scene_plan.json"].map(name => readFile(path.join(directory, "output", name))));
+  browser = await puppeteer.launch({executablePath: browserPath, headless: true,
+    args: process.env.YAAS_TEST_CHROME_ARGS ? JSON.parse(process.env.YAAS_TEST_CHROME_ARGS) : [], timeout: 20000});
+  const page = await browser.newPage(), errors = [];
+  page.on("pageerror", error => errors.push(error.message));
+  await page.setViewport({width: 1440, height: 1000});
+  await page.setRequestInterception(true);
+  page.on("request", request => request.url().startsWith(origin) ? request.continue() : request.abort());
+  await page.goto(origin + "/#review", {waitUntil: "domcontentloaded"});
+  await page.waitForFunction(() => document.querySelector("#view-review").classList.contains("active") && !document.querySelector("#legacy-motion-card").hidden && document.querySelector("#review-feedback").hidden);
+  for (const [button, photos] of [["#rebuild-motion-graphics", false], ["#animate-legacy", true]]) {
+    const started = page.waitForResponse(response => new URL(response.url()).pathname === "/api/run" && response.request().method() === "POST");
+    await page.waitForSelector(button, {visible: true});
+    await page.click(button);
+    const response = await started;
+    assert.equal(response.status(), 200, await response.text());
+    const request = JSON.parse(response.request().postData());
+    assert.deepEqual(request.steps, ["visuals", "video"]);
+    assert.equal(request.expected_plan_revision, original.plan_revision);
+    assert.equal(request.use_project_photos, photos);
+    assert.equal(request.topic, "");
+    await page.waitForFunction(() => location.hash === "#home" && document.querySelector("#run-error").textContent.includes("External generation is disabled in this browser fixture"));
+    await page.click('#tabs a[data-view="review"]');
+    await page.waitForFunction(() => document.querySelector("#view-review").classList.contains("active") && document.querySelector("#review-feedback").hidden && !document.querySelector("#legacy-motion-card").hidden && !document.querySelector("#animate-legacy").disabled);
+  }
+  const jobs = await (await fetch(origin + "/_fixture/jobs")).json();
+  assert.equal(jobs.length, 2);
+  assert.deepEqual(jobs.map(job => job.use_project_photos), [false, true]);
+  assert.ok(jobs.every(job => job.profile_id === "default" && job.visual_mode === "motion" && job.preview_only && JSON.stringify(job.steps) === '["visuals","video"]'));
+  for (const [index, name] of ["script.json", "narration.wav", "scene_plan.json"].entries()) {
+    assert.deepEqual(await readFile(path.join(directory, "output", name)), retained[index]);
+  }
   assert.deepEqual(errors, []);
 });

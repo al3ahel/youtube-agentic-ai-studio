@@ -143,6 +143,10 @@ preview, particularly when importing older recordings.
 
 ## Voice, music and visual pacing
 
+For the complete stage/dependency map and edit invalidation rules, read
+[Pipeline architecture](PIPELINE_ARCHITECTURE.md). For the bounded creative
+catalogue and bundled Hyperframes skills, read [Agent capabilities](AGENT_CAPABILITIES.md).
+
 The default narration pace is natural (`+0%`) and pitch is unchanged (`+0Hz`).
 The ASMR/calm preset uses slower speech (`-15%`) and calmer script instructions.
 It is a calm spoken-video preset, not a binaural audio or ASMR-trigger generator.
@@ -152,8 +156,26 @@ Use an appropriate original recording for that kind of content.
 editor's unsaved voice, rate and pitch. Saving the profile applies those choices
 to future narration; it does not alter an already recorded project.
 
-Background music and sound effects are **off by default**, each with a starting
-level of `0.08` (8%). **Settings → Audio library** imports downloaded MP3, WAV,
+**Automatic sound design** is the default for new profiles. The sound agent chooses
+one suitable music/ambience bed and sparse contextual accents, using measured
+section boundaries. Commons supplies automatically acquired, declared-license
+recordings without a key; source/licensing metadata stays with the actual mix.
+No manual import is required. Missing appropriate audio is omitted with a clear
+reason, so a successful draft may intentionally remain narration-only.
+
+New Motion plans also carry a coherent visual look (editorial, blueprint, studio,
+botanical or poster), supported composition alternatives and a bounded motion
+rhythm. These fields affect actual frames. A saved plan is stable across rerenders;
+old plans without them retain their original appearance. Selected-scene edits show
+what changed; unsupported instructions do not trigger an unrelated template swap.
+
+Captions can highlight verified word events, show plain phrases, or be off.
+Imported/estimated timings never receive fabricated word highlights. Unchanged
+narration sections reuse verified cached audio, captions and timing; changing
+text, voice settings or the engine version invalidates the corresponding cache.
+
+**Manual** remains optional, with a starting volume of `0.08` (8%). Its library
+imports downloaded MP3, WAV,
 OGG, M4A and FLAC files (up to 20 MiB and two hours) into the selected channel's
 library. Preview a track, select it as music or an effect, enable that layer and
 save Settings. Imports alone do not change a soundtrack or generate a video.
@@ -167,10 +189,10 @@ The original narration controls speech ducking for both layers, followed by peak
 limiting. Motion prepares the soundtrack as lossless WAV before video encoding.
 No generated sound effects or test tones are added to normal videos.
 
-Use **Review → Music & effects → Apply music & effects to current draft** to apply
-saved channel choices to a Motion or Hybrid preview. This reruns Music and Video,
+Use **Review → Music & effects → Regenerate sound design** for Automatic, or
+**Apply music & effects to current draft** for Manual. This reruns Music and Video,
 preserving the script, recorded voice, measured timeline, storyboard and edited
-publishing metadata. For Classic, leave the Home topic empty and select only
+publishing prose (the marked applied-audio credit block is refreshed). For Classic, leave the Home topic empty and select only
 Music and Render. Choose Narration only when you want a new recorded voice.
 Video-only renders and scene edits retain the prepared soundtrack even if profile
 settings have changed. Missing selected audio is reported without substituting a
@@ -179,8 +201,11 @@ different imported track. The recording remains available.
 Pixabay's [public API](https://pixabay.com/api/docs/) documents image and video
 search, not music or sound-effect search. Download audio from its website and
 import it locally. Optional source URL, creator, license note and Content ID
-metadata are kept with the track. `audio_credits.json` records only assets applied
-to the current recording; Review shows those sources, generated descriptions
+metadata are kept with the track. A staged sound pass commits an immutable WAV
+and authoritative v2 `render_audio.json` containing the audio checksum, complete
+credits, sound design and measured finishing report. The original narration is
+never overwritten. Legacy manifests remain readable; compatibility reports such
+as `audio_credits.json` remain available. Review shows the actual applied sources, descriptions
 include them, and archived projects retain both the soundtrack and credits.
 Keep any available download certificate: some Pixabay tracks are registered with
 YouTube Content ID and may receive claims, as explained in its

@@ -104,10 +104,100 @@ async function openFixture(orientation, preview = false, viewport, transformPlan
   return page;
 }
 
+for (const orientation of ["landscape", "portrait"]) {
+  test(`${orientation}: five art directions visibly differ and scene overrides survive reverse seeks`, {skip: skipped}, async () => {
+    const looks = ["editorial", "blueprint", "studio", "botanical", "poster"];
+    const page = await openFixture(orientation, false, undefined, plan => {
+      plan.visual_direction = {version: 1, look: "editorial", rhythm: "measured", rationale: "Fixture"};
+      plan.scenes = looks.map((look, index) => ({
+        id: `look-${look}`, section_id: String(index), template: "explain", look, composition: "split",
+        start: index * 2, duration: 2, title: "A clear idea, a different point of view",
+        items: [{label: "Start with the evidence"}, {label: "Connect the important details"},
+          {label: "Make the result understandable"}, {label: "Leave room for the next question"}],
+        beats: [{time: .1, target: "all", action: "reveal"}],
+      }));
+      plan.duration = 10; plan.captions = []; plan.words = [];
+      return plan;
+    });
+    const snapshots = new Map(), backgrounds = new Set();
+    await mkdir(path.join(fixtureRoot, "screenshots"), {recursive: true});
+    for (const [index, look] of looks.entries()) {
+      await seekForCapture(page, index * 2 + 1.25);
+      assert.equal(await page.$eval("#composition", node => node.dataset.look), look);
+      backgrounds.add(await page.$eval("#composition", node => getComputedStyle(node).backgroundColor));
+      snapshots.set(look, {pixels: await page.screenshot({path: path.join(fixtureRoot, "screenshots", `art-${look}-${orientation}.png`)}), state: await domState(page)});
+      if (index) {
+        const difference = await pixelDifference(page, snapshots.get(looks[index - 1]).pixels, snapshots.get(look).pixels);
+        assert.ok(difference.changed > difference.total * .5 && difference.maxDelta > 40, `${look} must visibly change the frame, not just a label`);
+      }
+    }
+    assert.equal(backgrounds.size, 5);
+    for (const index of [3, 0, 4, 1, 2, 0]) {
+      await seekForCapture(page, index * 2 + 1.25);
+      const look = looks[index];
+      assert.equal(await page.$eval("#composition", node => node.dataset.look), look);
+      assert.deepEqual(await domState(page), snapshots.get(look).state);
+      const difference = await pixelDifference(page, snapshots.get(look).pixels, await page.screenshot());
+      assert.ok(difference.maxDelta <= 8 && difference.changed <= difference.total * .005, JSON.stringify(difference));
+    }
+    assert.equal(await page.evaluate(() => window.__timelines["yaas-motion"].duration()), 10);
+    await page.close();
+  });
+
+  test(`${orientation}: split, stack and focus layouts keep dense text in bounds`, {skip: skipped}, async () => {
+    const page = await openFixture(orientation, false, undefined, plan => {
+      const templates = ["flow", "explain", "text"], compositions = ["split", "stack", "focus"];
+      plan.visual_direction = {version: 1, look: "studio", rhythm: "calm", rationale: "Fixture"};
+      plan.scenes = templates.flatMap(template => compositions.map(composition => ({
+        id: `${template}-${composition}`, section_id: "one", template, composition,
+        start: 0, duration: 2, title: "Ideas need a clear structure, a useful explanation, and enough room to read the supporting evidence",
+        items: Array.from({length: 6}, (_, index) => ({label: `${index + 1}. Keep the supporting evidence readable and connected to the main idea, including the detail that explains why this particular step matters.`})),
+        beats: [{time: .1, target: "all", action: "reveal"}],
+      })));
+      plan.scenes.forEach((scene, index) => { scene.start = index * 2; });
+      plan.duration = 18; plan.captions = []; plan.words = [];
+      return plan;
+    });
+    const bounds = [], geometries = new Map();
+    for (let index = 0; index < 9; index++) {
+      await seekForCapture(page, index * 2 + 1.25);
+      const result = await page.evaluate(index => {
+        const scene = document.getElementById(`scene-${index}`), stage = scene.querySelector(".scene-visual"), stageBox = stage.getBoundingClientRect();
+        const failures = [];
+        for (const node of scene.querySelectorAll(".arranged-card .item-label,.kinetic-title,.keyword")) {
+          const rect = node.getBoundingClientRect();
+          const range = document.createRange(); range.selectNodeContents(node);
+          const textBox = range.getBoundingClientRect();
+          const container = node.closest(".arranged-card") || stage;
+          const box = container.getBoundingClientRect();
+          if (rect.left < box.left - .5 || rect.top < box.top - .5 || rect.right > box.right + .5 || rect.bottom > box.bottom + .5
+              || textBox.left < box.left - .5 || textBox.top < box.top - .5 || textBox.right > box.right + .5 || textBox.bottom > box.bottom + .5) {
+            failures.push({scene: scene.dataset.sceneId, node: node.className, text: node.textContent.slice(0, 25),
+              rect: {x: rect.x, y: rect.y, width: rect.width, height: rect.height}, box: {x: box.x, y: box.y, width: box.width, height: box.height}});
+          }
+        }
+        const captionTop = (window.YAASMotion.duration && document.getElementById("caption-mount").getBoundingClientRect().top);
+        if (stageBox.bottom > captionTop + .5) failures.push({scene: scene.dataset.sceneId, stageBottom: stageBox.bottom, captionTop});
+        return {failures, id: scene.dataset.sceneId, geometry: [...scene.querySelectorAll(".arranged-card,.kinetic-title,.keyword")].map(node => {
+          const rect = node.getBoundingClientRect(); return [rect.x, rect.y, rect.width, rect.height];
+        })};
+      }, index);
+      bounds.push(...result.failures); geometries.set(result.id, result.geometry);
+    }
+    assert.deepEqual(bounds, []);
+    for (const template of ["flow", "explain", "text"]) {
+      assert.notDeepEqual(geometries.get(`${template}-split`), geometries.get(`${template}-stack`));
+      assert.notDeepEqual(geometries.get(`${template}-stack`), geometries.get(`${template}-focus`));
+    }
+    await page.close();
+  });
+}
+
 for (const timing of ["late beats", "short scenes without beats"]) {
   test(`${timing}: visual effects cannot extend past their scene or narration`, {skip: skipped}, async () => {
     const page = await openFixture("landscape", false, undefined, plan => {
       for (const [index, scene] of plan.scenes.entries()) {
+        scene.rhythm = ["calm", "measured", "brisk"][index % 3];
         if (timing === "late beats") {
           scene.beats = scene.beats.map(beat => ({...beat, time: scene.duration - .01}));
           scene.beats.push(...["highlight", "draw", "count"].map(action => ({
@@ -238,6 +328,65 @@ test("picture camera motion follows deterministic seeks without playing narratio
   await seekForCapture(page, 2.2);
   assert.deepEqual(await pictureState(), first);
   await page.close();
+});
+
+for (const orientation of ["landscape", "portrait"]) {
+  test(`${orientation}: only measured caption words highlight, with exact boundaries and deterministic seeks`, {skip: skipped}, async () => {
+    const page = await openFixture(orientation, false, undefined, plan => {
+      plan.caption_style = "highlight"; plan.timing_source = "measured_sections";
+      plan.sections.forEach(section => section.caption_timing = "word");
+      plan.sections[2].caption_timing = "estimated";
+      plan.captions = [
+        {start: .25, end: 1.7, text: "Hello <world>"},
+        {start: 2.25, end: 3.7, text: "مرحبا بالعالم"},
+        {start: 4.25, end: 5.7, text: "Estimated words"},
+        {start: 6.25, end: 7.7, text: "Missing measured word"},
+      ];
+      plan.words = [
+        {word: "Hello", start: .3, end: .6, section_id: plan.sections[0].id},
+        {word: "<world>", start: .8, end: 1.2, section_id: plan.sections[0].id},
+        {word: "مرحبا", start: 2.3, end: 2.6, section_id: plan.sections[1].id},
+        {word: "بالعالم", start: 2.8, end: 3.2, section_id: plan.sections[1].id},
+        {word: "Estimated", start: 4.3, end: 4.6, section_id: plan.sections[2].id},
+        {word: "words", start: 4.8, end: 5.2, section_id: plan.sections[2].id},
+        {word: "Missing", start: 6.3, end: 6.6, section_id: plan.sections[3].id},
+        {word: "word", start: 6.8, end: 7.2, section_id: plan.sections[3].id},
+      ];
+      return plan;
+    });
+    assert.equal(await page.$$eval(".caption-word", nodes => nodes.length), 4);
+    assert.equal(await page.$("#caption-mount world"), null, "Caption text is never parsed as HTML");
+    assert.deepEqual(await page.$$eval(".caption-cue", nodes => nodes.map(node => node.textContent)), ["Hello <world>", "مرحبا بالعالم", "Estimated words", "Missing measured word"]);
+    const active = async time => {
+      await seekForCapture(page, time);
+      return page.$$eval(".caption-word", nodes => nodes.filter(node => getComputedStyle(node).color !== "rgb(255, 255, 255)" && Number(getComputedStyle(node.parentElement).opacity) > .99).map(node => node.textContent));
+    };
+    for (const [time, expected] of [[.29, []], [.3, ["Hello"]], [.6, []], [.8, ["<world>"]], [1.2, []], [2.3, ["مرحبا"]], [3.2, []], [6.4, []], [.8, ["<world>"]], [.3, ["Hello"]]]) {
+      assert.deepEqual(await active(time), expected, `Active words at ${time}s`);
+    }
+    await seekForCapture(page, 2.4);
+    assert.equal(await page.$$eval(".caption-cue", nodes => getComputedStyle(nodes[1]).direction), "rtl");
+    const before = await page.$$eval(".caption-word", nodes => nodes.map(node => node.getAttribute("style")));
+    await seekForCapture(page, 13.5); await seekForCapture(page, .1); await seekForCapture(page, 2.4);
+    assert.deepEqual(await page.$$eval(".caption-word", nodes => nodes.map(node => node.getAttribute("style"))), before);
+    await mkdir(path.join(fixtureRoot, "screenshots"), {recursive: true});
+    await page.screenshot({path: path.join(fixtureRoot, "screenshots", `measured-captions-${orientation}.png`)});
+    await page.close();
+  });
+}
+
+test("caption style keeps plain phrases or hides captions without changing the scene", {skip: skipped}, async () => {
+  for (const style of ["plain", "off"]) {
+    const page = await openFixture("landscape", false, undefined, plan => {
+      plan.caption_style = style;
+      return plan;
+    });
+    await seekForCapture(page, .8);
+    assert.equal(await page.$$eval(".caption-word", nodes => nodes.length), 0);
+    assert.equal(await page.$$eval(".caption-cue", nodes => nodes.length > 0), style === "plain");
+    assert.ok(await page.$$eval("#scene-mount .scene", nodes => nodes.length > 0));
+    await page.close();
+  }
 });
 
 test("preview stays paused, fits a narrow iframe, and exposes seek controls", {skip: skipped}, async () => {

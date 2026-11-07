@@ -61,8 +61,8 @@ def _style_rules(preset):
 - No urgency, loud exclamations, sudden re-hooks, startling language, cliffhangers or aggressive subscription requests.
 - Use short, comfortable sentences and punctuation for natural breathing space. Do not write stage directions
   such as [whisper], [pause] or [rain sound] in narration: text-to-speech would speak them aloud.
-- This pipeline records ordinary speech. Do not claim to generate binaural, tactile or environmental ASMR sounds.
-  Actual ambient/ASMR recordings must come from the creator's supplied audio; do not promise audio that isn't present.
+- This pipeline records ordinary speech. Do not claim to generate binaural or tactile ASMR.
+  An audio director may add a suitable licensed ambience recording later; do not promise a sound that has not been selected.
 - Avoid medical claims or guarantees about sleep, anxiety or treatment. Keep the pace steady through the ending."""
     return """CHANNEL STYLE:
 - Follow the selected channel's description, subject area and audience; do not force a science-channel persona.

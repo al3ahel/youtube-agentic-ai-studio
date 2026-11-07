@@ -1,20 +1,19 @@
 <div align="center">
 
-<img src="docs/screenshots/banner.png" alt="YAAS: 100% free, $0 per video. Seven agents: Research, Fact-check, Script, Visuals, Voice, Render, Publish" width="100%">
-
 # YAAS: Youtube Agentic Ai Studio
 
 **Type an idea. Make a video you can review, edit and publish.**
 
-YAAS researches a topic, checks the facts, writes the script, records a voiceover, finds visuals, renders the video, and helps you title, tag and publish it, all from one simple local app.
+YAAS gathers sources, writes the script, records narration, directs visuals and sound, renders the video, and helps you review and publish it from one local app.
 
 [![Python](https://img.shields.io/badge/Python-3.10%E2%80%933.12-3776AB?style=flat-square&logo=python&logoColor=white)](https://python.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
-[![Cost](https://img.shields.io/badge/Cost-$0%20per%20video-brightgreen?style=flat-square)](SETUP.md)
-[![Free APIs](https://img.shields.io/badge/Free%20APIs-19-ff70f3?style=flat-square)](#-the-free-api-stack)
+[![Local and free tiers](https://img.shields.io/badge/AI-Local%20%2B%20free%20tiers-brightgreen?style=flat-square)](SETUP.md)
 [![Stars](https://img.shields.io/github/stars/raunakpatil/youtube-agentic-ai-studio?style=flat-square)](https://github.com/raunakpatil/youtube-agentic-ai-studio/stargazers)
 
 [**Quick start**](#-quick-start) · [**Channels & schedules**](docs/CHANNELS_AND_SCHEDULES.md) · [**Motion workflow**](docs/MOTION_STUDIO.md) · [**Setup guide**](SETUP.md) · [**FAQ**](#-faq)
+
+[**Pipeline map**](docs/PIPELINE_ARCHITECTURE.md) · [**Purffle comparison**](docs/REPOSITORY_COMPARISON.md) · [**Agent capabilities and skills**](docs/AGENT_CAPABILITIES.md)
 
 </div>
 
@@ -152,15 +151,21 @@ final MP4s; publishing still requires review and a separate action. Keep the app
 running, or run `python gui.py --scheduler-only` with the same project environment.
 Storing the source on GitHub does not run jobs by itself.
 
-An OpenRouter key is optional for visual planning. Without one, local animated
-templates still work with an existing script and narration. The free router is
+Visual planning can use the configured local/free text model, including Gemini
+without an OpenRouter key. Without available inference, local art direction and
+animated templates still work with an existing script and narration. The free router is
 `openrouter/free`; explicit model choices are checked against the live catalogue.
 Only free text output models are used for planning and optional frame review.
 This does not provide a free generative video model or remove provider quotas.
 
 Use **Python 3.10, 3.11 or 3.12**. Python 3.13+ isn't supported yet (the pinned `numpy<2` has no prebuilt wheels for it).
 
-No keys are required to try it. A free [Gemini key](https://aistudio.google.com/apikey) (1 minute to get) makes the scripts much better. Paste it in **Settings** and it's stored locally in `.env`. Uploading straight to YouTube needs a one-time Google setup, covered in the [Setup guide](SETUP.md). You can always download the MP4 and upload it yourself instead.
+For new scripts, choose an installed local Ollama model or configure a free-tier
+[Gemini](https://aistudio.google.com/apikey), Groq or OpenRouter account. Settings
+can discover installed local models without downloading one. **Local only** never
+falls through to hosted inference. Provider keys stay in local `.env`; hosted
+quotas and account tiers still apply. YouTube upload is optional; download the
+MP4 or follow the [Setup guide](SETUP.md) to connect a channel.
 
 ---
 
@@ -234,23 +239,37 @@ editable starting points. News uses retrieved background sources and trend ideas
 it does not independently verify live breaking news. The calm preset adjusts the
 script and voice; it does not synthesize binaural recordings or authentic ASMR triggers.
 
-Music and sound effects start **off**. The default pitch is unchanged. Both audio
-layers start at **8%**, with speech ducking, fades and peak limiting. Motion
-soundtracks are prepared as lossless WAV files before final video encoding.
-Preview the voice and imported audio, then listen to a draft before making a long
-final video.
+**Automatic sound design** is the default for new profiles. The agent chooses
+music, relevant ambience and sparse effects itself, using the script and measured
+narration. It can search Wikimedia Commons without a key and keeps complete
+source/license information. You do not need to import or choose every track.
+News omits transient effects; ASMR uses calmer choices. Unavailable or unsuitable
+recordings are omitted with a visible explanation, not replaced by synthetic tones.
+
+**Review → Music & effects → Regenerate sound design** rebuilds the soundtrack
+and draft while keeping the original voice, storyboard and publishing prose.
+Review shows actual layers, cue times and measured loudness/peak results.
+Normal/news finishing targets −16 LUFS; ASMR targets −20 LUFS with a smaller
+gain bound. Peak headroom can prevent a target from being reached, and the report
+says so. Audio is lossless PCM before MP4 encoding. A cancelled rebuild keeps
+the previous committed soundtrack and credits.
+
+**Manual** remains available for an exact saved track or local folder. Existing
+enabled imported selections stay Manual on upgrade; select Automatic explicitly
+to hand those decisions to the agent. **Off** removes added sound layers. A legacy
+music switch with an empty folder cannot create music by itself.
 
 **Pixabay music and sound effects:** YAAS uses Pixabay's API for pictures.
 Pixabay's [public API documentation](https://pixabay.com/api/docs/) provides image
 and video endpoints, but no documented music or sound-effect endpoint. To use its
-audio, download a track from Pixabay and import the file into YAAS:
+audio as an optional Manual source, download a track and import the file into YAAS:
 
 1. Select the channel in the sidebar, then open **Settings → Audio library**.
 2. Choose **Music** or **Sound effect**, select the downloaded file, and click
    **Import audio**. MP3, WAV, OGG, M4A and FLAC are supported, up to 20 MiB and two
    hours per file. The optional source URL, creator, license note and Content ID
    status stay with the imported track.
-3. Preview the track, choose it under **Music track** or **Effect track**, enable
+3. Select **Manual** sound design, preview the track, choose it under **Music track** or **Effect track**, enable
    that layer and save Settings. **Transitions** plays an effect briefly between
    script sections; **Ambience** loops it beneath the narration for calm or ASMR
    projects. Each channel keeps its own library and selections.
@@ -263,7 +282,8 @@ audio, download a track from Pixabay and import the file into YAAS:
 The existing per-channel music-folder option still works. Selecting an imported
 music track uses that exact track. Audio sources actually applied to the project
 appear in Review and are retained with archived videos; generated descriptions
-include their source details. Applying audio preserves an edited description.
+include their source details. Applying audio preserves an edited description's
+prose and refreshes only its marked audio-credit block; required credits are never silently truncated.
 Pixabay notes that some tracks are registered with YouTube Content ID and can
 receive claims; keep the download's source details and any available certificate.
 See [Pixabay's FAQ](https://pixabay.com/service/faq/) for its current guidance.
@@ -281,11 +301,11 @@ See [the schedule lifecycle and hosting instructions](docs/CHANNELS_AND_SCHEDULE
 | | |
 |---|---|
 | 🧠 **Trend-aware topics** | Live ideas from Google Trends, Wikipedia, Hacker News, Spaceflight News and arXiv. Click one, or let the AI ride a trend that fits your niche. |
-| 📚 **Fact-checked scripts** | Before writing, YAAS pulls background from Wikipedia and arXiv, tells the AI not to contradict it, and lists the sources in your description. |
-| ✍️ **Never-stuck AI** | Gemini model chain → Groq → OpenRouter → Pollinations (keyless), so a quota error doesn't kill the run. Broken JSON from models is repaired automatically. |
-| 🖼️ **Visuals without a key** | Pexels → Pixabay → NASA (public domain, space topics) → Openverse (CC, credited) → AI-generated images. Credits are written into the description for you. |
+| 📚 **Source-grounded writing** | Retrieved Wikipedia/arXiv background and retained source links. Editorial checks cover writing quality; they do not verify facts or predict views. News receives suggestions without automatic factual rewrites. |
+| ✍️ **Local/free inference** | Installed local Ollama, or configured free-tier Gemini/Groq/OpenRouter. Local-only never falls back to cloud. Missing quota produces an honest error or supported local fallback. |
+| 🖼️ **Stock and local graphics** | Pexels/Pixabay when configured, NASA space imagery and credited Openverse pictures. Graphics-only Motion does not fetch or reuse pictures. |
 | 🎙️ **Voice audition** | Preview an Edge neural voice with your unsaved speed and pitch before recording. Fresh narration stores measured section timing and available word events; legacy recordings can reuse captions or clearly labelled timing estimates. |
-| 🎞️ **Motion / Hybrid / Classic** | Motion creates animated graphics; Hybrid adds pipeline photos and optional stock footage; Classic makes photo videos. Explicitly reuse an old recording and its pictures with **Animate these photos**. All support 16:9 or 9:16. |
+| 🎞️ **Motion / Hybrid / Classic** | Motion creates explanatory graphics with five art directions and varied supported compositions; Hybrid adds current project photos/footage; Classic retains the original photo renderer. Explicit old-photo reuse remains available. All support 16:9 or 9:16. |
 | 🎛️ **Editable storyboard** | Scrub the local HTML preview, regenerate one scene and render a draft or final MP4 from the same plan. Full projects, narration, timing, media and credits are archived for reopening. |
 | 👁️ **Optional visual review** | An explicitly enabled free vision model checks a few rendered frames for visible layout problems. Review is advisory and does not certify factual accuracy. |
 | 🏷️ **Your brand** | Your channel name appears in the intro, on Shorts and on thumbnails. Change the text or switch it off in Settings. |
@@ -293,34 +313,39 @@ See [the schedule lifecycle and hosting instructions](docs/CHANNELS_AND_SCHEDULE
 | ✦ **Title Lab** | 6 alternative titles written from what people actually search, each scored. |
 | 🔎 **Findability score** | 11 checks based on YouTube best practice (length, keyword placement, chapters, tags, hashtags, call to action), each with a tip. |
 | 🔤 **Keyword ideas** | Real YouTube autocomplete suggestions + related terms, one click to add as tags. |
-| 🖌️ **Thumbnail designer** | 4 styles (Impact, Cinematic, Split, Studio) with live previews, short punchy text with a highlighted word, AI text ideas, and any photo from the video or brand-new AI artwork as the background. 1280×720 for long videos, 1080×1920 for Shorts, always under YouTube's 2 MB limit. |
+| 🖌️ **Thumbnail designer** | 4 local styles (Impact, Cinematic, Split, Studio), explicit style previews, AI text ideas and saved project-photo backgrounds. Opening Review does not regenerate thumbnails. |
 | ⏱️ **Scheduled generation** | Per-channel cron and IANA time zone, at least 15 minutes between a schedule's automatic occurrences, persistent queue, draft archives and manual Run now. Keep YAAS running; generated videos wait for review. |
 | 📅 **Publish after review** | Upload a final video now or choose its YouTube publication time. This remains separate from recurring generation. Downloads for MP4, thumbnail and captions (SRT). |
 | 📊 **Your stats** | Production history, plus live subscribers and views per upload with a free YouTube Data API key. |
 | 🗂️ **My videos** | Every render archived with its script, sources, photos and metadata. |
 | ©️ **Credits** | Every video carries a semi-transparent **raunakpatil.com** watermark, and descriptions end with *Made with YAAS by Raunak Patil · raunakpatil.com*. |
-| 🎵 **Music and sound effects** | Off by default. Import and preview audio separately for each channel, choose exact music/effect tracks, and apply them to an existing draft. Music and ambience loop; transition effects play between sections. Both duck beneath speech and use fades and peak limiting. The local music-folder option remains available. |
+| 🎵 **Automatic sound direction** | The agent chooses suitable licensed music/ambience and sparse effects, with measured cue timing, speech ducking, fades and finishing. Manual choices remain optional. Review reports the audio actually applied and why a layer was omitted. |
+| 🔤 **Measured word captions** | Highlight available verified speech word events, use phrase captions for imported/estimated timing, or choose Plain/Off. |
+| ♻️ **Narration reuse** | Unchanged sections reuse validated audio/caption/timing bundles; changed text or voice settings produces a new recording. |
 
 ---
 
 ## 🔌 The free API stack
 
-Everything below is free. **Keyless** ones work out of the box; the others need a free sign-up and are optional.
+Local models and the listed services support a route without paid inference.
+Hosted free tiers have quotas and depend on the selected account; an API key does
+not itself prove that an account has billing disabled. Keyless services can also
+be unavailable or limited. The app does not silently substitute a paid model.
 
 | Service | Used for | Key |
 |---|---|---|
 | Google Gemini | Research, scripts, titles | free key, recommended |
 | Groq | Fast backup AI | free key, optional |
 | OpenRouter | Free text planning, backup AI and optional vision review | free key, optional; quotas apply |
-| Pollinations (text) | Last-resort backup AI | keyless |
+| Local Ollama | Writing, sound and text visual direction | installed local model; no cloud fallback in Local-only |
 | Edge TTS | Neural voiceover | keyless |
 | Pexels | Stock photos and real video clips in Hybrid mode | free key, optional |
 | Pixabay | Stock photos | free key, optional |
 | NASA Image Library | Public-domain space imagery | keyless |
 | Openverse | Creative Commons images (credited) | keyless |
-| Pollinations (image) | AI B-roll & thumbnail art | keyless |
-| Wikipedia | Fact-checking + trending ideas | keyless |
-| arXiv | Fact-checking + new research ideas | keyless |
+| Wikimedia Commons | Automatic licensed music and sound recordings | keyless; suitable licensed match required |
+| Wikipedia | Background sources + trending ideas | keyless |
+| arXiv | Research background + topic ideas | keyless |
 | Google Trends RSS | Search spikes | keyless |
 | Hacker News (Algolia) | Tech trends | keyless |
 | Spaceflight News API | Space & science news | keyless |
@@ -331,7 +356,7 @@ Everything below is free. **Keyless** ones work out of the box; the others need 
 
 Home → **Connected services → Test connections** pings every service and shows what's working.
 
-> Free, keyless services can rate-limit or change without notice. YAAS retries, then falls through to the next source, and the run only fails if every option for a step is down.
+> The retired unauthenticated Pollinations text/image routes are no longer advertised or called for generation. A provider failure is reported; rendering a saved plan needs no fresh inference.
 
 ---
 
@@ -370,8 +395,10 @@ if you move the studio to another machine. [Storage and migration details](docs/
 │   ├── trends.py           ← Google Trends, Wikipedia, HN, Spaceflight News, arXiv
 │   ├── knowledge.py        ← Wikipedia + arXiv fact grounding
 │   ├── seo.py              ← YouTube autocomplete, Datamuse, findability score
-│   ├── images.py           ← Pixabay, NASA, Openverse, Pollinations
-│   ├── llm.py              ← Groq → OpenRouter → Pollinations fallback
+│   ├── images.py           ← Pixabay, NASA, Openverse
+│   ├── llm.py              ← configured free hosted fallback
+│   ├── local_llm.py        ← installed local Ollama models only
+│   ├── audio_sources.py    ← licensed Commons audio acquisition
 │   └── youtube_stats.py    ← public channel stats
 │
 ├── agents/
@@ -436,19 +463,23 @@ and real HyperFrames MP4 smoke renders in both orientations.
 <details>
 <summary><b>Does this cost anything?</b></summary>
 
-No. Every service has a free tier or needs no account, and rendering runs on your own machine.
+No subscription is required by YAAS. Use an installed local Ollama model or a
+hosted account that still has free-tier access and quota. Local rendering and
+inference use your own hardware; a provider API key by itself does not guarantee
+that the provider will not bill your account. OpenRouter selection is restricted
+to its free router or verified free models.
 </details>
 
 <details>
 <summary><b>Do I need any API keys?</b></summary>
 
-Not to try it. Without keys, scripts come from the keyless backup AI and visuals from NASA / Openverse / AI images. A free Gemini key is strongly recommended for script quality and reliability.
+New writing needs an installed local Ollama model or an available free-tier hosted key. Local graphics and saved-project rendering need neither. NASA/Openverse and Commons sources are keyless, but network availability and suitable results are not guaranteed.
 </details>
 
 <details>
 <summary><b>How long does one video take?</b></summary>
 
-Research and script take under a minute. A Short renders in a few minutes; a 6–8 minute video in roughly 3–10 minutes depending on your CPU and the *Render quality* setting.
+Time depends on model latency, narration length, hardware and render settings. Preview a short draft on your machine before scheduling long videos; no fixed speed is guaranteed.
 </details>
 
 <details>

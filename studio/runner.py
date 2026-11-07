@@ -4,7 +4,9 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
+import uuid
 from contextlib import nullcontext
 from copy import deepcopy
 
@@ -46,11 +48,28 @@ def _save_image_map(output, image_map):
             if path.is_file() and root in path.parents:
                 saved[str(section)].append(path.relative_to(root).as_posix())
     _save_json(output / "image_map.json", saved)
+    script = state.get("script") or _load_json(output / "script.json")
+    if isinstance(script, dict) and isinstance(script.get("sections"), list):
+        from studio.visual_assets import save_binding
+        save_binding(output, saved, script, state.get("profile_id") or "default")
 
 
-def _load_image_map(output):
+def _load_image_map(output, *, allow_legacy=True):
     root = output.resolve()
     saved = _load_json(output / "image_map.json") or {}
+    binding_exists = (output / "image_binding.json").exists() or (output / "image_binding.json").is_symlink()
+    if not binding_exists and not allow_legacy:
+        if saved:
+            state["image_reuse_note"] = "Legacy pictures need an explicit Animate these photos action, or regenerate Images for the current project."
+        return {}
+    if binding_exists:
+        from studio.visual_assets import validate_binding
+        script = state.get("script") or _load_json(output / "script.json")
+        from studio.project_identity import cached_profile_owner
+        owner = state.get("profile_id") or cached_profile_owner(output) or "default"
+        if validate_binding(output, saved, script, owner) is not True:
+            state["image_reuse_note"] = "Saved photos no longer match this script, channel or file contents. They were omitted; regenerate Images to fetch current visuals."
+            return {}
     result = {}
     for section, paths in saved.items():
         if not isinstance(paths, list):
@@ -74,16 +93,16 @@ def _invalidate(output, *, script=False, audio=False, visuals=False):
     if script:
         state.update(script=None, image_map={}, image_reuse_note=None, thumb_path=None, thumb_bg=None,
                      thumb_text=None, thumb_bg_index=0)
-        names += ["script.json", "image_map.json", "credits.json", "video_credits.json", "audio_credits.json"]
+        names += ["script.json", "image_map.json", "image_binding.json", "credits.json", "video_credits.json", "audio_credits.json", "sound_design.json", "audio_master.json"]
     if audio:
         state.update(audio_path=None, render_audio_path=None)
         names += ["narration.wav", "narration.mp3", "narration_mixed.mp3", "narration_mixed.wav",
                   "narration_effects.wav", "narration.srt", "narration.timings.json", "render_audio.json",
-                  "audio_credits.json"]
+                  "audio_credits.json", "sound_design.json", "audio_master.json", "narration_ambience.wav", "narration_mastered.wav"]
         # These assets belong to the old script, even when a user unchecks the
         # Images step on the next run. Never reuse them as the new script's B-roll.
         state.update(image_map={}, thumb_path=None, thumb_bg=None, thumb_text=None, thumb_bg_index=0)
-        names += ["image_map.json", "credits.json", "video_credits.json"]
+        names += ["image_map.json", "image_binding.json", "credits.json", "video_credits.json"]
         images = Path(config.IMAGES_DIR).resolve()
         root = output.resolve()
         if images != root and root in images.parents and images.is_dir() and not Path(config.IMAGES_DIR).is_symlink():
@@ -133,7 +152,7 @@ def _selected_audio(profile_id, asset_id, kind):
         return None
 
 
-def _mix_project_audio(narration_path, timeline, output, profile_id):
+def _mix_manual_audio(narration_path, timeline, output, profile_id):
     """Apply current channel choices to clean narration, retaining applied credits."""
     final_audio = str(narration_path)
     credits = []
@@ -181,10 +200,161 @@ def _mix_project_audio(narration_path, timeline, output, profile_id):
     return final_audio
 
 
+def _prepare_project_audio(narration_path, timeline, output, profile_id):
+    """Choose and finish sound automatically, with manual/off as explicit modes."""
+    from agents.audio_director import direct_audio, public_asset, summarize_applied
+    mode = getattr(config, "SOUND_MODE", "auto")
+    credits = []
+    design = {"version": 1, "mode": mode, "intensity": config.SOUND_INTENSITY,
+              "profile_id": profile_id, "audio_sha256": timeline["audio_sha256"],
+              "music": None, "ambience": None, "events": [], "warnings": []}
+    final_audio = str(narration_path)
+    if mode == "auto":
+        log("Sound director is choosing music, ambience and purposeful effects…")
+        design, resolved = direct_audio(state.get("script") or {}, timeline, profile_id, stop_event=stop_event)
+        if resolved["music"]:
+            from video.music import mix_music_with_narration
+            asset, layer = resolved["music"], design["music"]
+            final_audio = mix_music_with_narration(narration_path, str(output / "narration_mixed.wav"),
+                music_volume=layer["volume"], track_path=asset["path"], stop_event=stop_event)
+            if Path(final_audio).resolve() != Path(narration_path).resolve():
+                credits.append({**public_asset(asset), "volume": layer["volume"], "mode": "bed"})
+            else:
+                design["music"] = None
+                design["warnings"].append("The selected music could not be mixed; narration was retained.")
+        if resolved["ambience"]:
+            from video.sound_effects import mix_sound_effects
+            asset, layer = resolved["ambience"], design["ambience"]
+            previous = final_audio
+            final_audio = mix_sound_effects(narration_path, str(output / "narration_ambience.wav"), asset["path"],
+                soundtrack_path=previous, mode="ambience", effect_volume=layer["volume"], stop_event=stop_event)
+            if Path(final_audio).resolve() != Path(previous).resolve():
+                credits.append({**public_asset(asset), "volume": layer["volume"], "mode": "ambience"})
+            else:
+                design["ambience"] = None
+                design["warnings"].append("The selected ambience could not be mixed; the prepared recording was retained.")
+        if resolved["events"]:
+            from video.sound_effects import mix_sound_events
+            previous = final_audio
+            final_audio = mix_sound_events(narration_path, str(output / "narration_effects.wav"),
+                [{key: value for key, value in event.items() if key != "asset"} for event in resolved["events"]],
+                soundtrack_path=previous, stop_event=stop_event)
+            if Path(final_audio).resolve() != Path(previous).resolve():
+                seen = set()
+                for event in resolved["events"]:
+                    asset = event["asset"]
+                    if asset["id"] not in seen:
+                        credits.append({**public_asset(asset), "volume": event["volume"], "mode": "transitions"})
+                        seen.add(asset["id"])
+            else:
+                design["events"] = []
+                design["warnings"].append("The selected effects could not be mixed; the prepared recording was retained.")
+        summarize_applied(design)
+        log(design["summary"])
+        for warning in design["warnings"]:
+            log(warning, "warn")
+    elif mode == "manual":
+        final_audio = _mix_manual_audio(narration_path, timeline, output, profile_id)
+        credits = (_load_json(output / "audio_credits.json") or {}).get("assets", [])
+        design.update(planner={"status": "manual", "provider": "saved channel choices"},
+                      summary=("Applied the channel's manual soundtrack choices." if Path(final_audio).resolve() != Path(narration_path).resolve()
+                               else "No added music or effects were applied; this soundtrack contains narration only."))
+        if Path(final_audio).resolve() == Path(narration_path).resolve() and (config.MUSIC_ENABLED or config.SFX_ENABLED):
+            design["warnings"].append("Music or effects were enabled, but no usable recording was mixed. Choose Automatic sound design to let the agent search, or select a valid recording in Manual mode.")
+    elif mode == "off":
+        design.update(planner={"status": "off", "provider": "none"},
+                      summary="Added music and effects are off; narration is preserved.")
+    else:
+        raise ValueError("Choose automatic, manual or off for sound design.")
+    report = {"version": 1, "status": "disabled"}
+    if getattr(config, "AUDIO_MASTERING", True):
+        from video.audio_master import master_soundtrack
+        final_audio, report = master_soundtrack(narration_path, final_audio, str(output / "narration_mastered.wav"),
+            preset=getattr(config, "CHANNEL_PRESET", "general"), stop_event=stop_event)
+        log("Audio finishing: " + report["status"] + ".")
+        for warning in report.get("warnings", []):
+            log(warning, "warn")
+    relative = Path(final_audio).resolve().relative_to(output.resolve()).as_posix()
+    design["path"] = relative
+    report.update(path=relative, audio_sha256=timeline["audio_sha256"])
+    _save_json(output / "sound_design.json", design)
+    _save_json(output / "audio_master.json", report)
+    if credits:
+        _save_json(output / "audio_credits.json", {"version": 1, "audio_sha256": timeline["audio_sha256"],
+            "path": relative, "assets": credits})
+    else:
+        (output / "audio_credits.json").unlink(missing_ok=True)
+    return final_audio
+
+
+def _mix_project_audio(narration_path, timeline, output, profile_id):
+    """Commit a complete immutable soundtrack and its metadata in one manifest.
+
+    A failed or cancelled mix cannot replace the previous soundtrack under its
+    old URL/credits. Compatibility reports are copies; v2 readers use the
+    single atomic render_audio.json record as their source of truth.
+    """
+    from video.timeline import audio_signature
+    output = Path(output).resolve()
+    voice = Path(narration_path).resolve()
+    committed = False
+    target = None
+    with tempfile.TemporaryDirectory(prefix=".soundwork-", dir=output) as directory:
+        work = Path(directory)
+        staged_voice = work / ("narration" + voice.suffix.lower())
+        shutil.copyfile(voice, staged_voice)
+        prepared = Path(_prepare_project_audio(str(staged_voice), timeline, work, profile_id)).resolve()
+        if work not in prepared.parents or not prepared.is_file():
+            raise ValueError("Sound design did not produce a local soundtrack.")
+        design = _load_json(work / "sound_design.json") or {}
+        master = _load_json(work / "audio_master.json") or {}
+        credits = (_load_json(work / "audio_credits.json") or {}).get("assets", [])
+        if stop_event.is_set():
+            raise InterruptedError("Stopped before committing sound design")
+        try:
+            if prepared == staged_voice:
+                final = voice
+            else:
+                folder = output / "soundtracks"
+                if folder.is_symlink():
+                    raise ValueError("Soundtracks must stay inside the project.")
+                folder.mkdir(exist_ok=True)
+                target = folder / (uuid.uuid4().hex + prepared.suffix.lower())
+                prepared.replace(target)
+                final = target
+            relative = final.relative_to(output).as_posix()
+            binding = {"path": relative, "audio_sha256": timeline["audio_sha256"]}
+            design.update(binding)
+            master.update(binding)
+            manifest = {"version": 2, **binding, "soundtrack_sha256": audio_signature(final),
+                        "credits": credits, "sound_design": design, "audio_master": master}
+            if stop_event.is_set():
+                raise InterruptedError("Stopped before committing sound design")
+            _save_json(output / "render_audio.json", manifest)
+            committed = True
+            # Human-readable reports and legacy archive readers remain supported.
+            try:
+                _save_json(output / "sound_design.json", design)
+                _save_json(output / "audio_master.json", master)
+                if credits:
+                    _save_json(output / "audio_credits.json", {"version": 1, **binding, "assets": credits})
+                else:
+                    (output / "audio_credits.json").unlink(missing_ok=True)
+            except OSError:
+                log("Sound design was saved; a compatibility report could not be refreshed.", "warn")
+            return str(final)
+        finally:
+            if target is not None and not committed:
+                target.unlink(missing_ok=True)
+
+
 def _review_video(video_path, plan, output):
     """Optional remote frame review; disabled unless explicitly enabled."""
     if not getattr(config, "VISUAL_REVIEW_ENABLED", False):
         return {"status": "disabled", "passed": None, "issues": []}
+    if getattr(config, "LLM_ROUTE", "auto") == "local":
+        return {"status": "unavailable", "reason": "local_only", "passed": None, "issues": [],
+                "message": "Remote frame review is disabled by Local-only AI routing."}
     from apis.openrouter import review_frames
     frames = []
     try:
@@ -261,6 +431,7 @@ def _run_pipeline(steps, topic_override, video_type, focus_angle, use_trends,
         if use_project_photos is not None and not isinstance(use_project_photos, bool):
             raise ValueError("Use project photos must be true or false.")
         photos = mode != "motion" if use_project_photos is None else use_project_photos
+        allow_legacy_photos = mode == "classic" or use_project_photos is True
         images_enabled = mode == "classic" or photos
         preserve_packaging = (not set(steps) & {"research", "script", "narration"}
                               and not ("images" in steps and images_enabled))
@@ -316,6 +487,11 @@ def _run_pipeline(steps, topic_override, video_type, focus_angle, use_trends,
             log(f"Generating {'Shorts' if video_type == 'shorts' else 'normal'} script…")
             script = write_script(state["research"], video_type=video_type)
             check_stop("script")
+            from agents.script_editor import review_script
+            script = review_script(script, state["research"], stop_event=stop_event)
+            check_stop("script review")
+            editorial = script.get("quality_review", {})
+            log(f"Editorial checks: {editorial.get('score', 0)}/100 · {editorial.get('status', 'unavailable')}. These are writing checks, not fact verification.")
             _invalidate(output, audio=True, visuals=True)
             state.update(script=script, image_map={}, thumb_path=None, thumb_bg=None)
             _save_json(output / "script.json", script)
@@ -346,14 +522,26 @@ def _run_pipeline(steps, topic_override, video_type, focus_angle, use_trends,
             state["image_reuse_note"] = None
             _invalidate(output)
             stage("images", "done")
-        elif not state.get("image_map") and not set(steps) & {"research", "script"}:
+        elif not set(steps) & {"research", "script"}:
+            from studio.visual_assets import validate_binding
+            if state.get("image_map"):
+                valid_photos = validate_binding(output, state["image_map"], script,
+                    profile_id or state.get("profile_id") or "default")
+                if valid_photos is False or valid_photos is None and not allow_legacy_photos:
+                    state["image_map"] = {}
+                    state["image_reuse_note"] = "Saved photos lack a matching current project binding and were omitted. Regenerate Images, or explicitly animate the legacy project's photos."
             # Filename matches are safe only when redoing the current project.
-            # A fresh script must not inherit an older project's section photos.
-            from video.stock import section_images
-            saved_images = _load_image_map(output)
-            state["image_map"] = {s["id"]: saved_images.get(str(s["id"]))
-                                  or section_images(config.IMAGES_DIR, s["id"])
-                                  for s in script.get("sections", [])}
+            # Only explicit Classic legacy compatibility may discover loose
+            # filenames. Motion/Hybrid require a current map, never section_01.
+            if not state.get("image_map"):
+                saved_images = _load_image_map(output, allow_legacy=allow_legacy_photos)
+                if mode == "classic" and not any(path.exists() or path.is_symlink()
+                        for path in (output / "image_map.json", output / "image_binding.json")):
+                    from video.stock import section_images
+                    saved_images = {str(s["id"]): section_images(config.IMAGES_DIR, s["id"])
+                                    for s in script.get("sections", [])}
+                state["image_map"] = {s["id"]: saved_images.get(str(s["id"]), [])
+                                      for s in script.get("sections", [])}
         if mode != "classic" and photos and any(state["image_map"].values()):
             log("Reusing the original visual pipeline's pictures in the motion storyboard.")
         check_stop("images")
@@ -370,6 +558,8 @@ def _run_pipeline(steps, topic_override, video_type, focus_angle, use_trends,
             (output / "narration_mixed.wav").unlink(missing_ok=True)
             (output / "narration_effects.wav").unlink(missing_ok=True)
             (output / "audio_credits.json").unlink(missing_ok=True)
+            for name in ("sound_design.json", "audio_master.json", "narration_ambience.wav", "narration_mastered.wav"):
+                (output / name).unlink(missing_ok=True)
             (output / "render_audio.json").unlink(missing_ok=True)
             state["render_audio_path"] = None
             state["audio_path"] = audio_path
@@ -403,16 +593,23 @@ def _run_pipeline(steps, topic_override, video_type, focus_angle, use_trends,
             candidate = (output / str(soundtrack.get("path", ""))).resolve()
             if (soundtrack.get("audio_sha256") == timeline.get("audio_sha256")
                     and candidate.is_file() and output.resolve() in candidate.parents):
-                final_audio = str(candidate)
+                from video.timeline import audio_signature
+                if ((soundtrack.get("version") != 2 and not soundtrack.get("soundtrack_sha256"))
+                        or soundtrack.get("soundtrack_sha256") == audio_signature(candidate)):
+                    final_audio = str(candidate)
+                else:
+                    raise ValueError("The saved soundtrack changed outside this project. Regenerate sound design before rendering.")
         state["render_audio_path"] = final_audio
         if "music" in steps:
             _invalidate(output)
             stage("music", "done")
         if state.get("timeline"):
-            _save_json(output / "render_audio.json", {
-                "path": str(Path(final_audio).resolve().relative_to(output.resolve())),
-                "audio_sha256": state["timeline"]["audio_sha256"],
-            })
+            current = _load_json(output / "render_audio.json") or {}
+            relative = Path(final_audio).resolve().relative_to(output.resolve()).as_posix()
+            if current.get("path") != relative or current.get("audio_sha256") != state["timeline"]["audio_sha256"]:
+                _save_json(output / "render_audio.json", {
+                    "path": relative, "audio_sha256": state["timeline"]["audio_sha256"],
+                })
         check_stop("music")
 
         plan = None
@@ -422,12 +619,23 @@ def _run_pipeline(steps, topic_override, video_type, focus_angle, use_trends,
             from agents.visual_director import plan_scenes, plan_uses_project_photos, validate_plan
             from video.renderers.html import prepare_motion_project
             saved = state.get("visual_plan") or _load_json(output / "scene_plan.json")
+            if ("visuals" not in steps and not allow_legacy_photos and isinstance(saved, dict)
+                    and any(scene.get("image") for scene in saved.get("scenes", []))
+                    and not (output / "image_binding.json").exists()):
+                raise ValueError("This legacy photo storyboard needs an explicit Review render or Animate these photos action. It cannot be adopted by a new Hybrid job.")
+            if ("visuals" not in steps and isinstance(saved, dict)
+                    and any(scene.get("image") for scene in saved.get("scenes", []))
+                    and ((output / "image_binding.json").exists() or (output / "image_binding.json").is_symlink())):
+                from studio.visual_assets import validate_binding
+                if validate_binding(output, _load_json(output / "image_map.json") or {}, script,
+                        profile_id or state.get("profile_id") or "default") is not True:
+                    raise ValueError("The saved storyboard's photos changed or no longer match this project. Rebuild Visuals or choose Rebuild as Motion graphics before rendering.")
             if "visuals" in steps:
                 _invalidate(output)
                 plan = plan_scenes(script, state["timeline"], mode=mode, output_dir=str(output),
                                    use_ai=getattr(config, "VISUAL_AI_ENABLED", True),
                                    image_map=state["image_map"] if photos else None,
-                                   use_project_photos=photos)
+                                   use_project_photos=photos, stop_event=stop_event)
                 plan["script_signature"] = state["timeline"]["script_signature"]
                 plan["timeline_signature"] = state["timeline"]["timeline_signature"]
                 plan["audio_duration"] = state["timeline"]["audio_duration"]
@@ -489,6 +697,8 @@ def _run_pipeline(steps, topic_override, video_type, focus_angle, use_trends,
         if not preserve_packaging or not isinstance(state.get("description"), str):
             state["description"] = build_description(script, state.get("research") or {},
                                                       video_type=video_type, timeline=state.get("timeline"))
+        from studio.description import ensure_audio_credits
+        state["description"] = ensure_audio_credits(state.get("description") or "", state.get("timeline"))
         if "video" in steps and (not preview_only or schedule_id):
             try:
                 if preview_only:

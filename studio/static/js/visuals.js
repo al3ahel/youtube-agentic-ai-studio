@@ -67,7 +67,7 @@ function updateVisualControls(st = status) {
   $("#animate-legacy").disabled = locked;
   $("#rebuild-motion-graphics").disabled = locked;
   $("#apply-review-audio").disabled = locked || !storyboardData?.plan;
-  $("#apply-review-audio").textContent = reviewRender?.steps?.includes("music") ? "Applying music & effects…" : "Apply music & effects to current draft";
+  $("#apply-review-audio").textContent = reviewRender?.steps?.includes("music") ? "Updating sound design…" : reviewSoundAction();
   $("#review-audio-settings").disabled = locked;
   $("#rv-storyboard").setAttribute("aria-busy", String(locked));
   $("#regenerate-scene").textContent = editingScene ? "Updating scene…" : reviewRender ? "Rendering video…" : "Regenerate scene & draft";
@@ -104,7 +104,9 @@ function showScene(id, { preserveEditor = false } = {}) {
     button.classList.toggle("selected", selected);
     button.setAttribute("aria-pressed", String(selected));
   });
-  $("#scene-details").innerHTML = `<span class="tag">${esc(String(scene.template || "motion").replaceAll("_", " "))}</span><h3>${esc(scene.title || "Scene")}</h3><p>${esc(scene.goal || scene.visual_goal || "Explain this part of the narration.")}</p>`;
+  const look = scene.look || storyboardData?.plan?.visual_direction?.look;
+  const styleTags = [scene.template || "motion", look, scene.composition && scene.composition !== "default" ? scene.composition : null].filter(Boolean);
+  $("#scene-details").innerHTML = `${styleTags.map(tag => `<span class="tag">${esc(String(tag).replaceAll("_", " "))}</span>`).join(" ")}<h3>${esc(scene.title || "Scene")}</h3><p>${esc(scene.goal || scene.visual_goal || "Explain this part of the narration.")}</p>`;
   if (!preserveEditor) {
     $("#scene-instructions").value = "";
     $("#replace-scene-image").checked = false;
@@ -181,7 +183,9 @@ $("#regenerate-scene").onclick = async () => {
       plan_revision: updated.plan_revision, preview_revision: updated.preview_revision }, preserveEditor: true });
     $("#scene-instructions").value = "";
     $("#replace-scene-image").checked = false;
-    setSceneEditResult("Scene updated. The replacement draft will open at this scene.");
+    const edit = updated.last_edit || updated.plan?.last_edit;
+    const changes = Array.isArray(edit?.changes) ? edit.changes.filter(change => typeof change === "string" && change.trim()).slice(0, 4).map(change => change.slice(0, 250)) : [];
+    setSceneEditResult(`Scene updated${changes.length ? `: ${changes.join("; ")}` : ""}. The replacement draft will open at this scene.`);
     await renderStoryboard(true, { ...context, planRevision: updated.plan_revision });
   } catch (e) { setSceneEditResult(e.message, true); toast(e.message, "err"); }
   finally { editingScene = false; updateVisualControls(); }
@@ -242,7 +246,7 @@ async function finishReviewRender(st) {
     toast(operation.previewOnly ? "Updated draft ready" : "Final video ready", "ok");
   } catch (failure) {
     error = true;
-    const retryAction = operation.steps.includes("music") ? "Apply music & effects to current draft" : `Render ${operation.previewOnly ? "draft MP4" : "final video"}`;
+    const retryAction = operation.steps.includes("music") ? reviewSoundAction() : `Render ${operation.previewOnly ? "draft MP4" : "final video"}`;
     message = `${operation.previewOnly ? "Draft" : "Final video"} rendering failed: ${failure.message} The storyboard is still available; use ${retryAction} to try again.`;
   } finally {
     if (reviewRender === operation) reviewRender = null;

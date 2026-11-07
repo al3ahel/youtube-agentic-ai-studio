@@ -63,6 +63,46 @@ def test_plan_is_data_and_original_is_unchanged(plan, audio, tmp_path, vendor):
     assert plan == original
 
 
+def test_bounded_art_direction_and_scene_override_survive_preparation(plan, audio, tmp_path, vendor):
+    plan["visual_direction"] = {"version": 1, "look": "editorial", "rhythm": "measured",
+                                "rationale": "Clear source-led explanation <not executable>"}
+    plan["scenes"][0].update(look="blueprint", rhythm="calm", composition="split")
+    original = copy.deepcopy(plan)
+    entry = renderer.prepare_motion_project(plan, str(audio), str(tmp_path))
+    saved = json.loads((entry.parent / "project.json").read_text())
+    assert saved["visual_direction"] == plan["visual_direction"]
+    assert {key: saved["scenes"][0][key] for key in ("look", "rhythm", "composition")} == {
+        "look": "blueprint", "rhythm": "calm", "composition": "split"}
+    assert "<not executable>" not in entry.read_text()
+    assert plan == original
+
+
+@pytest.mark.parametrize("field,value", [("look", "url(https://example.com)"), ("look", []),
+                                        ("rhythm", "random"), ("rhythm", 1),
+                                        ("composition", "<script>"), ("composition", None)])
+def test_scene_art_direction_rejects_unbounded_values(plan, field, value):
+    plan["scenes"][0][field] = value
+    with pytest.raises(ValueError, match=f"Unsupported scene {field}"):
+        renderer._validate_plan(plan)
+
+
+@pytest.mark.parametrize("direction", [None, [], {"version": True},
+    {"version": 1, "look": "legacy", "rhythm": "calm"},
+    {"version": 1, "look": "poster", "rhythm": "random"},
+    {"version": 1, "look": "poster", "rhythm": "calm", "css": "body{display:none}"},
+])
+def test_art_direction_rejects_unbounded_values(plan, direction):
+    plan["visual_direction"] = direction
+    with pytest.raises(ValueError, match="Visual direction|Unsupported visual direction"):
+        renderer._validate_plan(plan)
+
+
+def test_legacy_art_direction_is_not_invented_for_saved_plans(plan):
+    saved = renderer._validate_plan(plan)
+    assert "visual_direction" not in saved
+    assert all(key not in saved["scenes"][0] for key in ("look", "rhythm", "composition"))
+
+
 @pytest.mark.parametrize("value", [None, "a lot", float("nan"), float("inf"), True])
 def test_chart_rejects_unsourced_or_non_numeric_values(plan, value):
     plan["scenes"][0]["template"] = "chart"
@@ -76,6 +116,75 @@ def test_chart_preserves_supplied_zero_and_negative_values(plan):
     plan["scenes"][0]["items"] = [{"label": "A", "value": 0}, {"label": "B", "value": -4.25}]
     result = renderer._validate_plan(plan)
     assert [item["value"] for item in result["scenes"][0]["items"]] == [0, -4.25]
+
+
+def test_measured_word_captions_survive_preparation_as_safe_data(plan, audio, tmp_path, vendor):
+    plan.update(caption_style="highlight", timing_source="measured_sections",
+                sections=[{"id": "section", "start": 0, "duration": 2,
+                           "narration": "Hello <world>", "caption_timing": "word"}],
+                words=[{"word": "Hello", "start": .1, "end": .5, "section_id": "section"},
+                       {"word": "<world>", "start": .8, "end": 1.2, "section_id": "section"}])
+    original = copy.deepcopy(plan)
+    entry = renderer.prepare_motion_project(plan, str(audio), str(tmp_path))
+    saved = json.loads((entry.parent / "project.json").read_text())
+    assert saved["caption_style"] == "highlight"
+    assert saved["words"] == plan["words"]
+    assert saved["sections"][0]["caption_timing"] == "word"
+    assert "<world>" not in entry.read_text()
+    assert plan == original
+
+
+@pytest.mark.parametrize("source,precision", [
+    ("estimated_duration", "word"), ("legacy_srt", "phrase"),
+    ("measured_sections", "estimated"), ("measured_sections", "phrase"), (None, "word"),
+])
+def test_unmeasured_word_events_cannot_become_highlights(plan, source, precision):
+    plan.update(caption_style="highlight", sections=[{"id": "section", "start": 0,
+                "duration": 2, "caption_timing": precision}],
+                words=[{"word": "Hello", "start": .1, "end": .5, "section_id": "section"}])
+    if source is not None:
+        plan["timing_source"] = source
+    result = renderer._validate_plan(plan)
+    assert result["words"] == []
+    assert result["captions"] == plan["captions"]
+
+
+@pytest.mark.parametrize("change", [{"start": -1}, {"end": 10}, {"start": True},
+                                      {"end": float("nan")}, {"word": "x" * 101}])
+def test_malformed_word_timing_is_rejected(plan, change):
+    word = {"word": "Hello", "start": .1, "end": .5, "section_id": "section"}
+    plan["words"] = [{**word, **change}]
+    with pytest.raises(ValueError):
+        renderer._validate_plan(plan)
+
+
+def test_caption_style_is_explicit_and_legacy_plans_stay_plain(plan):
+    assert renderer._validate_plan(plan)["caption_style"] == "plain"
+    for style in ("highlight", "plain", "off"):
+        plan["caption_style"] = style
+        assert renderer._validate_plan(plan)["caption_style"] == style
+    plan["caption_style"] = "guess-word-timing"
+    with pytest.raises(ValueError, match="captions"):
+        renderer._validate_plan(plan)
+
+
+def test_live_preview_files_stay_complete_while_replacement_is_copied(tmp_path, monkeypatch):
+    source, destination = tmp_path / "new.js", tmp_path / "served.js"
+    source.write_bytes(b"complete new script")
+    destination.write_bytes(b"complete previous script")
+    original = renderer.shutil.copy2
+    observed = []
+
+    def partial_copy(source_path, target_path):
+        Path(target_path).write_bytes(b"partial")
+        observed.append(destination.read_bytes())
+        return original(source_path, target_path)
+
+    monkeypatch.setattr(renderer.shutil, "copy2", partial_copy)
+    renderer._atomic_copy(source, destination)
+    assert observed == [b"complete previous script"]
+    assert destination.read_bytes() == b"complete new script"
+    assert not list(tmp_path.glob(".*.tmp"))
 
 
 @pytest.mark.parametrize("change", [

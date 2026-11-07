@@ -52,13 +52,13 @@ def _providers():
         P("gemini", "Gemini", "Research + scripts", "AI", gemini_configured(), False, "https://aistudio.google.com/apikey"),
         P("groq", "Groq", "Fast LLM fallback", "AI", _real_key(getattr(config, "GROQ_API_KEY", "")), False, "https://console.groq.com/keys"),
         P("openrouter", "OpenRouter", "Free-model fallback", "AI", _real_key(getattr(config, "OPENROUTER_API_KEY", "")), False, "https://openrouter.ai/keys"),
-        P("pollinations_text", "Pollinations Text", "Keyless LLM fallback", "AI", getattr(config, "KEYLESS_LLM_FALLBACK", True), True, "https://pollinations.ai"),
+        P("ollama", "Local Ollama", "Installed local AI model", "AI", bool(getattr(config, "OLLAMA_MODEL", "")), True, "https://ollama.com"),
         P("edge_tts", "Edge TTS", "Neural voiceover", "Media", True, True),
         P("pexels", "Pexels", "Stock photos", "Media", _real_key(config.PEXELS_API_KEY), False, "https://www.pexels.com/api/"),
         P("pixabay", "Pixabay", "Stock photos", "Media", _real_key(getattr(config, "PIXABAY_API_KEY", "")) and "pixabay" in img, False, "https://pixabay.com/api/docs/"),
         P("nasa", "NASA Images", "Public-domain space B-roll", "Media", "nasa" in img, True, "https://images.nasa.gov"),
         P("openverse", "Openverse", "CC-licensed images", "Media", "openverse" in img, True, "https://openverse.org"),
-        P("pollinations_img", "Pollinations Image", "AI thumbnails + B-roll", "Media", "pollinations" in img, True, "https://pollinations.ai"),
+        P("commons_audio", "Wikimedia Commons", "Licensed audio for automatic sound design", "Media", True, True, "https://commons.wikimedia.org"),
         P("wikipedia", "Wikipedia", "Fact grounding + trends", "Research", True, True, "https://en.wikipedia.org"),
         P("arxiv", "arXiv", "Papers for grounding + trends", "Research", True, True, "https://arxiv.org"),
         P("google_trends", "Google Trends", "Search spikes", "Research", True, True, "https://trends.google.com"),
@@ -71,7 +71,6 @@ def _providers():
     ]
 
 _PROBES = {
-    "pollinations_text": "https://text.pollinations.ai/models",
     "nasa":              "https://images-api.nasa.gov/search?q=moon&page_size=1",
     "openverse":         "https://api.openverse.org/v1/images/?q=moon&page_size=1",
     "wikipedia":         "https://en.wikipedia.org/api/rest_v1/page/summary/Moon",

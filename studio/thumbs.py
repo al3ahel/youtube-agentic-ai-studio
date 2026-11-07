@@ -40,18 +40,5 @@ def make_thumbnail(script, image_map, output_dir, bg_override=None):
                             portrait=is_shorts(script))
 
 def ai_thumbnail_bg(script, research):
-    """Generate a text-free thumbnail background with Pollinations (keyless)."""
-    from apis.images import pollinations_url
-    from apis.http import download
-    concept = (research or {}).get("thumbnail_concept") or script.get("title", "")
-    portrait = is_shorts(script)
-    space = "empty lower half" if portrait else "empty left third"
-    prompt = (f"YouTube thumbnail background art, {concept}, cinematic, dramatic rim lighting, "
-              f"high contrast, vivid colors, bold composition, {space}, no text, no letters")
-    path = os.path.join(config.OUTPUT_DIR, "thumb_bg_ai.jpg")
-    log("Generating AI thumbnail art (Pollinations)…")
-    w, h = (1080, 1920) if portrait else (1280, 720)
-    download(pollinations_url(prompt, w, h), path, timeout=120)
-    from apis.images import strip_pollinations_logo
-    strip_pollinations_logo(path)
-    return path
+    """Keep old clients from silently contacting a retired keyless service."""
+    raise ValueError("The former keyless AI-art service is unavailable. Use a saved photo or one of the local graphic thumbnail designs.")

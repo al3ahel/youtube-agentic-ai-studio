@@ -39,13 +39,15 @@ const SETUP_URL = "https://github.com/raunakpatil/youtube-agentic-ai-studio/blob
 function renderChecklist() {
   if (!providers.length) return;
   const P = id => providers.find(p => p.id === id) || {};
-  const gemini = P("gemini").ready, backup = P("groq").ready || P("openrouter").ready;
+  const available = id => P(id).ready && !(P(id).probe && !P(id).probe.ok);
+  const gemini = available("gemini"), backup = available("groq") || available("openrouter"), local = available("ollama");
+  const localOnly = settings.llm_route === "local", writerReady = localOnly ? local : gemini || backup || local;
   const named = settings.channel_name && settings.channel_name !== "My AI Channel";
   const mode = $("#visual-mode").value || settings.visual_mode || "motion";
   const items = [
     { ok: true, t: "Voice service", s: "Free Edge TTS. Local setup is checked before recording" },
     { ok: true, t: "Visual style", s: mode === "motion" ? "Animated diagrams, comparisons and text" : mode === "hybrid" ? "Photos, motion scenes and licensed footage" : P("pexels").ready ? "Pexels + free image sources" : "Classic photos and transitions" },
-    { ok: gemini || backup, opt: true, t: "Script writer", s: gemini ? "Gemini connected" : backup ? "Backup AI connected" : "Free backup AI works. A free Gemini key writes better scripts", act: !gemini && ["Add key", "#settings"] },
+    { ok: writerReady, t: "Script writer", s: localOnly ? local ? "Local Ollama model configured" : "Choose an installed Ollama model in Settings" : gemini ? "Gemini free-tier account configured" : backup ? "Free model provider configured" : local ? "Local Ollama model configured" : "Set up a free-tier provider or a local Ollama model", act: !writerReady && ["Set up AI", "#settings"] },
     { ok: named, opt: true, t: "Channel name", s: named ? settings.channel_name : "Shown in your videos. Set it once", act: !named && ["Set name", "#settings"] },
     { ok: P("youtube_upload").ready, t: "Publishing", s: P("youtube_upload").ready ? "Ready to upload" : "Only needed to upload from here. You can always download the MP4", act: !P("youtube_upload").ready && ["Guide", SETUP_URL] },
   ];

@@ -53,7 +53,8 @@ def save_env(values: dict, path: str = ENV_PATH) -> None:
 _load_env()
 
 # ─────────────────────────────────────────
-#  API Keys  (all free-tier — only Gemini is recommended; the rest are optional)
+#  Optional hosted API keys — use accounts with free-tier access and quota.
+#  An installed local Ollama model can handle text agents without a hosted key.
 # ─────────────────────────────────────────
 GEMINI_API_KEY     = os.getenv("GEMINI_API_KEY",     "")   # aistudio.google.com/apikey
 PEXELS_API_KEY     = os.getenv("PEXELS_API_KEY",     "")   # pexels.com/api
@@ -78,10 +79,16 @@ ENV_KEYS = [
 # Ground every script in real facts from Wikipedia + arXiv, and cite them
 FACT_GROUNDING = True
 
-# When Gemini has no key or runs out of quota: Groq → OpenRouter → Pollinations
-# (Pollinations is keyless, so the pipeline never dead-ends)
-KEYLESS_LLM_FALLBACK = True
-GROQ_MODEL           = "llama-3.3-70b-versatile"
+# Local Ollama uses installed models only; hosted routes require free-tier keys.
+# Kept for legacy settings imports; the retired keyless Pollinations route is unused.
+KEYLESS_LLM_FALLBACK = False
+LLM_ROUTE           = "auto"       # auto: configured local model, then free cloud; local: Ollama only
+OLLAMA_BASE_URL     = "http://127.0.0.1:11434"
+OLLAMA_MODEL        = ""
+SCRIPT_REVIEW_ENABLED = True
+VOICE_CACHE_ENABLED = True
+VOICE_CACHE_DIR     = ""           # default: DATA_DIR/voice-cache
+GROQ_MODEL           = "openai/gpt-oss-120b"
 OPENROUTER_MODEL     = "openrouter/free"
 
 # Motion scenes are drawn locally from a validated storyboard. Existing saved
@@ -96,8 +103,8 @@ MOTION_QUALITY = "standard"            # draft | standard | high
 MOTION_WORKERS = 1                     # conservative on Windows/laptops
 
 # Image sources tried after Pexels, in order:
-#   pixabay (key) · nasa (public domain, space topics) · openverse (CC) · pollinations (AI)
-IMAGE_SOURCES = ["pixabay", "nasa", "openverse", "pollinations"]
+#   pixabay (key) · nasa (public domain, space topics) · openverse (CC)
+IMAGE_SOURCES = ["pixabay", "nasa", "openverse"]
 
 # Trend Radar — Google Trends region and arXiv fields to watch
 TRENDS_GEO       = "US"
@@ -156,14 +163,11 @@ VOICE_PITCH = "+0Hz"    # preserve the selected voice's natural pitch
 #  Starting model for the fallback chain — the system auto-switches
 #  through all models below if quota or errors are hit.
 #  Change this in the GUI under Settings → AI Model (saved to settings.json).
-#  Options (free tier):
-#    gemini-2.5-flash        — highest quality   (500 req/day)
-#    gemma-4-31b-it          — Gemma 4 31B       (500 req/day)
-#    gemini-2.0-flash        — recommended       (1500 req/day)  ← default
-#    gemini-2.0-flash-lite   — fastest           (1500 req/day)
-#    gemini-1.5-flash-001    — reliable fallback (1500 req/day)
+#  Current free-tier text choices plus 2.5 compatibility for existing projects.
+#  Google restricts 2.5 access for new projects; prefer a supported 3.x model.
+#  Quotas depend on the provider account; retired model IDs are not retried.
 # ─────────────────────────────────────────
-GEMINI_MODEL = "gemini-2.0-flash"
+GEMINI_MODEL = "gemini-3.8-flash"
 
 # ─────────────────────────────────────────
 #  Video Dimensions
@@ -251,6 +255,10 @@ SFX_ENABLED       = False
 SFX_TRACK         = ""           # selected imported effect ID; never a random music track
 SFX_VOLUME        = 0.08
 SFX_MODE          = "transitions"  # brief section transitions | looping ambience
+SOUND_MODE        = "auto"         # AI direction | manual selected tracks | off
+SOUND_INTENSITY   = "low"          # low | balanced
+AUDIO_MASTERING   = True
+CAPTION_STYLE     = "highlight"    # highlight measured words | plain | off (Motion/Hybrid)
 
 # ─────────────────────────────────────────
 #  Paths  (do not change unless you know what you're doing)
@@ -267,13 +275,15 @@ USER_SETTINGS = (
     "CHANNEL_NAME", "CHANNEL_DESCRIPTION", "CHANNEL_PRESET", "TARGET_DURATION_MINUTES", "SHOW_CHANNEL_BRAND", "BRAND_TEXT",
     "THUMB_STYLE", "CREDIT_YAAS",
     "VOICE_ID", "VOICE_RATE", "VOICE_PITCH",
-    "GEMINI_MODEL", "GROQ_MODEL", "OPENROUTER_MODEL",
+    "GEMINI_MODEL", "GROQ_MODEL", "OPENROUTER_MODEL", "LLM_ROUTE", "OLLAMA_BASE_URL", "OLLAMA_MODEL",
+    "SCRIPT_REVIEW_ENABLED", "VOICE_CACHE_ENABLED",
     "VISUAL_MODE", "VISUAL_AI_ENABLED", "VISUAL_PLANNER_MODEL",
     "VISUAL_REVIEW_MODEL", "VISUAL_REVIEW_ENABLED", "OPENROUTER_FREE_ONLY",
     "MOTION_QUALITY", "MOTION_WORKERS",
     "FACT_GROUNDING", "KEYLESS_LLM_FALLBACK", "IMAGE_SOURCES", "TRENDS_GEO",
     "MUSIC_ENABLED", "MUSIC_VOLUME", "MUSIC_TRACK",
     "SFX_ENABLED", "SFX_TRACK", "SFX_VOLUME", "SFX_MODE",
+    "SOUND_MODE", "SOUND_INTENSITY", "AUDIO_MASTERING", "CAPTION_STYLE",
     "OVERLAY_OPACITY", "KB_ZOOM_START", "KB_ZOOM_END",
     "BROLL_INTERVAL", "BROLL_XFADE_DUR", "RENDER_PRESET", "VIDEO_PRIVACY",
 )
@@ -291,9 +301,26 @@ def _valid_setting(key: str, value) -> bool:
         "MOTION_QUALITY": {"draft", "standard", "high"},
         "CHANNEL_PRESET": {"general", "news", "asmr"},
         "SFX_MODE": {"transitions", "ambience"},
+        "SOUND_MODE": {"auto", "manual", "off"},
+        "SOUND_INTENSITY": {"low", "balanced"},
+        "LLM_ROUTE": {"auto", "local"},
+        "CAPTION_STYLE": {"highlight", "plain", "off"},
     }
     if key in choices:
         return isinstance(value, str) and value in choices[key]
+    if key == "OLLAMA_BASE_URL":
+        from urllib.parse import urlsplit
+        try:
+            parsed = urlsplit(value) if isinstance(value, str) and 0 < len(value) <= 200 and not any(ord(c) <= 32 or ord(c) == 127 for c in value) else None
+            return bool(parsed and parsed.scheme in {"http", "https"} and parsed.hostname in {"127.0.0.1", "localhost", "::1"}
+                        and parsed.username is None and parsed.password is None and not parsed.query
+                        and not parsed.fragment and parsed.path in {"", "/"}
+                        and 1 <= (parsed.port if parsed.port is not None else 80) <= 65535)
+        except ValueError:
+            return False
+    if key == "OLLAMA_MODEL":
+        return (isinstance(value, str) and (not value or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,159}", value) is not None)
+                and "cloud" not in value.lower() and "://" not in value and ".." not in value.split("/"))
     if key == "MOTION_WORKERS":
         return type(value) is int and 1 <= value <= 4
     if key in {"MUSIC_TRACK", "SFX_TRACK"}:
@@ -333,6 +360,12 @@ def load_settings(path: str | None = None) -> dict:
         print(f"   ⚠ Ignoring {os.path.basename(path)}: expected a JSON object")
         return {}
     good = {k: v for k, v in data.items() if _valid_setting(k, v)}
+    # Preserve an existing deliberately selected soundtrack on upgrade. An old
+    # enabled switch with no selected asset remains eligible for Automatic.
+    if "SOUND_MODE" not in data and (
+            good.get("MUSIC_ENABLED") and good.get("MUSIC_TRACK")
+            or good.get("SFX_ENABLED") and good.get("SFX_TRACK")):
+        good["SOUND_MODE"] = "manual"
     for k in data.keys() - good.keys():
         print(f"   ⚠ Ignoring unknown or invalid setting in {os.path.basename(path)}: {k}")
     return good
@@ -349,7 +382,9 @@ def save_settings(values: dict, path: str | None = None) -> None:
         raise ValueError("Not a valid setting: " + ", ".join(sorted(bad)))
     path = path or SETTINGS_PATH
     merged = {**load_settings(path), **values}
-    merged = {k: v for k, v in merged.items() if v != DEFAULTS[k]}
+    # Keep the explicit sound choice even when it equals the new default, so
+    # legacy selected-track migration cannot undo a switch to Automatic.
+    merged = {k: v for k, v in merged.items() if v != DEFAULTS[k] or k == "SOUND_MODE"}
     tmp = path + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(merged, f, indent=2, sort_keys=True, ensure_ascii=False)

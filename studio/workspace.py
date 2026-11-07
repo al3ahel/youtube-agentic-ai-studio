@@ -192,7 +192,9 @@ def checkpoint_workspace(output_dir=None, *, rendered_kind=None):
             elif (isinstance(receipt, dict) and receipt.get("binding") == binding
                   and (receipt.get("artifact") or {}).get("path") == path.relative_to(root).as_posix()):
                 renders[kind] = receipt
-        images = _image_map(root, snapshot.get("image_map"))
+        from agents.visual_director import plan_uses_project_photos
+        graphics_only = snapshot.get("visual_mode") == "motion" and not plan_uses_project_photos(snapshot.get("visual_plan"))
+        images = {} if graphics_only else _image_map(root, snapshot.get("image_map"))
         saved = {"version": 1, "profile_id": snapshot.get("profile_id") or "default",
                  "script_signature": _script_signature(snapshot.get("script")),
                  "visual_mode": snapshot.get("visual_mode"), "video_type": snapshot.get("video_type", "normal"),
@@ -317,14 +319,32 @@ def restore_workspace(output_dir=None):
                 soundtrack = _local_file(root, soundtrack_manifest.get("path"), _AUDIO, relative=True) or audio_path
             elif saved_paths.get("render_audio_path") == saved_paths.get("audio_path"):
                 soundtrack = audio_path
-            images = _image_map(root, checkpoint.get("image_map") if same_script else _read_json(root, "image_map.json"))
-            if not any(images.values()) and plan:
-                images = _image_map(root, {section["id"]: [scene["image"]["path"] for scene in plan["scenes"]
-                                         if scene["section_id"] == section["id"] and scene.get("image")]
-                                         for section in plan["sections"]})
             mode = plan["mode"] if plan else checkpoint.get("visual_mode") if same_script else saved_mode
             if mode not in {"motion", "hybrid", "classic"}:
                 mode = "motion" if os.path.lexists(root / "scene_plan.json") else "classic"
+            images = {}
+            from agents.visual_director import plan_uses_project_photos
+            if mode != "motion" or plan_uses_project_photos(plan):
+                from studio.visual_assets import validate_binding
+                map_exists = os.path.lexists(root / "image_map.json")
+                raw_images = _read_json(root, "image_map.json") if map_exists else (
+                    checkpoint.get("image_map") if same_script else None)
+                # A broken current manifest is not permission to rediscover
+                # old pictures from a checkpoint, plan or section filenames.
+                photo_binding = False if map_exists and raw_images is None else validate_binding(
+                    root, raw_images or {}, script, profile["id"])
+                if photo_binding is False:
+                    warnings.append("The saved photo map no longer matches this script, channel or local files. "
+                                    "Its cached photos were not restored; regenerate images or reload the original saved project.")
+                else:
+                    images = _image_map(root, raw_images)
+                    if photo_binding is None and not any(images.values()) and plan:
+                        # Old storyboards may predate image_map.json. Their
+                        # exact references remain legacy, requiring photo opt-in
+                        # for a new plan; no filename discovery is performed.
+                        images = _image_map(root, {section["id"]: [scene["image"]["path"] for scene in plan["scenes"]
+                                                 if scene["section_id"] == section["id"] and scene.get("image")]
+                                                 for section in plan["sections"]})
             video_type = "shorts" if timeline and timeline["height"] > timeline["width"] else (script or {}).get("video_type", "normal")
             if video_type not in {"normal", "shorts"}:
                 video_type = "normal"

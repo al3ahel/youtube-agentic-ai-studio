@@ -7,13 +7,170 @@ are explicitly marked as estimated; section durations are always measured.
 import os
 import re
 import asyncio
+import hashlib
+from importlib.metadata import PackageNotFoundError, version
 import json
+import math
 import shutil
 import subprocess
 import tempfile
 import wave
+import zipfile
 from pathlib import Path
 import config
+
+
+_VOICE_CACHE_VERSION = 1
+_VOICE_CACHE_BYTES = 400 * 1024 * 1024
+_VOICE_CACHE_ENTRY_BYTES = 64 * 1024 * 1024
+_VOICE_CACHE_ENTRIES = 256
+
+
+def _voice_cache_key(text):
+    try:
+        engine_version = version("edge-tts")
+    except PackageNotFoundError:
+        # An unknown engine build must not reuse another build's speech.
+        return None
+    identity = {"schema": _VOICE_CACHE_VERSION, "engine": "edge-tts", "engine_version": engine_version,
+                "text": text, "voice": config.VOICE_ID, "rate": config.VOICE_RATE, "pitch": config.VOICE_PITCH,
+                "boundary": "WordBoundary", "sample_rate": 48000, "channels": 1, "sample_width": 2}
+    return hashlib.sha256(json.dumps(identity, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
+
+
+def _voice_cache_root(use_cache):
+    if use_cache is not None and not isinstance(use_cache, bool):
+        raise ValueError("Choose whether to reuse cached voice sections with a boolean.")
+    if not (getattr(config, "VOICE_CACHE_ENABLED", True) if use_cache is None else use_cache):
+        return None
+    location = getattr(config, "VOICE_CACHE_DIR", "") or Path(config.DATA_DIR) / "voice-cache"
+    return Path(location).expanduser().resolve()
+
+
+def _validate_cached_section(wav, srt, timing):
+    """Check the decoded format and local timing before any cached audio is used."""
+    from video.timeline import read_srt
+    with wave.open(str(wav), "rb") as stream:
+        if (stream.getnchannels(), stream.getsampwidth(), stream.getframerate(), stream.getcomptype()) != (1, 2, 48000, "NONE"):
+            raise ValueError("Cached narration has a different audio format.")
+        frames = stream.getnframes()
+        if not 0 < frames <= _VOICE_CACHE_ENTRY_BYTES // 2:
+            raise ValueError("Cached narration has an invalid length.")
+        count = 0
+        while block := stream.readframes(65536):
+            count += len(block)
+        if count != frames * 2:
+            raise ValueError("Cached narration is incomplete.")
+    duration = frames / 48000
+    local = json.loads(timing.read_text(encoding="utf-8"))
+    if (not isinstance(local, dict) or local.get("source") not in {"word", "phrase", "estimated"}
+            or not isinstance(local.get("words"), list) or len(local["words"]) > 20000):
+        raise ValueError("Cached narration has invalid speech events.")
+    for word in local["words"]:
+        if not isinstance(word, dict) or not isinstance(word.get("word"), str) or not word["word"].strip():
+            raise ValueError("Cached narration has an invalid word.")
+        start, end = word.get("start"), word.get("end")
+        if (any(isinstance(n, bool) or not isinstance(n, (int, float)) or not math.isfinite(n) for n in (start, end))
+                or not 0 <= start < end <= duration + .5):
+            raise ValueError("Cached narration has invalid word timing.")
+    if local["source"] == "word" and not local["words"]:
+        raise ValueError("Cached narration is missing its word events.")
+    if not read_srt(str(srt), duration):
+        raise ValueError("Cached narration has no usable captions.")
+    return frames
+
+
+def _restore_voice_section(root, key, wav, srt, timing, stop_event=None):
+    if root is None or key is None:
+        return False
+    entry = root / f"v{_VOICE_CACHE_VERSION}_{key}.zip"
+    try:
+        if entry.is_symlink() or not entry.is_file() or entry.stat().st_size > _VOICE_CACHE_ENTRY_BYTES:
+            return False
+        files = {"audio.wav": wav, "captions.srt": srt, "timings.json": timing}
+        with zipfile.ZipFile(entry) as archive:
+            members = archive.infolist()
+            if (len(members) != 4 or {item.filename for item in members} != {*files, "manifest.json"}
+                    or any(item.compress_type != zipfile.ZIP_STORED for item in members)
+                    or sum(item.file_size for item in members) > _VOICE_CACHE_ENTRY_BYTES
+                    or archive.getinfo("manifest.json").file_size > 16384):
+                return False
+            manifest = json.loads(archive.read("manifest.json"))
+            if manifest.get("version") != _VOICE_CACHE_VERSION or manifest.get("key") != key:
+                return False
+            for name, destination in files.items():
+                digest = hashlib.sha256()
+                with archive.open(name) as source, destination.open("wb") as output:
+                    while chunk := source.read(1024 * 1024):
+                        if stop_event is not None and stop_event.is_set():
+                            raise InterruptedError("Narration stopped while reading cached speech")
+                        digest.update(chunk)
+                        output.write(chunk)
+                if digest.hexdigest() != manifest["sha256"][name]:
+                    return False
+        if _validate_cached_section(wav, srt, timing) != manifest["samples"]:
+            return False
+        try:
+            os.utime(entry, None)
+        except OSError:
+            pass  # A readable cache remains useful on a read-only volume.
+        return True
+    except InterruptedError:
+        raise
+    except (OSError, ValueError, TypeError, KeyError, AttributeError, EOFError, wave.Error, zipfile.BadZipFile):
+        return False
+
+
+def _prune_voice_cache(root, keep):
+    # Only this cache's fixed, hashed filenames are eligible for removal.
+    entries = []
+    for path in root.glob("v*_*.zip"):
+        if re.fullmatch(r"v[1-9][0-9]*_[a-f0-9]{64}\.zip", path.name) and not path.is_symlink():
+            info = path.stat()
+            entries.append((info.st_mtime_ns, info.st_size, path))
+    total, count = sum(item[1] for item in entries), len(entries)
+    for _, size, path in sorted(entries):
+        if total <= _VOICE_CACHE_BYTES and count <= _VOICE_CACHE_ENTRIES:
+            break
+        if path != keep:
+            path.unlink(missing_ok=True)
+            total -= size
+            count -= 1
+
+
+def _save_voice_section(root, key, wav, srt, timing, stop_event=None):
+    if root is None or key is None:
+        return
+    temporary = None
+    try:
+        files = {"audio.wav": wav, "captions.srt": srt, "timings.json": timing}
+        if sum(path.stat().st_size for path in files.values()) + 16384 > _VOICE_CACHE_ENTRY_BYTES:
+            return
+        samples = _validate_cached_section(wav, srt, timing)
+        from video.timeline import audio_signature
+        manifest = {"version": _VOICE_CACHE_VERSION, "key": key, "samples": samples,
+                    "sha256": {name: audio_signature(path) for name, path in files.items()}}
+        root.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(prefix=".voice-", suffix=".tmp", dir=root, delete=False) as stream:
+            temporary = Path(stream.name)
+            with zipfile.ZipFile(stream, "w", compression=zipfile.ZIP_STORED) as archive:
+                for name, path in files.items():
+                    archive.write(path, name)
+                archive.writestr("manifest.json", json.dumps(manifest, sort_keys=True))
+        if stop_event is not None and stop_event.is_set():
+            raise InterruptedError("Narration stopped before saving cached speech")
+        entry = root / f"v{_VOICE_CACHE_VERSION}_{key}.zip"
+        # One atomic bundle prevents readers from combining speech from one
+        # attempt with timestamps from another, even across simultaneous jobs.
+        os.replace(temporary, entry)
+        _prune_voice_cache(root, entry)
+    except InterruptedError:
+        raise
+    except (OSError, ValueError, TypeError, KeyError, EOFError, wave.Error, zipfile.BadZipFile):
+        print("   → Voice cache unavailable for this section; the new recording is retained.")
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
 
 
 # ══════════════════════════════════════════════════════════════
@@ -323,7 +480,7 @@ async def _synthesise(text: str, audio_path: str, srt_path: str,
 #  PUBLIC API
 # ══════════════════════════════════════════════════════════════
 
-def _generate_segmented(script: dict, output_dir: str, stop_event=None) -> str:
+def _generate_segmented(script: dict, output_dir: str, stop_event=None, *, use_cache=None) -> str:
     """Synthesize each section and join decoded PCM samples without overlaps.
 
     Word events are kept when available. Without them, section boundaries are
@@ -349,6 +506,8 @@ def _generate_segmented(script: dict, output_dir: str, stop_event=None) -> str:
             raise RuntimeError("FFmpeg is required to prepare synchronized narration.") from exc
     measured, words, captions = [], [], []
     sample_rate, cursor_samples = 48000, 0
+    cache_root = _voice_cache_root(use_cache)
+    cache_hits = 0
 
     def check_stop():
         if stop_event is not None and stop_event.is_set():
@@ -366,22 +525,30 @@ def _generate_segmented(script: dict, output_dir: str, stop_event=None) -> str:
                 text = str(section.get("narration", "")).strip()
                 if not text or text.startswith(("Start with", "Deep explanation", "Open with")):
                     raise ValueError(f"Section {index + 1} needs finished narration text. Regenerate the script.")
-                print(f"   → Recording section {index + 1}/{len(sections)}: {section.get('title', '')}")
                 mp3, srt, timing = (work / f"{index}.{suffix}" for suffix in ("mp3", "srt", "json"))
-                try:
-                    asyncio.run(_synthesise(text, str(mp3), str(srt), str(timing), stop_event))
-                except Exception as exc:
-                    if "403" in str(exc):
-                        raise RuntimeError("The voice service rejected the request. Update edge-tts in this environment or choose another voice.") from exc
-                    raise
-                check_stop()
                 wav = work / f"{index}.wav"
-                conversion = subprocess.run(
-                    [ffmpeg, "-nostdin", "-y", "-v", "error", "-i", str(mp3),
-                     "-ar", str(sample_rate), "-ac", "1", "-c:a", "pcm_s16le", str(wav)],
-                    capture_output=True, text=True, timeout=180)
-                if conversion.returncode:
-                    raise RuntimeError(f"Could not decode voice section {index + 1}: {conversion.stderr[-500:]}")
+                key = _voice_cache_key(text) if cache_root is not None else None
+                reused = _restore_voice_section(cache_root, key, wav, srt, timing, stop_event)
+                if reused:
+                    cache_hits += 1
+                    print(f"   → Reusing section {index + 1}/{len(sections)} with matching voice and speech timing.")
+                else:
+                    print(f"   → Recording section {index + 1}/{len(sections)}: {section.get('title', '')}")
+                    try:
+                        asyncio.run(_synthesise(text, str(mp3), str(srt), str(timing), stop_event))
+                    except Exception as exc:
+                        if "403" in str(exc):
+                            raise RuntimeError("The voice service rejected the request. Update edge-tts in this environment or choose another voice.") from exc
+                        raise
+                    check_stop()
+                    conversion = subprocess.run(
+                        [ffmpeg, "-nostdin", "-y", "-v", "error", "-i", str(mp3),
+                         "-ar", str(sample_rate), "-ac", "1", "-c:a", "pcm_s16le", str(wav)],
+                        capture_output=True, text=True, timeout=180)
+                    if conversion.returncode:
+                        raise RuntimeError(f"Could not decode voice section {index + 1}: {conversion.stderr[-500:]}")
+                    _save_voice_section(cache_root, key, wav, srt, timing, stop_event)
+                check_stop()
                 start = cursor_samples / sample_rate
                 with wave.open(str(wav), "rb") as source:
                     sample_count = source.getnframes()
@@ -412,7 +579,8 @@ def _generate_segmented(script: dict, output_dir: str, stop_event=None) -> str:
         manifest = {"version": 1, "script_signature": script_signature(script),
                     "audio_sha256": audio_signature(joined),
                     "duration": cursor_samples / sample_rate, "sample_rate": sample_rate,
-                    "timing_source": "measured_sections", "sections": measured, "words": words}
+                    "timing_source": "measured_sections", "sections": measured, "words": words,
+                    "voice_cache": {"enabled": cache_root is not None, "reused_sections": cache_hits}}
         _write_srt_blocks(captions, str(work / "narration.srt"))
         (work / "narration.timings.json").write_text(
             json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -424,13 +592,13 @@ def _generate_segmented(script: dict, output_dir: str, stop_event=None) -> str:
 
 
 def generate_narration(script: dict, output_dir: str, *, segmented: bool = True,
-                       stop_event=None) -> str:
+                       stop_event=None, use_cache=None) -> str:
     """
     Record measured sections as one WAV and write matching SRT/timing metadata.
     The legacy single-MP3 path is available with segmented=False.
     """
     if segmented:
-        return _generate_segmented(script, output_dir, stop_event=stop_event)
+        return _generate_segmented(script, output_dir, stop_event=stop_event, use_cache=use_cache)
     parts = []
     for section in script["sections"]:
         narration = section.get("narration", "").strip()

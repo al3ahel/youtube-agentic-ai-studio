@@ -205,6 +205,23 @@ def test_local_git_identity_and_docs_only_commit(tmp_path):
     (root / "studio" / "static" / "app.css").write_text("body {color:blue}")
     (root / "settings.json").write_text('{"secret":"private"}')
     assert build_info._git_identity(root)["runtime_modified"] is False
+    (root / ".gitignore").write_text(
+        "__pycache__/\n.pytest_cache/\noutput/\nnode_modules/\n"
+        "renderers/hyperframes/.smoke/\nstudio/ignored_local.py\n")
+    for relative in (".pytest_cache/cache.json", "__pycache__/gui.pyc", "output/script.json",
+                     "renderers/hyperframes/.smoke/video.mp4",
+                     "renderers/hyperframes/node_modules/pkg/package.json",
+                     "studio/__pycache__/worker.pyc", "video/node_modules/pkg/helper.py",
+                     "studio/.pytest_cache/cached_helper.py"):
+        path = root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("ignored generated data\n")
+    assert build_info._git_identity(root)["runtime_modified"] is False
+    ignored_source = root / "studio" / "ignored_local.py"
+    ignored_source.write_text("VERSION = 1\n")
+    assert build_info._git_identity(root)["runtime_modified"] is True
+    ignored_source.unlink()
+    assert build_info._git_identity(root)["runtime_modified"] is False
     (root / "studio" / "worker.py").write_text("VERSION = 1\n")
     assert build_info._git_identity(root)["runtime_modified"] is True
     (root / "studio" / "worker.py").unlink()

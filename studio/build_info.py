@@ -112,10 +112,16 @@ def _git_identity(root):
         branch = read("symbolic-ref", "--short", "-q", "HEAD")
         branch = branch if branch and len(branch) <= 200 and not any(ord(c) < 32 for c in branch) else None
         paths = [*_FILES, *(f":(glob){name}/**/*.py" for name in _PACKAGES),
-                 ":(exclude,glob)**/tests/**", ":(exclude,glob)**/__pycache__/**"]
-        changes = read("status", "--porcelain=v1", "-z", "--untracked-files=all", "--ignored=matching", "--", *paths)
+                 ":(exclude,glob)**/tests/**", ":(exclude,glob)**/__pycache__/**",
+                 ":(exclude,glob)**/node_modules/**", ":(exclude,glob)**/.*/**"]
+        changes = read("status", "--porcelain=v1", "-z", "--untracked-files=all", "--", *paths)
+        # `status --ignored` reports whole ignored directories even when their
+        # contents do not match the pathspec. Enumerate ignored files separately
+        # so caches do not masquerade as local code, but ignored source still does.
+        ignored = read("ls-files", "--others", "--ignored", "--exclude-standard", "-z", "--", *paths)
+        modified = True if changes or ignored else None if changes is None or ignored is None else False
         return {"commit": commit, "short_commit": commit[:8] if commit else None, "branch": branch,
-                "runtime_modified": bool(changes) if changes is not None else None}
+                "runtime_modified": modified}
     except (OSError, ValueError, subprocess.TimeoutExpired):
         return unknown
 

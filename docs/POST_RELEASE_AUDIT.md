@@ -78,6 +78,12 @@ configured. Screenshots were captured from the tested working tree before its
 release commit; the badge correctly labels it as the previous commit plus local
 code changes. On an updated clean checkout, the badge identifies the new commit.
 
+The final clean-checkout check also exposed Git reporting ignored cache/output
+directories as local code changes. The badge now separates ordinary source
+status from ignored source-file enumeration. A real-Git regression verifies
+that generated caches leave the badge clean while an actual ignored Python
+source file still marks the runtime as modified.
+
 Provider success/failure and queued-job edge cases use controlled responses.
 They demonstrate routing and state handling; they do not demonstrate live model
 quality, unlimited free quotas, or a successful live audio-source download. The

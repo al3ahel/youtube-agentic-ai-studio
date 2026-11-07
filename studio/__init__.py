@@ -22,10 +22,10 @@ from flask import Flask
 
 
 def create_app() -> Flask:
-    from studio import dashboard, library, pipeline, review, security, settings, upload
+    from studio import dashboard, library, pipeline, review, security, settings, upload, visuals
 
     app = Flask(__name__)
     security.init_app(app)
-    for module in (pipeline, review, library, upload, settings, dashboard):
+    for module in (pipeline, review, library, upload, settings, dashboard, visuals):
         app.register_blueprint(module.bp)
     return app

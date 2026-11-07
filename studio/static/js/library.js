@@ -31,12 +31,12 @@ async function loadLibrary() {
   loadChannel();
 }
 async function openProject(id) {
-  const r = await api(`/api/library/${id}/load`, {});
+  const r = await api(`/api/library/${id}/load`, {}).catch(e => ({ ok: false, error: e.message }));
   if (!r.ok) return toast(r.error, "err");
   location.hash === "#review" ? loadReview() : (location.hash = "#review");
 }
 async function deleteProject(id, btn) {
   if (btn.dataset.confirm !== "1") { btn.dataset.confirm = "1"; btn.textContent = "Click again to delete"; setTimeout(() => { btn.dataset.confirm = ""; btn.textContent = "Delete"; }, 3500); return; }
-  const r = await api(`/api/library/${id}`, undefined, "DELETE");
+  const r = await api(`/api/library/${id}`, undefined, "DELETE").catch(e => ({ ok: false, error: e.message }));
   r.ok ? (toast("Deleted"), loadLibrary()) : toast(r.error, "err");
 }

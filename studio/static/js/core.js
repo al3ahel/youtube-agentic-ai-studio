@@ -7,8 +7,13 @@ const clock = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(
 async function api(url, body, method) {
   const opt = body !== undefined ? { method: method || "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : (method ? { method } : {});
   const r = await fetch(url, opt);
-  if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
-  return r.json();
+  const data = await r.json();
+  if (!r.ok) {
+    const error = new Error(data.error || `${r.status} ${r.statusText}`);
+    error.data = data; error.status = r.status;
+    throw error;
+  }
+  return data;
 }
 function toast(msg, kind = "") {
   const t = document.createElement("div");

@@ -1,0 +1,20 @@
+{
+  "name": "yaas-motion-renderer",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Local, narration-timed HTML/SVG rendering for YAAS",
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "doctor": "hyperframes doctor",
+    "smoke": "python smoke.py",
+    "smoke:prepare": "python smoke.py --prepare-only",
+    "test": "python smoke.py --prepare-only --seconds-per-scene 2 && python smoke.py --portrait --prepare-only --seconds-per-scene 2 && node --test tests/render.test.mjs"
+  },
+  "dependencies": {
+    "@fontsource-variable/inter": "5.3.0",
+    "gsap": "3.15.1",
+    "hyperframes": "0.9.19"
+  },
+  "devDependencies": { "puppeteer-core": "25.10.0" }
+}

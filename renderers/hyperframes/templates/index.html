@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>@@TITLE@@</title>
+  <link rel="stylesheet" href="vendor/fonts.css">
+  <link rel="stylesheet" href="scene.css">
+  <script src="vendor/gsap.min.js" defer></script>
+  <script src="scene.js" defer></script>
+</head>
+<body>
+  <div id="composition" data-composition-id="yaas-motion" data-start="0"
+         data-duration="@@DURATION@@" data-fps="@@FPS@@"
+         data-width="@@WIDTH@@" data-height="@@HEIGHT@@"
+         style="width:@@WIDTH@@px;height:@@HEIGHT@@px">
+      <main id="design-canvas">
+        <div class="backdrop-grid" aria-hidden="true"></div>
+        <div class="backdrop-orbit orbit-one" aria-hidden="true"></div>
+        <div class="backdrop-orbit orbit-two" aria-hidden="true"></div>
+        <header class="film-header">
+          <span class="brand-symbol" aria-hidden="true"><i></i><i></i><i></i></span>
+          <span id="film-title"></span>
+          <span class="header-rule"></span>
+          <span class="film-kind">A VISUAL EXPLAINER</span>
+        </header>
+        <div id="scene-mount"></div>
+        <div id="caption-mount" aria-live="off"></div>
+        <footer class="film-footer">
+          <span class="footer-label">FOLLOW THE IDEA</span>
+          <div class="film-progress"><span id="film-progress-fill"></span></div>
+          <span id="chapter-count"></span>
+        </footer>
+      </main>
+      <div id="media-bank">@@MEDIA@@</div>
+  </div>
+  <div id="preview-shell" aria-hidden="true"></div>
+  <nav id="preview-controls" aria-label="Video preview controls" hidden>
+    <button id="preview-play" type="button">Play</button>
+    <label class="sr-only" for="preview-seek">Preview position</label>
+    <input id="preview-seek" type="range" min="0" max="@@DURATION@@" value="0" step="0.01">
+    <output id="preview-time">00:00</output>
+    <span id="preview-status" role="status"></span>
+  </nav>
+  <script type="application/json" id="scene-plan">@@PLAN@@</script>
+</body>
+</html>

@@ -8,25 +8,37 @@ import threading
 
 log_queue  = queue.Queue()
 stop_event = threading.Event()   # set() to request pipeline stop
+job_lock = threading.RLock()     # reserve a run or a storyboard edit atomically
 
 state = {
     "running":        False,
     "stop_requested": False,
     "video_type":     "normal",
+    "visual_mode":    None,
+    "preview_only":   False,
+    "visual_editing": False,
     "stages": {
+        "preparation": "pending",
         "research":  "pending",   # pending | running | done | error
         "script":    "pending",
         "images":    "pending",
         "narration": "pending",
+        "visuals":   "pending",
         "video":     "pending",
     },
     "video_path":   None,
+    "preview_path": None,
+    "visual_plan":  None,
+    "timeline":     None,
+    "visual_qa":    None,
+    "preflight":    None,
     "thumb_path":   None,
     "thumb_bg":     None,         # explicit thumbnail background (AI art / library cover)
     "thumb_bg_index": 0,          # which video photo the thumbnail uses
     "thumb_style":  None,         # None → config.THUMB_STYLE
     "thumb_text":   None,         # None → auto from the title
     "audio_path":   None,
+    "render_audio_path": None,   # soundtrack chosen for this project's render
     "image_map":    {},
     "script":       None,
     "research":     None,

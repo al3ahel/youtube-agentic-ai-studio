@@ -9,9 +9,23 @@ from flask import Blueprint, Response, current_app, jsonify, request
 import config
 from studio.files import send, slug
 from studio.runner import run_pipeline_thread
-from studio.state import log, log_queue, state, stop_event
+from studio.state import job_lock, log, log_queue, state, stop_event
 
 bp = Blueprint("pipeline", __name__)
+ALLOWED_STEPS = {"research", "script", "images", "narration", "music", "visuals", "video"}
+DEFAULT_STEPS = ["research", "script", "images", "narration", "music", "visuals", "video"]
+
+
+def _run_options(body):
+    if not isinstance(body, dict):
+        raise ValueError("Expected a JSON object.")
+    steps = body.get("steps", DEFAULT_STEPS)
+    if not isinstance(steps, list) or not steps or len(steps) > len(ALLOWED_STEPS) or any(not isinstance(s, str) or s not in ALLOWED_STEPS for s in steps):
+        raise ValueError("Choose one or more valid pipeline steps.")
+    mode = body.get("visual_mode") or config.VISUAL_MODE
+    if mode not in {"motion", "hybrid", "classic"}:
+        raise ValueError("Choose Motion, Hybrid or Classic.")
+    return list(dict.fromkeys(steps)), mode
 
 @bp.route("/")
 def index():
@@ -35,22 +49,54 @@ def stream():
 
 @bp.route("/api/run", methods=["POST"])
 def start_run():
-    if state["running"]:
-        return jsonify({"ok": False, "error": "Pipeline already running"})
-    body       = request.get_json(force=True) or {}
-    steps       = body.get("steps", ["research","script","images","narration","music","video"])
-    topic       = body.get("topic", "").strip()
-    focus_angle = body.get("focus_angle", "").strip()
-    video_type  = body.get("video_type", "normal")
-    use_trends  = bool(body.get("use_trends", False))
-    for s in steps:
-        if s in state["stages"]: state["stages"][s] = "pending"
-    state["video_type"] = video_type
-    stop_event.clear()
-    t = threading.Thread(target=run_pipeline_thread,
-                         args=(steps, topic, video_type, focus_angle, use_trends), daemon=True)
-    t.start()
+    body = request.get_json(force=True) or {}
+    try:
+        steps, visual_mode = _run_options(body)
+        topic, focus_angle = body.get("topic", ""), body.get("focus_angle", "")
+        if not isinstance(topic, str) or not isinstance(focus_angle, str) or len(topic) > 2000 or len(focus_angle) > 2000:
+            raise ValueError("Topic and focus angle must be text of at most 2,000 characters.")
+        video_type = body.get("video_type", "normal")
+        if video_type not in {"normal", "shorts"}:
+            raise ValueError("Choose a normal video or a Short.")
+        preview_only = body.get("preview_only", False)
+        use_trends = body.get("use_trends", False)
+        if not isinstance(preview_only, bool) or not isinstance(use_trends, bool):
+            raise ValueError("Preview and trends options must be true or false.")
+        if preview_only and visual_mode == "classic":
+            raise ValueError("Draft preview is available in Motion and Hybrid modes.")
+    except (TypeError, ValueError) as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    with job_lock:
+        if state["running"] or state.get("visual_editing") or state.get("uploading"):
+            return jsonify({"ok": False, "error": "A job is already running. Wait for it to finish."}), 409
+        for name in state["stages"]:
+            state["stages"][name] = "pending" if name in steps or name == "preparation" else "skipped"
+        state.update(running=True, video_type=video_type, visual_mode=visual_mode,
+                     preview_only=preview_only, stop_requested=False, error=None, preflight=None)
+        stop_event.clear()
+        thread = threading.Thread(target=run_pipeline_thread,
+                                  args=(steps, topic.strip(), video_type, focus_angle.strip(), use_trends),
+                                  kwargs={"visual_mode": visual_mode, "preview_only": preview_only}, daemon=True)
+        try:
+            thread.start()
+        except Exception:
+            state["running"] = False
+            raise
     return jsonify({"ok": True})
+
+
+@bp.route("/api/preflight", methods=["GET", "POST"])
+def preflight_route():
+    from studio.preflight import check_environment
+    body = request.get_json(silent=True) if request.method == "POST" else {
+        "steps": request.args.get("steps", ",".join(DEFAULT_STEPS)).split(","),
+        "visual_mode": request.args.get("visual_mode", config.VISUAL_MODE),
+    }
+    try:
+        steps, mode = _run_options(body or {})
+    except (TypeError, ValueError) as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    return jsonify(check_environment(steps, mode))
 
 @bp.route("/api/stop", methods=["POST"])
 def stop_pipeline():
@@ -70,6 +116,9 @@ def status_route():
         "has_video":      bool(state.get("video_path") and os.path.exists(state["video_path"])),
         "has_thumb":      bool(state.get("thumb_path") and os.path.exists(state["thumb_path"])),
         "has_script":     bool(state.get("script")),
+        "has_preview":    bool(state.get("preview_path") and os.path.isfile(state["preview_path"])),
+        "has_storyboard": bool(state.get("visual_plan")),
+        "has_html_preview": bool(state.get("visual_plan") and os.path.isfile(os.path.join(config.OUTPUT_DIR, "motion", "index.html"))),
         "has_captions":   os.path.exists(os.path.join(config.OUTPUT_DIR, "narration.srt")),
         "yt_url":         state.get("yt_url"),
         "error":          state.get("error"),
@@ -77,6 +126,11 @@ def status_route():
         "uploading":      state.get("uploading", False),
         "upload_warning": state.get("upload_warning"),
         "video_type":     state.get("video_type", "normal"),
+        "visual_mode":    state.get("visual_mode") or config.VISUAL_MODE,
+        "preview_only":   state.get("preview_only", False),
+        "visual_editing": state.get("visual_editing", False),
+        "visual_qa":      state.get("visual_qa"),
+        "preflight":      state.get("preflight"),
         "library_id":     state.get("library_id"),
         "llm":            gemini_client.last_provider,
         "started_at":     state.get("started_at"),

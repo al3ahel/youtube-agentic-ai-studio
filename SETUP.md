@@ -4,15 +4,21 @@ Complete step-by-step instructions to get YAAS (youtube-agentic-ai-studio) runni
 
 > **Time required:** ~10 minutes
 
+For this fork, start with the [Motion Studio quick start](README.md#-quick-start).
+Install into a fresh Python 3.12 virtual environment; do not reuse the Python 3.13
+environment that contains unrelated AutoGen, scientific, or background-removal packages.
+The full requirements include the original MoviePy/NumPy pins for Classic mode.
+
 ---
 
 ## Prerequisites
 
 - Python **3.10, 3.11 or 3.12** — [python.org/downloads](https://www.python.org/downloads/)
   (3.13+ is not supported yet: the pinned `numpy<2` has no prebuilt wheels for it, so `pip install` tries to compile numpy and usually fails)
-- `ffmpeg` installed and on your PATH (see [Step 1b](#1b-install-ffmpeg))
-- A Google account (for Gemini + YouTube)
-- A Pexels account (free image API)
+- `ffmpeg` **and `ffprobe`** installed and on your PATH (see [Step 1b](#1b-install-ffmpeg))
+- **Node.js 22 or later** for Motion and Hybrid rendering
+- Optional provider accounts for Gemini, OpenRouter and Pexels
+- A Google account only if you want Gemini or direct YouTube publishing
 
 ---
 
@@ -21,13 +27,13 @@ Complete step-by-step instructions to get YAAS (youtube-agentic-ai-studio) runni
 ### 1a. Clone the repository
 
 ```bash
-git clone https://github.com/yourusername/youtube-ai-agent.git
-cd youtube-ai-agent
+git clone --branch feat/motion-studio https://github.com/al3ahel/youtube-agentic-ai-studio.git yaas-motion
+cd yaas-motion
 ```
 
 ### 1b. Install ffmpeg
 
-ffmpeg is required by MoviePy for video rendering.
+FFmpeg decodes measured narration and renders/muxes video. ffprobe verifies media durations and streams.
 
 | OS | Command |
 |---|---|
@@ -35,32 +41,58 @@ ffmpeg is required by MoviePy for video rendering.
 | **Mac** | `brew install ffmpeg` |
 | **Ubuntu/Debian** | `sudo apt install ffmpeg` |
 
-Verify: `ffmpeg -version` should print version info.
+Verify both `ffmpeg -version` and `ffprobe -version` print version information.
 
 ### 1c. Install Python dependencies
 
 ```bash
-pip install -r requirements.txt
+python -m pip install -r requirements.txt
 ```
 
 > ⚠️ **Do not upgrade** `moviepy` or `numpy` — they are pinned intentionally. See [FAQ in README](README.md#-faq).
+
+On Windows, use the exact virtual-environment interpreter shown in the README:
+`.\.venv\Scripts\python.exe -m pip install -r requirements.txt`. Activating the
+environment is optional; using its interpreter avoids PowerShell execution-policy problems.
+
+### 1d. Install the motion renderer
+
+```bash
+node --version
+npm ci --prefix renderers/hyperframes
+node renderers/hyperframes/node_modules/hyperframes/bin/hyperframes.mjs browser ensure
+```
+
+This installs the pinned HyperFrames/GSAP/font packages and a browser. The first
+installation needs network access; generated motion projects use local assets.
+Click **Check setup** in YAAS before a run. A missing package is reported in the
+Preparation stage with the command for the Python interpreter that is actually running.
 
 ---
 
 ## Step 2 — Get your API keys
 
-### 2a. Google Gemini API Key (required — free)
+### 2a. Google Gemini API Key (optional)
 
 1. Go to [aistudio.google.com/apikey](https://aistudio.google.com/apikey)
 2. Sign in with your Google account
 3. Click **Create API Key**
 4. Copy the key
 
-### 2b. Pexels API Key (required — free)
+### 2b. Pexels API Key (optional, for Hybrid footage)
 
 1. Go to [pexels.com/api](https://www.pexels.com/api/)
 2. Create a free account and click **Your API Key**
 3. Copy the key
+
+### 2c. OpenRouter key (optional, for visual planning)
+
+Create a key at [openrouter.ai/keys](https://openrouter.ai/keys), then save it in
+Settings. Keep the planner set to `openrouter/free`, or choose an eligible free
+model from the live selector. Free access has quotas and availability can change.
+The renderer itself runs locally. Vision models interpret images and return
+review text; they do not create a finished video. Frame review is off by default
+and uploads selected rendered frames only when you enable it.
 
 ---
 
@@ -164,6 +196,13 @@ The repo includes a few dark cinematic tracks to get you started. Replace or add
 | Problem | Fix |
 |---|---|
 | `No module named 'moviepy'` | Run `pip install -r requirements.txt` again |
+| `No module named 'edge_tts'` | Run `.\.venv\Scripts\python.exe -m pip install -r requirements.txt`, then start YAAS with that same interpreter |
+| Python 3.13 dependency conflicts | Install Python 3.12 side by side, create a fresh venv as in the README, and install only this project's requirements there |
+| Missing motion renderer / Node | Install Node 22+, reopen the terminal, run `npm ci --prefix renderers/hyperframes` and the browser ensure command above |
+| Windows socket access denied on 7070 | In PowerShell, set `$env:STUDIO_PORT = "8765"` before starting YAAS. If that port is also blocked, choose another available unreserved port |
+| Missing narration timings / script changed | Run Narration and Visuals again; the app will not invent timing for an old voiceover |
+| No matching storyboard | Select Visuals once after changing mode, dimensions or narration; subsequent draft/final renders can use Video alone |
+| Free visual AI unavailable | The storyboard falls back to local animated templates. Add/check a key or try again later; there is no paid fallback |
 | `ffmpeg not found` | Install ffmpeg and ensure it's on your PATH |
 | `RESOURCE_EXHAUSTED` / 429 | Gemini quota hit — wait until midnight Pacific or switch starting model |
 | YouTube sign-in / token error | Delete `youtube_token.json` and upload again to re-authenticate |
@@ -215,4 +254,4 @@ python gui.py
 
 ---
 
-If you get stuck, [open an issue](https://github.com/yourusername/youtube-ai-agent/issues) with your error message and OS.
+If you get stuck, include the Preparation result and technical log with your error message and OS.

@@ -2,20 +2,33 @@
 let tags = [], saved = null, thumbMode = "stock", uploadMode = "now";
 async function loadReview() {
   const [st, d] = await Promise.all([api("/api/status"), api("/api/output")]);
-  const has = st.has_video;
+  const has = st.has_video || st.has_preview || st.has_storyboard;
   $("#review-empty").hidden = has;
   $$(".review-part").forEach(el => el.hidden = !has);
   if (!has) return;
+  const final = !!st.has_video, hasPlayable = final || st.has_preview;
+  $("#review-heading").textContent = final ? "Review & publish" : "Review your draft";
+  $("#review-intro").textContent = final ? "Watch the final video, polish its details, then publish when you are ready." : "Review the storyboard and adjust individual scenes. Render a final video when the explanation looks right.";
+  $("#rv-publish").hidden = !final;
+  $("#publish-nav").hidden = !final;
+  $("#rv-watch").hidden = !hasPlayable;
+  $('.guide-steps a[href="#rv-watch"]').hidden = !hasPlayable;
+  $("#watch-label").textContent = final ? "Watch the final video" : "Watch the draft MP4";
   $("#player").classList.toggle("shorts", d.video_type === "shorts");
-  $("#player").innerHTML = `<video controls preload="metadata" src="/video?t=${Date.now()}"></video>`;
+  $("#player").innerHTML = hasPlayable ? `<video controls preload="metadata" src="${final ? "/video" : "/preview-video"}?t=${Date.now()}"></video>` : "";
+  $("#dl-video").href = (final ? "/video" : "/preview-video") + "?download=1";
+  $("#dl-video").textContent = final ? "Final video (MP4)" : "Draft preview (MP4)";
+  $("#dl-video").hidden = !hasPlayable;
   $("#thumb-wrap").innerHTML = st.has_thumb ? `<img src="/thumbnail/${Date.now()}" alt="Thumbnail">` : `<div class="empty">No thumbnail yet</div>`;
-  loadThumb();
-  $("#review-src").textContent = st.library_id ? "from My videos" : "";
+  if (st.has_thumb) loadThumb();
+  $("#rv-thumb").hidden = !st.has_thumb;
+  $('.guide-steps a[href="#rv-thumb"]').hidden = !st.has_thumb;
+  $("#review-src").textContent = st.library_id ? "from My videos" : final ? "Final render" : "Draft — not ready to publish";
   $("#dl-thumb").hidden = !st.has_thumb;
   $("#dl-srt").hidden = !st.has_captions;
   saved = { title: d.title || "", desc: d.description || "", tags: [...(d.tags || [])] };
   fillMeta(saved);
-  $("#sections").innerHTML = d.sections.map((s, i) => `
+  $("#sections").innerHTML = (d.sections || []).map((s, i) => `
     <details class="section"><summary><span class="n">${String(i + 1).padStart(2, "0")}</span><span>${esc(s.title || s.section_type || "Section")}</span><span class="tag">${esc(s.section_type || "")}</span></summary><p>${esc(s.narration || "")}</p></details>`).join("") || `<div class="hint">No script</div>`;
   const credits = d.credits || [];
   const bySrc = credits.reduce((a, c) => (a[c.source] = (a[c.source] || 0) + 1, a), {});
@@ -24,7 +37,8 @@ async function loadReview() {
   $("#upload-status").innerHTML = st.yt_url ? `Already on YouTube: <a class="link" href="${esc(st.yt_url)}" target="_blank" rel="noopener">${esc(st.yt_url)}</a>` : "";
   $("#ideas").innerHTML = "";
   loadKeywords();
-  checkYt();
+  if (final) checkYt();
+  await loadStoryboard(st);
 }
 function sourcesHTML(sources) {
   if (!sources || !sources.length) return `<div class="hint">No fact-check sources for this video.</div>`;

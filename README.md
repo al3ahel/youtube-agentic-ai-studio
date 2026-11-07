@@ -29,14 +29,55 @@ https://github.com/user-attachments/assets/e94dab2d-3110-440c-b82e-b9289c0e6b51
 
 ## ⚡ Quick start
 
-```bash
-git clone https://github.com/raunakpatil/youtube-agentic-ai-studio.git
-cd youtube-agentic-ai-studio
-pip install -r requirements.txt
-python gui.py          # opens http://localhost:7070
+### Motion Studio fork
+
+This fork adds **animated HTML/SVG scenes** synchronized to measured narration.
+Choose **Motion** for diagrams, timelines, comparisons, charts and kinetic text;
+**Hybrid** adds real Pexels video footage. **Classic** keeps the original photo renderer.
+Review the storyboard, change one scene, then render a draft or final MP4 without
+recording the voice again. [Motion workflow and architecture](docs/MOTION_STUDIO.md).
+
+![Motion Studio: editable scenes beside the local animated preview](docs/screenshots/motion-studio.png)
+
+Install **Python 3.12**, **Node.js 22 or later**, and **FFmpeg with ffprobe** first.
+Use a separate environment; the full app still contains the pinned legacy MoviePy stack.
+
+**Windows PowerShell:**
+
+```powershell
+git clone --branch feat/motion-studio https://github.com/al3ahel/youtube-agentic-ai-studio.git yaas-motion
+cd yaas-motion
+py -3.12 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install --upgrade pip
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m pip check
+npm ci --prefix renderers/hyperframes
+node renderers/hyperframes/node_modules/hyperframes/bin/hyperframes.mjs browser ensure
+$env:STUDIO_PORT = "8765"
+.\.venv\Scripts\python.exe gui.py
 ```
 
-Then type a topic on the Home screen and press **Make video**. That's it.
+**macOS / Linux:**
+
+```bash
+git clone --branch feat/motion-studio https://github.com/al3ahel/youtube-agentic-ai-studio.git yaas-motion
+cd yaas-motion
+python3.12 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
+npm ci --prefix renderers/hyperframes
+node renderers/hyperframes/node_modules/hyperframes/bin/hyperframes.mjs browser ensure
+.venv/bin/python gui.py
+```
+
+Open **Check setup** on Home, choose **Motion** and **Draft preview**, enter a topic,
+then press **Make video**. Review → Storyboard lets you scrub the local HTML preview,
+regenerate an individual scene and render the final video.
+
+An OpenRouter key is optional for visual planning. Without one, local animated
+templates still work with an existing script and narration. The free router is
+`openrouter/free`; explicit model choices are checked against the live catalogue.
+Only free text output models are used for planning and optional frame review.
+This does not provide a free generative video model or remove provider quotas.
 
 Use **Python 3.10, 3.11 or 3.12**. Python 3.13+ isn't supported yet (the pinned `numpy<2` has no prebuilt wheels for it).
 
@@ -88,7 +129,9 @@ topic ──► Research ──► Fact-check ──► Script ──► Visuals
 | ✍️ **Never-stuck AI** | Gemini model chain → Groq → OpenRouter → Pollinations (keyless), so a quota error doesn't kill the run. Broken JSON from models is repaired automatically. |
 | 🖼️ **Visuals without a key** | Pexels → Pixabay → NASA (public domain, space topics) → Openverse (CC, credited) → AI-generated images. Credits are written into the description for you. |
 | 🎙️ **Free voice** | Microsoft Edge neural voices with word-synced captions. |
-| 🎞️ **Long videos & Shorts** | 16:9 with chapters, Ken Burns motion and B-roll cuts, or 9:16 Shorts with big captions. Each format gets matching thumbnails and its own section in My videos. |
+| 🎞️ **Motion / Hybrid / Classic** | HTML/SVG motion templates and real stock video in 16:9 or 9:16, with the original photo renderer retained as Classic. Measured narration drives scene boundaries and chapters. |
+| 🎛️ **Editable storyboard** | Scrub the local HTML preview, regenerate one scene and render a draft or final MP4 from the same plan. Full projects, narration, timing, media and credits are archived for reopening. |
+| 👁️ **Optional visual review** | An explicitly enabled free vision model checks a few rendered frames for visible layout problems. Review is advisory and does not certify factual accuracy. |
 | 🏷️ **Your brand** | Your channel name appears in the intro, on Shorts and on thumbnails. Change the text or switch it off in Settings. |
 | ✦ **Title Lab** | 6 alternative titles written from what people actually search, each scored. |
 | 🔎 **Findability score** | 11 checks based on YouTube best practice (length, keyword placement, chapters, tags, hashtags, call to action), each with a tip. |
@@ -110,10 +153,10 @@ Everything below is free. **Keyless** ones work out of the box; the others need 
 |---|---|---|
 | Google Gemini | Research, scripts, titles | free key, recommended |
 | Groq | Fast backup AI | free key, optional |
-| OpenRouter | Backup AI (free models) | free key, optional |
+| OpenRouter | Free text planning, backup AI and optional vision review | free key, optional; quotas apply |
 | Pollinations (text) | Last-resort backup AI | keyless |
 | Edge TTS | Neural voiceover | keyless |
-| Pexels | Stock photos | free key, optional |
+| Pexels | Stock photos and real video clips in Hybrid mode | free key, optional |
 | Pixabay | Stock photos | free key, optional |
 | NASA Image Library | Public-domain space imagery | keyless |
 | Openverse | Creative Commons images (credited) | keyless |
@@ -199,11 +242,15 @@ Non-secret settings (voice, channel description, video style) are saved to `sett
 ## 🧪 Running the tests
 
 ```bash
-pip install pytest
-pytest
+python -m pip install pytest
+python -m pytest -q
 ```
 
-The suite runs offline with no API keys. It covers JSON repair, the findability score, every thumbnail style in both shapes, descriptions and credits, the watermark, `.env` handling and the AI model chain. GitHub Actions runs it on every push and pull request.
+The Python suite runs offline without API keys. It covers the original app plus
+measured audio, stale-cache rejection, free model selection, scene planning,
+preview isolation, project reopening and renderer cancellation. See
+[Motion Studio verification](docs/MOTION_STUDIO.md#verification) for browser tests
+and real HyperFrames MP4 smoke renders in both orientations.
 
 ---
 

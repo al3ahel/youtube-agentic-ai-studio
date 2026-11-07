@@ -3,6 +3,7 @@ from flask import Blueprint, jsonify, request
 
 import config
 from agents.researcher import load_banned_topics, save_banned_topics
+from studio.state import job_lock, state
 
 bp = Blueprint("settings", __name__)
 
@@ -47,6 +48,14 @@ _SETTINGS = {
     "trends_geo":       ("TRENDS_GEO",         str),
     "groq_model":       ("GROQ_MODEL",         str),
     "openrouter_model": ("OPENROUTER_MODEL",   str),
+    "visual_mode":      ("VISUAL_MODE", str),
+    "visual_ai_enabled": ("VISUAL_AI_ENABLED", bool),
+    "visual_planner_model": ("VISUAL_PLANNER_MODEL", str),
+    "visual_review_model": ("VISUAL_REVIEW_MODEL", str),
+    "visual_review_enabled": ("VISUAL_REVIEW_ENABLED", bool),
+    "openrouter_free_only": ("OPENROUTER_FREE_ONLY", bool),
+    "motion_quality":   ("MOTION_QUALITY", str),
+    "motion_workers":   ("MOTION_WORKERS", int),
 }
 
 @bp.route("/api/settings")
@@ -62,7 +71,16 @@ def get_settings():
 
 @bp.route("/api/save-settings", methods=["POST"])
 def save_settings_route():
+    with job_lock:
+        if state.get("running") or state.get("visual_editing") or state.get("uploading"):
+            return jsonify({"ok": False, "error": "Wait for the current job to finish before changing settings."}), 409
+        return _save_settings()
+
+
+def _save_settings():
     body = request.get_json(force=True) or {}
+    if not isinstance(body, dict):
+        return jsonify({"ok": False, "error": "Expected a settings object."}), 400
     env_updates, src_updates = {}, {}
 
     for k, (attr, typ) in _SETTINGS.items():
@@ -79,18 +97,30 @@ def save_settings_route():
             src_updates[attr] = val
         elif typ is float:
             try: val = float(val)
-            except (TypeError, ValueError): continue
+            except (TypeError, ValueError):
+                return jsonify({"ok": False, "error": f"Invalid value for {k}."}), 400
+            src_updates[attr] = val
+        elif typ is int:
+            try:
+                if isinstance(val, bool) or str(val) != str(int(val)):
+                    raise ValueError()
+                val = int(val)
+            except (TypeError, ValueError):
+                return jsonify({"ok": False, "error": f"Invalid value for {k}."}), 400
             src_updates[attr] = val
         elif typ is list:
             val = [str(v) for v in val] if isinstance(val, list) else [v.strip() for v in str(val).split(",") if v.strip()]
             src_updates[attr] = val
         else:
             src_updates[attr] = str(val)
-        setattr(config, attr, val)
 
     if body.get("channel_desc") is not None:
         cd = str(body["channel_desc"]).strip()
-        src_updates["CHANNEL_DESCRIPTION"] = config.CHANNEL_DESCRIPTION = cd
+        src_updates["CHANNEL_DESCRIPTION"] = cd
+
+    invalid = [key for key, value in src_updates.items() if not config._valid_setting(key, value)]
+    if invalid:
+        return jsonify({"ok": False, "error": "Invalid setting: " + ", ".join(invalid)}), 400
 
     try:
         if env_updates:
@@ -98,7 +128,10 @@ def save_settings_route():
         if src_updates:
             config.save_settings(src_updates)
     except Exception as e:
-        return jsonify({"ok": False, "error": f"Saved to memory but disk write failed: {e}"})
+        return jsonify({"ok": False, "error": f"Could not save settings: {e}"})
+
+    for attr, value in {**env_updates, **src_updates}.items():
+        setattr(config, attr, value)
 
     # Settings that change API behaviour invalidate the cached results
     from apis import trends as tr
@@ -113,6 +146,8 @@ def get_banned_topics():
 
 @bp.route("/api/save-banned-topics", methods=["POST"])
 def post_banned_topics():
+    if state.get("running") or state.get("visual_editing"):
+        return jsonify({"ok": False, "error": "Wait for the current job to finish before editing topics."}), 409
     body   = request.get_json(force=True) or {}
     topics = body.get("topics", [])
     try:

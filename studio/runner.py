@@ -1,199 +1,359 @@
-"""The video pipeline, run in a background thread by POST /api/run."""
+"""Pipeline worker: measured speech owns the clock, render-only reuses edits."""
 import json
-import os
+from pathlib import Path
+import shutil
+import subprocess
 import sys
 import time
-from pathlib import Path
 
 import config
 from studio.description import build_description
 from studio.library import archive_project
-from studio.state import Capture, log, log_queue, stage, state, stop_event
+from studio.state import Capture, job_lock, log, log_queue, stage, state, stop_event
 from studio.thumbs import make_thumbnail
 
+
+def _load_json(path):
+    try:
+        value = json.loads(Path(path).read_text(encoding="utf-8"))
+        return value if isinstance(value, dict) else None
+    except (OSError, ValueError):
+        return None
+
+
+def _save_json(path, value):
+    path = Path(path)
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_text(json.dumps(value, ensure_ascii=False, indent=2, allow_nan=False),
+                         encoding="utf-8")
+    temporary.replace(path)
+
+
+def _invalidate(output, *, script=False, audio=False, visuals=False):
+    """Invalidate generated caches after their source successfully changes."""
+    state.update(video_path=None, preview_path=None, visual_qa=None,
+                 library_id=None, yt_url=None, upload_warning=None)
+    names = ["visual_qa.json"]
+    if script:
+        state.update(script=None, image_map={}, thumb_path=None, thumb_bg=None,
+                     thumb_text=None, thumb_bg_index=0)
+        names += ["script.json", "credits.json", "video_credits.json"]
+    if audio:
+        state.update(audio_path=None, render_audio_path=None)
+        names += ["narration.wav", "narration.mp3", "narration_mixed.mp3",
+                  "narration.srt", "narration.timings.json", "render_audio.json"]
+        # These assets belong to the old script, even when a user unchecks the
+        # Images step on the next run. Never reuse them as the new script's B-roll.
+        state.update(image_map={}, thumb_path=None, thumb_bg=None, thumb_text=None, thumb_bg_index=0)
+        names += ["credits.json", "video_credits.json"]
+        images = Path(config.IMAGES_DIR).resolve()
+        root = output.resolve()
+        if images != root and root in images.parents and images.is_dir() and not Path(config.IMAGES_DIR).is_symlink():
+            shutil.rmtree(images)
+            images.mkdir(parents=True, exist_ok=True)
+    if visuals or audio:
+        state.update(timeline=None, visual_plan=None)
+        names += ["timeline.json", "scene_plan.json"]
+        motion = output / "motion"
+        if motion.is_dir() and not motion.is_symlink():
+            shutil.rmtree(motion)
+    for name in names:
+        (output / name).unlink(missing_ok=True)
+
+
+def _audio_path(output):
+    candidates = [state.get("audio_path"), output / "narration.wav", output / "narration.mp3"]
+    root = output.resolve()
+    return next((str(Path(p).resolve()) for p in candidates if p and Path(p).is_file()
+                 and root in Path(p).resolve().parents), None)
+
+
+def _matching_plan(plan, timeline, mode):
+    if not isinstance(plan, dict) or plan.get("script_signature") != timeline["script_signature"]:
+        return False
+    if plan.get("timeline_signature") != timeline["timeline_signature"]:
+        return False
+    if plan.get("mode") != mode or any(plan.get(k) != timeline[k] for k in ("fps", "width", "height")):
+        return False
+    try:
+        return abs(float(plan["duration"]) - timeline["duration"]) < .001
+    except (KeyError, TypeError, ValueError):
+        return False
+
+
+def _review_video(video_path, plan, output):
+    """Optional remote frame review; disabled unless explicitly enabled."""
+    if not getattr(config, "VISUAL_REVIEW_ENABLED", False):
+        return {"status": "disabled", "passed": None, "issues": []}
+    from apis.openrouter import review_frames
+    frames = []
+    try:
+        folder = output / "visual_review"
+        folder.mkdir(exist_ok=True)
+        scenes = plan["scenes"]
+        count = min(4, len(scenes))
+        indices = sorted({round(i * (len(scenes) - 1) / max(1, count - 1)) for i in range(count)})
+        for index in indices:
+            if stop_event.is_set():
+                raise InterruptedError("Stopped before visual review")
+            scene = scenes[index]
+            stamp = scene["start"] + scene["duration"] * .65
+            target = folder / f"frame-{index}.jpg"
+            subprocess.run([shutil.which("ffmpeg"), "-nostdin", "-y", "-v", "error", "-ss", str(stamp),
+                            "-i", str(video_path), "-frames:v", "1", "-vf", "scale=960:-2",
+                            str(target)], check=True, capture_output=True, timeout=30)
+            frames.append(str(target))
+        log("Reviewing sampled frames with the selected free vision model…")
+        return review_frames(frames,
+                             "Check these video frames for unreadable text, clipping, overlaps, "
+                             "missing visuals and poor contrast. Captions may cover the reserved "
+                             "bottom area. Report visible problems only; this is not a fact check.",
+                             model=getattr(config, "VISUAL_REVIEW_MODEL", "openrouter/free"))
+    except InterruptedError:
+        raise
+    except (OSError, ValueError, TypeError, subprocess.SubprocessError) as exc:
+        log(f"Visual review unavailable: {exc}", "warn")
+        return {"status": "unavailable", "reason": "frame_review_failed", "passed": None, "issues": []}
+
+
 def run_pipeline_thread(steps: list, topic_override: str = "", video_type: str = "normal",
-                  focus_angle: str = "", use_trends: bool = False):
+                        focus_angle: str = "", use_trends: bool = False,
+                        visual_mode=None, preview_only=False):
     orig_stdout = sys.stdout
     sys.stdout = Capture(orig_stdout)
-    state["running"] = True
-    state["error"]   = None
-    state["stop_requested"] = False
-    state["started_at"] = time.time()
-    stop_event.clear()
+    mode = visual_mode or getattr(config, "VISUAL_MODE", "motion")
+    output = Path(config.OUTPUT_DIR)
+    state.update(running=True, error=None, started_at=time.time(), visual_mode=mode,
+                 preview_only=preview_only, video_type=video_type)
+    # /api/run clears the event before starting this worker. Clearing it here
+    # would lose a Stop click arriving immediately after Start.
 
-    def _check_stop(after_stage: str):
-        """Raise if user clicked Stop."""
+    def check_stop(after_stage):
         if stop_event.is_set():
-            raise InterruptedError(f"Stopped by user after {after_stage}")
+            raise InterruptedError(f"Stopped after {after_stage}")
+
+    def complete():
+        log("Pipeline complete!", "info")
+        log_queue.put(("done", ""))
 
     try:
-        Path(config.OUTPUT_DIR).mkdir(exist_ok=True)
-        Path(config.IMAGES_DIR).mkdir(exist_ok=True)
+        stage("preparation", "running")
+        from studio.preflight import check_environment
+        checks = check_environment(steps, mode)
+        state["preflight"] = checks
+        if not checks["ok"]:
+            failures = [c["message"] + (". Fix: " + c["fix"] if c.get("fix") else "")
+                        for c in checks["checks"] if not c["ok"]]
+            raise RuntimeError("Preparation failed: " + " | ".join(failures))
+        output.mkdir(parents=True, exist_ok=True)
+        Path(config.IMAGES_DIR).mkdir(parents=True, exist_ok=True)
+        stage("preparation", "done")
+        check_stop("preparation")
 
-        from agents.researcher   import research_topic
-        from agents.scriptwriter import write_script
-        from video.narrator      import generate_narration
-        from video.stock         import download_images, section_images
-        from video.creator       import create_video
-        from video.music         import mix_music_with_narration
-
-        # ── Research ──────────────────────────────────────────
         if "research" in steps:
             stage("research", "running")
+            from agents.researcher import research_topic
             trend_context = None
             if use_trends and not topic_override:
                 try:
                     from apis.trends import headlines
                     trend_context = headlines()
-                except Exception as e:
-                    log(f"Trend Radar unavailable: {e}", "warn")
-            research = research_topic(
-                channel_description = config.CHANNEL_DESCRIPTION,
-                topic_override      = topic_override,
-                focus_angle         = focus_angle,
-                trend_context       = trend_context,
-            )
+                except Exception as exc:
+                    log(f"Trend Radar unavailable: {exc}", "warn")
+            research = research_topic(config.CHANNEL_DESCRIPTION, topic_override=topic_override,
+                                      focus_angle=focus_angle, trend_context=trend_context)
+            check_stop("research")
+            _invalidate(output, script=True, audio=True, visuals=True)
             state["research"] = research
-            state.update(library_id=None, thumb_text=None, thumb_bg_index=0)
-            with open(f"{config.OUTPUT_DIR}/research.json", "w", encoding="utf-8") as f:
-                json.dump(research, f, indent=2)
+            _save_json(output / "research.json", research)
             stage("research", "done")
             log_queue.put(("research", ""))
-            log(f"Topic: {research['video_title']}")
-        else:
-            try:
-                with open(f"{config.OUTPUT_DIR}/research.json", encoding="utf-8") as f:
-                    state["research"] = json.load(f)
-            except: pass
+            log(f"Topic: {research.get('video_title', topic_override)}")
+        elif not state.get("research"):
+            state["research"] = _load_json(output / "research.json")
+        if not set(steps) - {"research"}:
+            complete()
+            return
 
-        _check_stop("research")
-        research = state["research"]
-        if not research: raise ValueError("No research data — run Research step first.")
-
-        # ── Script ────────────────────────────────────────────
         if "script" in steps:
             stage("script", "running")
+            if not state.get("research"):
+                raise ValueError("No research data. Run the Research step first.")
+            from agents.scriptwriter import write_script
             log(f"Generating {'Shorts' if video_type == 'shorts' else 'normal'} script…")
-            script = write_script(research, video_type=video_type)
-            state["script"] = script
-            with open(f"{config.OUTPUT_DIR}/script.json", "w", encoding="utf-8") as f:
-                json.dump(script, f, indent=2)
+            script = write_script(state["research"], video_type=video_type)
+            check_stop("script")
+            _invalidate(output, audio=True, visuals=True)
+            state.update(script=script, image_map={}, thumb_path=None, thumb_bg=None)
+            _save_json(output / "script.json", script)
             stage("script", "done")
-            log(f"Script: {len(script['sections'])} sections")
+            log(f"Script: {len(script.get('sections', []))} sections")
+        elif not state.get("script"):
+            state["script"] = _load_json(output / "script.json")
+        script = state.get("script")
+        if not script:
+            raise ValueError("No script data. Run the Script step first.")
+        check_stop("script")
+        if not set(steps) - {"research", "script"}:
+            state["description"] = build_description(script, state.get("research") or {}, video_type)
+            complete()
+            return
+
+        if mode == "classic":
+            state.update(visual_plan=None, visual_qa=None, preview_path=None)
+            if "images" in steps:
+                stage("images", "running")
+                from video.stock import download_images
+                state["image_map"] = download_images(script, str(output))
+                _invalidate(output)
+                stage("images", "done")
+            elif not state.get("image_map"):
+                from video.stock import section_images
+                state["image_map"] = {s["id"]: section_images(config.IMAGES_DIR, s["id"])
+                                      for s in script.get("sections", [])}
         else:
-            try:
-                with open(f"{config.OUTPUT_DIR}/script.json", encoding="utf-8") as f:
-                    state["script"] = json.load(f)
-            except: pass
+            state["image_map"] = {}
+            stage("images", "skipped")
+            if "images" in steps:
+                log("Motion uses animated scenes; Hybrid adds downloaded stock video during visual planning.")
+        check_stop("images")
+        if not set(steps) & {"narration", "music", "visuals", "video"}:
+            complete()
+            return
 
-        _check_stop("script")
-        script = state["script"]
-        if not script: raise ValueError("No script data — run Script step first.")
-
-        # ── Images ────────────────────────────────────────────
-        state["thumb_bg"] = None
-        if "images" in steps:
-            stage("images", "running")
-            image_map = download_images(script, config.OUTPUT_DIR)
-            state["image_map"] = image_map
-            stage("images", "done")
-        else:
-            is_shorts = video_type == "shorts" or script.get("video_type") == "shorts"
-            image_map = {}
-            for s in script.get("sections", []):
-                paths = section_images(config.IMAGES_DIR, s["id"])
-                image_map[s["id"]] = paths if (paths or is_shorts) else None
-            state["image_map"] = image_map
-
-        _check_stop("images")
-
-        # ── Narration ─────────────────────────────────────────
         if "narration" in steps:
             stage("narration", "running")
-            audio_path = generate_narration(script, config.OUTPUT_DIR)
+            from video.narrator import generate_narration
+            audio_path = generate_narration(script, str(output), stop_event=stop_event)
+            _invalidate(output, visuals=True)
+            (output / "narration_mixed.mp3").unlink(missing_ok=True)
+            (output / "render_audio.json").unlink(missing_ok=True)
+            state["render_audio_path"] = None
             state["audio_path"] = audio_path
             stage("narration", "done")
         else:
-            ap = os.path.join(config.OUTPUT_DIR, "narration.mp3")
-            state["audio_path"] = ap if os.path.exists(ap) else None
+            state["audio_path"] = _audio_path(output)
+        check_stop("narration")
+        if not state.get("audio_path"):
+            raise FileNotFoundError("Narration is missing. Run the Narration step first.")
 
-        if not state["audio_path"] or not os.path.exists(state["audio_path"]):
-            raise FileNotFoundError("narration.mp3 missing — run Narration step.")
+        from video.timeline import build_timeline
+        stage("narration", "running")
+        if mode != "classic" or (output / "narration.timings.json").is_file():
+            state["timeline"] = build_timeline(script, state["audio_path"], str(output), video_type)
+        else:
+            state["timeline"] = None
+            log("Legacy narration has no measured sections. Regenerate narration for synchronized chapters and scenes.", "warn")
+        stage("narration", "done")
 
-        _check_stop("narration")
-
-        # ── Music  (optional, non-blocking) ───────────────────
-        final_audio_path = state["audio_path"]
+        final_audio = state["audio_path"]
         if config.MUSIC_ENABLED and "music" in steps:
-            log("Mixing background music from library…")
-            mixed_path = os.path.join(config.OUTPUT_DIR, "narration_mixed.mp3")
-            final_audio_path = mix_music_with_narration(
-                narration_path = state["audio_path"],
-                output_path    = mixed_path,
-                music_volume   = getattr(config, "MUSIC_VOLUME", 0.12),
-                library_dir    = getattr(config, "MUSIC_LIBRARY_DIR", ""),
-            )
-            log("Audio ready (narration + music)")
+            from video.music import mix_music_with_narration
+            log("Mixing background music from your local music folder…")
+            final_audio = mix_music_with_narration(
+                narration_path=state["audio_path"], output_path=str(output / "narration_mixed.mp3"),
+                music_volume=getattr(config, "MUSIC_VOLUME", .12),
+                library_dir=getattr(config, "MUSIC_LIBRARY_DIR", ""))
+        elif not set(steps) & {"music", "narration"}:
+            soundtrack = _load_json(output / "render_audio.json") or {}
+            timeline = state.get("timeline") or {}
+            candidate = (output / str(soundtrack.get("path", ""))).resolve()
+            if (soundtrack.get("audio_sha256") == timeline.get("audio_sha256")
+                    and candidate.is_file() and output.resolve() in candidate.parents):
+                final_audio = str(candidate)
+        state["render_audio_path"] = final_audio
+        if "music" in steps:
+            _invalidate(output)
+        if state.get("timeline"):
+            _save_json(output / "render_audio.json", {
+                "path": str(Path(final_audio).resolve().relative_to(output.resolve())),
+                "audio_sha256": state["timeline"]["audio_sha256"],
+            })
+        check_stop("music")
 
-        _check_stop("music")
+        plan = None
+        if mode in {"motion", "hybrid"} and (set(steps) & {"visuals", "video"}
+                or ("music" in steps and state.get("visual_plan"))):
+            stage("visuals", "running")
+            from agents.visual_director import plan_scenes, validate_plan
+            from video.renderers.html import prepare_motion_project
+            saved = state.get("visual_plan") or _load_json(output / "scene_plan.json")
+            if "visuals" in steps:
+                _invalidate(output)
+                plan = plan_scenes(script, state["timeline"], mode=mode, output_dir=str(output),
+                                   use_ai=getattr(config, "VISUAL_AI_ENABLED", True))
+                plan["script_signature"] = state["timeline"]["script_signature"]
+                plan["timeline_signature"] = state["timeline"]["timeline_signature"]
+                plan["audio_duration"] = state["timeline"]["audio_duration"]
+                _save_json(output / "scene_plan.json", plan)
+            elif _matching_plan(saved, state["timeline"], mode):
+                plan = validate_plan(saved)
+                log("Reusing the edited storyboard and recorded narration.")
+            else:
+                raise ValueError("No matching storyboard. Run the Visuals step after choosing the mode and generating narration.")
+            state["visual_plan"] = plan
+            for warning in plan.get("warnings", []):
+                log(warning, "warn")
+            prepare_motion_project(plan, final_audio, str(output))
+            stage("visuals", "done")
+        elif mode == "classic":
+            state.update(visual_plan=None, visual_qa=None, preview_path=None)
+            stage("visuals", "skipped")
+        check_stop("visual planning")
 
-        # ── Thumbnail ─────────────────────────────────────────
-        log("Generating thumbnail…")
-        try:
-            image_map_int = {int(k): v for k, v in state["image_map"].items()}
-            thumb = make_thumbnail(script, image_map_int, config.OUTPUT_DIR)
-            state["thumb_path"] = thumb
-            log(f"Thumbnail saved: {thumb}")
-        except Exception as e:
-            log(f"Thumbnail failed (non-fatal): {e}", "warn")
-
-        _check_stop("thumbnail")
-
-        # ── Video ─────────────────────────────────────────────
         if "video" in steps:
             stage("video", "running")
-            image_map_int = {int(k): v for k, v in state["image_map"].items()}
-            video_path = create_video(
-                script, final_audio_path, config.OUTPUT_DIR, image_map_int,
-                video_type=video_type
-            )
-            state["video_path"] = video_path
+            state.update(video_path=None, library_id=None, yt_url=None, visual_qa=None)
+            if mode in {"motion", "hybrid"}:
+                from video.renderers.html import render_motion_video
+                video_path = render_motion_video(
+                    script, final_audio, str(output), plan, video_type=video_type,
+                    preview=preview_only, stop_event=stop_event, progress=log)
+                if preview_only:
+                    state["preview_path"] = video_path
+                else:
+                    state["video_path"] = video_path
+                state["visual_qa"] = _review_video(video_path, plan, output)
+                _save_json(output / "visual_qa.json", state["visual_qa"])
+                if state["visual_qa"].get("passed") is False:
+                    log("Visual review flagged issues. Inspect the storyboard before publishing.", "warn")
+            else:
+                from video.creator import create_video
+                image_map = {int(k): v for k, v in state.get("image_map", {}).items()}
+                state["video_path"] = create_video(script, final_audio, str(output), image_map,
+                                                    video_type=video_type, timeline=state.get("timeline"))
+            check_stop("video rendering")
             stage("video", "done")
-        else:
-            vp_short = os.path.join(config.OUTPUT_DIR, "final_short.mp4")
-            vp_norm  = os.path.join(config.OUTPUT_DIR, "final_video.mp4")
-            vp = vp_short if os.path.exists(vp_short) else vp_norm
-            state["video_path"] = vp if os.path.exists(vp) else None
+            try:
+                image_map = {int(k): v for k, v in state.get("image_map", {}).items()}
+                state["thumb_path"] = make_thumbnail(script, image_map, str(output))
+            except Exception as exc:
+                log(f"Thumbnail unavailable: {exc}", "warn")
 
-        # ── Build description ─────────────────────────────────
-        if state["research"] and state["script"]:
-            state["description"] = build_description(
-                state["script"], state["research"], video_type=video_type)
-
-        # ── Archive to Library ───────────────────────────────
-        if "video" in steps:
-            try: archive_project()
-            except Exception as e: log(f"Library archive failed (non-fatal): {e}", "warn")
-
-        log("Pipeline complete!", "info")
-        log_queue.put(("done", ""))
-
-    except InterruptedError as e:
-        log(f"⏹ {e}", "warn")
-        for s in state["stages"]:
-            if state["stages"][s] == "running":
-                state["stages"][s] = "pending"
+        state["description"] = build_description(script, state.get("research") or {},
+                                                  video_type=video_type, timeline=state.get("timeline"))
+        if "video" in steps and not preview_only:
+            try:
+                archive_project()
+            except Exception as exc:
+                log(f"Archive failed; working files are still available: {exc}", "warn")
+        complete()
+    except InterruptedError as exc:
+        log(str(exc), "warn")
+        for name, status in list(state["stages"].items()):
+            if status == "running":
+                stage(name, "pending")
         log_queue.put(("stopped", ""))
-
-    except Exception as e:
+    except Exception as exc:
         import traceback
         traceback.print_exc(file=orig_stdout)
-        state["error"] = str(e)
-        for s in state["stages"]:
-            if state["stages"][s] == "running":
-                state["stages"][s] = "error"
-        log(f"ERROR: {e}", "error")
-        log_queue.put(("error", str(e)))
+        state["error"] = str(exc)
+        for name, status in list(state["stages"].items()):
+            if status == "running":
+                stage(name, "error")
+        log(f"ERROR: {exc}", "error")
+        log_queue.put(("error", str(exc)))
     finally:
-        state["running"] = False
+        with job_lock:
+            state["running"] = False
         sys.stdout = orig_stdout

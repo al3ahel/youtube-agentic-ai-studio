@@ -41,16 +41,17 @@ function renderChecklist() {
   const P = id => providers.find(p => p.id === id) || {};
   const gemini = P("gemini").ready, backup = P("groq").ready || P("openrouter").ready;
   const named = settings.channel_name && settings.channel_name !== "My AI Channel";
+  const mode = $("#visual-mode").value || settings.visual_mode || "motion";
   const items = [
-    { ok: true, t: "Voiceover", s: "Built in, free, no setup" },
-    { ok: true, t: "Visuals", s: P("pexels").ready ? "Pexels + free image sources" : "Free image sources. Add Pexels for nicer photos" },
+    { ok: true, t: "Voice service", s: "Free Edge TTS. Local setup is checked before recording" },
+    { ok: true, t: "Visual style", s: mode === "motion" ? "Local diagrams, comparisons and animated text" : mode === "hybrid" ? "Motion scenes with licensed footage when available" : P("pexels").ready ? "Pexels + free image sources" : "Classic photos and transitions" },
     { ok: gemini || backup, opt: true, t: "Script writer", s: gemini ? "Gemini connected" : backup ? "Backup AI connected" : "Free backup AI works. A free Gemini key writes better scripts", act: !gemini && ["Add key", "#settings"] },
     { ok: named, opt: true, t: "Channel name", s: named ? settings.channel_name : "Shown in your videos. Set it once", act: !named && ["Set name", "#settings"] },
     { ok: P("youtube_upload").ready, t: "Publishing", s: P("youtube_upload").ready ? "Ready to upload" : "Only needed to upload from here. You can always download the MP4", act: !P("youtube_upload").ready && ["Guide", SETUP_URL] },
   ];
   const n = items.filter(i => i.ok).length;
   $("#ready-num").textContent = `${n}/${items.length}`;
-  $("#ready-text").textContent = "ready. You can make a video now";
+  $("#ready-text").textContent = "service options configured. Check local setup below";
   $("#checklist").innerHTML = items.map(i => `
     <div class="ck ${i.ok ? "ok" : i.opt ? "opt" : ""}"><span class="ic">${i.ok ? "✓" : i.opt ? "!" : "○"}</span>
       <div><b>${i.t}</b><small>${esc(i.s)}</small></div>

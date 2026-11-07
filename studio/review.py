@@ -3,6 +3,7 @@ Review & publish blueprint: script/description data, the thumbnail designer,
 and the Title Lab / SEO tools.
 """
 import json
+from functools import wraps
 import os
 import re
 import time
@@ -13,10 +14,28 @@ import config
 from studio.description import build_description, load_credits
 from studio.files import send
 from studio.library import sync_library
-from studio.state import is_shorts, state
+from studio.state import is_shorts, job_lock, state
 from studio.thumbs import ai_thumbnail_bg, make_thumbnail, thumb_backgrounds, thumb_bg, thumb_settings
 
 bp = Blueprint("review", __name__)
+
+
+def _review_write(function):
+    """Reserve review changes so they cannot overlap a run, upload or scene edit."""
+    @wraps(function)
+    def guarded(*args, **kwargs):
+        if request.method == "GET":
+            return function(*args, **kwargs)
+        with job_lock:
+            if state.get("running") or state.get("visual_editing") or state.get("uploading"):
+                return jsonify({"ok": False, "error": "Wait for the current job to finish before editing this project."}), 409
+            state["visual_editing"] = True
+        try:
+            return function(*args, **kwargs)
+        finally:
+            with job_lock:
+                state["visual_editing"] = False
+    return guarded
 
 @bp.route("/thumbnail")
 def serve_thumb():
@@ -32,7 +51,7 @@ def get_output():
     r = state.get("research") or {}
     return jsonify({
         "title":       s.get("title", ""),
-        "description": state.get("description", build_description(s, r, state.get("video_type","normal")) if s and r else ""),
+        "description": state.get("description", build_description(s, r, state.get("video_type","normal"), timeline=state.get("timeline")) if s and r else ""),
         "tags":        s.get("tags", []),
         "sections":    s.get("sections", []),
         "topic":       r.get("topic", ""),
@@ -65,9 +84,17 @@ def get_research():
     })
 
 @bp.route("/api/save-output", methods=["POST"])
+@_review_write
 def save_output():
     body = request.get_json(force=True) or {}
+    if not isinstance(body, dict):
+        return jsonify({"ok": False, "error": "Expected metadata as an object."}), 400
+    if any(key in body and not isinstance(body[key], str) for key in ("title", "description")):
+        return jsonify({"ok": False, "error": "Title and description must be text."}), 400
+    if "tags" in body and (not isinstance(body["tags"], list) or not all(isinstance(tag, str) for tag in body["tags"])):
+        return jsonify({"ok": False, "error": "Tags must be a list of text values."}), 400
     if state["script"]:
+        os.makedirs(config.OUTPUT_DIR, exist_ok=True)
         if "title"       in body: state["script"]["title"]       = body["title"]
         if "description" in body: state["script"]["description"] = body["description"]
         if "tags"        in body: state["script"]["tags"]        = body["tags"]
@@ -81,6 +108,7 @@ def save_output():
     return jsonify({"ok": True})
 
 @bp.route("/api/regenerate-description", methods=["POST"])
+@_review_write
 def regen_description():
     if not state.get("script") or not state.get("research"):
         return jsonify({"ok": False, "error": "No script loaded"})
@@ -88,7 +116,7 @@ def regen_description():
         from agents.gemini_client import generate
         script   = state["script"]
         research = state["research"]
-        prompt = f"""Write a compelling YouTube video description for this video.
+        prompt = f"""Write compelling opening paragraphs for a YouTube video description.
 
 Title: {script.get('title','')}
 Topic: {research.get('topic','')}
@@ -99,16 +127,16 @@ Tags: {json.dumps(script.get('tags',[]))}
 The description should:
 - Open with the hook question or a gripping statement
 - List what viewers will learn (3-5 bullet points)
-- Include a strong CTA to subscribe and comment
-- End with hashtags
+- Use only the supplied facts
+- Leave chapters, timestamps, sources, credits, subscribe text and hashtags to the application
 
-Return ONLY the description text, no explanation."""
+Return ONLY the opening description text, no explanation."""
         desc = generate(prompt)
-        # Keep the chapters + sources + credits block from the built description
-        built = build_description(script, research, state.get("video_type", "normal"))
-        keep = built[built.find("⏱ CHAPTERS") - 41:] if "⏱ CHAPTERS" in built else ""
-        if keep:
-            desc = desc.rstrip() + "\n\n" + keep
+        # Measured chapters and asset credits stay attached even when an older
+        # project has no timing manifest and therefore no chapter block.
+        desc = build_description({**script, "description": desc},
+                                 {**research, "hook_question": "", "why_now": ""},
+                                 state.get("video_type", "normal"), timeline=state.get("timeline"))
         state["description"] = desc
         return jsonify({"ok": True, "description": desc})
     except Exception as e:
@@ -134,6 +162,7 @@ def _thumb_info():
     }
 
 @bp.route("/api/thumbnail", methods=["GET", "POST"])
+@_review_write
 def thumbnail_api():
     """GET: current design. POST {style?, text?, bg?: next|prev|photo|ai, previews?}: change + re-render."""
     if request.method == "GET":
@@ -180,6 +209,7 @@ def thumb_preview(style):
     return send(os.path.join(PREVIEW_DIR, f"{style}.jpg"), "image/jpeg")
 
 @bp.route("/api/thumbnail-ideas", methods=["POST"])
+@_review_write
 def thumbnail_ideas():
     if not state.get("script"):
         return jsonify({"ok": False, "error": "No video loaded"})
@@ -203,6 +233,7 @@ Return ONLY JSON: {{"texts": ["...", "..."]}}"""
         return jsonify({"ok": False, "error": str(e)})
 
 @bp.route("/api/regenerate-thumbnail", methods=["POST"])
+@_review_write
 def regen_thumbnail():
     """Older endpoint, kept for compatibility: {mode: stock|ai, title?}."""
     body = request.get_json(force=True) or {}
@@ -215,6 +246,7 @@ def _primary_keyword():
     return r.get("topic") or (state.get("script") or {}).get("title", "")
 
 @bp.route("/api/title-ideas", methods=["POST"])
+@_review_write
 def title_ideas():
     if not state.get("script"):
         return jsonify({"ok": False, "error": "No script loaded"})

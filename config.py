@@ -80,7 +80,18 @@ FACT_GROUNDING = True
 # (Pollinations is keyless, so the pipeline never dead-ends)
 KEYLESS_LLM_FALLBACK = True
 GROQ_MODEL           = "llama-3.3-70b-versatile"
-OPENROUTER_MODEL     = "meta-llama/llama-3.3-70b-instruct:free"
+OPENROUTER_MODEL     = "openrouter/free"
+
+# Motion scenes are drawn locally from a validated storyboard. Existing saved
+# preferences override these defaults in the load_settings call below.
+VISUAL_MODE = "motion"                # motion | hybrid | classic
+VISUAL_AI_ENABLED = True
+VISUAL_PLANNER_MODEL = "openrouter/free"
+VISUAL_REVIEW_MODEL = "openrouter/free"
+VISUAL_REVIEW_ENABLED = False          # explicit opt-in before uploading frames
+OPENROUTER_FREE_ONLY = True
+MOTION_QUALITY = "standard"            # draft | standard | high
+MOTION_WORKERS = 1                     # conservative on Windows/laptops
 
 # Image sources tried after Pexels, in order:
 #   pixabay (key) · nasa (public domain, space topics) · openverse (CC) · pollinations (AI)
@@ -246,6 +257,9 @@ USER_SETTINGS = (
     "THUMB_STYLE", "CREDIT_YAAS",
     "VOICE_ID", "VOICE_RATE", "VOICE_PITCH",
     "GEMINI_MODEL", "GROQ_MODEL", "OPENROUTER_MODEL",
+    "VISUAL_MODE", "VISUAL_AI_ENABLED", "VISUAL_PLANNER_MODEL",
+    "VISUAL_REVIEW_MODEL", "VISUAL_REVIEW_ENABLED", "OPENROUTER_FREE_ONLY",
+    "MOTION_QUALITY", "MOTION_WORKERS",
     "FACT_GROUNDING", "KEYLESS_LLM_FALLBACK", "IMAGE_SOURCES", "TRENDS_GEO",
     "MUSIC_ENABLED", "MUSIC_VOLUME",
     "OVERLAY_OPACITY", "KB_ZOOM_START", "KB_ZOOM_END",
@@ -260,11 +274,23 @@ def _valid_setting(key: str, value) -> bool:
     """A saved value must be a known setting with the same type as its default."""
     if key not in DEFAULTS:
         return False
+    choices = {
+        "VISUAL_MODE": {"motion", "hybrid", "classic"},
+        "MOTION_QUALITY": {"draft", "standard", "high"},
+    }
+    if key in choices:
+        return isinstance(value, str) and value in choices[key]
+    if key == "MOTION_WORKERS":
+        return type(value) is int and 1 <= value <= 4
+    if key in {"VISUAL_PLANNER_MODEL", "VISUAL_REVIEW_MODEL"}:
+        return isinstance(value, str) and 0 < len(value.strip()) <= 200 and not any(c.isspace() for c in value)
     default = DEFAULTS[key]
     if isinstance(default, bool):
         return isinstance(value, bool)
     if isinstance(default, float):
         return isinstance(value, (int, float)) and not isinstance(value, bool)
+    if isinstance(default, int):
+        return isinstance(value, int) and not isinstance(value, bool)
     if isinstance(default, str):
         return isinstance(value, str)
     if isinstance(default, list):

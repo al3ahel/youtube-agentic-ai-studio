@@ -1,9 +1,11 @@
 /* ═══════════════════════════ making a video ═══════════════════════════ */
 const STEPS = [
+  ["preparation", "Checking the setup",    "Verifying the dependencies needed for this run"],
   ["research",  "Researching the topic",   "Picking the angle and checking facts"],
   ["script",    "Writing the script",      "Hook, story and a strong ending"],
-  ["images",    "Finding visuals",         "Photos and artwork for every scene"],
+  ["images",    "Finding visual assets",   "Local assets or licensed footage for this visual style"],
   ["narration", "Recording the voiceover", "Natural AI voice with synced captions"],
+  ["visuals",   "Building the storyboard", "Choosing scenes and timing their motion to the voiceover"],
   ["video",     "Rendering the video",     "The slow part, usually 2–10 minutes"],
 ];
 let status = {}, es = null, heroMode = "form", runSteps = [], videoType = "normal", lastRunError = "", lastRequest = null;
@@ -23,14 +25,15 @@ function renderRun(d) {
   let doneCount = 0, current = null, total = 0;
   $("#steps-list").innerHTML = STEPS.map(([k, title, sub]) => {
     let s = stages[k] || "pending";
-    if (runSteps.length && !runSteps.includes(k)) s = "skipped"; else total++;
+    if (runSteps.length && !runSteps.includes(k)) s = "skipped";
+    if (s !== "skipped") total++;
     if (s === "done") doneCount++;
     if (s === "running") current = title;
     const ic = { done: "✓", error: "!", skipped: "–" }[s] || "";
     const label = { done: "done", running: "working…", error: "failed", skipped: "reused" }[s] || "";
     return `<div class="step" data-s="${s}"><span class="ic">${ic}</span><div><b>${title}</b><small>${sub}</small></div><em>${label}</em></div>`;
   }).join("");
-  total = total || 5;
+  total = total || STEPS.length;
   $("#prog-fill").style.width = Math.min(100, (doneCount + (current ? .5 : 0)) / total * 100) + "%";
   $("#prog-step").textContent = current ? `Step ${Math.min(total, doneCount + 1)} of ${total}: ${current.toLowerCase()}` : d.running ? "Getting ready…" : "";
   $("#prog-time").textContent = d.started_at ? clock(Date.now() / 1000 - d.started_at) + " so far" : "";
@@ -39,9 +42,11 @@ function renderRun(d) {
 function applyStatus(d) {
   const was = status.running;
   status = d;
-  const state = d.running ? "running" : d.error ? "error" : d.has_video ? "done" : "idle";
+  const state = d.running ? "running" : d.error ? "error" : d.has_video || d.has_preview || d.has_storyboard ? "done" : "idle";
   $("#status-pill").className = "status-pill " + state;
-  $("#status-text").textContent = d.uploading ? "Uploading…" : d.running ? "Making video…" : d.error ? "Last run failed" : "Ready";
+  $("#status-text").textContent = d.uploading ? "Uploading…" : d.running ? (d.preview_only ? "Making a draft…" : "Making video…") : d.visual_editing ? "Updating project…" : d.error ? "Last run failed" : d.has_storyboard && !d.has_video ? "Draft ready" : "Ready";
+  $("#tabs a[data-view=review]").textContent = d.has_storyboard && !d.has_video ? "Review draft" : "Review & publish";
+  if (typeof updateVisualControls === "function") updateVisualControls(d);
   if (d.running) {
     if (heroMode !== "running") {
       setHero("running");
@@ -68,12 +73,22 @@ async function onFinished(d) {
     const quota = /429|quota|RESOURCE_EXHAUSTED|All .*failed/i.test(msg);
     $("#run-title").textContent = "That didn't work";
     $("#run-topic").textContent = "";
-    $("#run-error").innerHTML = `<div class="err-box"><b>Stopped at: ${failed ? failed[1].toLowerCase() : "a step"}</b>${esc(msg.slice(0, 400))}
+    const preparation = d.preflight && !d.preflight.ok ? environmentHTML(d.preflight, true) : "";
+    $("#run-error").innerHTML = `<div class="err-box"><b>Stopped at: ${failed ? failed[1].toLowerCase() : "preparation"}</b>${esc(msg.slice(0, 800))}
       <div style="margin-top:8px;color:#d9a8ae">${quota ? "The free AI ran out of quota. Wait a minute and try again, or add a free key in Settings for more quota."
-        : "Try again. If it keeps happening, the technical log below has the details."}</div></div>
+        : preparation ? "Fix the missing items below in the same environment, then try again." : "The technical log below has the details."}</div>${preparation}</div>
       <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap"><button class="btn btn-white" onclick="retry()">Try again</button><button class="btn btn-ghost" onclick="setHero('form')">Change topic</button><a class="btn btn-ghost" href="#settings">Settings</a></div>`;
     setHero("error");
     $("#log-details").open = true;
+    return;
+  }
+  if (!d.has_video && (d.has_preview || d.has_storyboard)) {
+    $("#run-title").textContent = "Your draft is ready";
+    $("#run-topic").textContent = "";
+    $("#run-done").innerHTML = `<div class="draft-ready"><span class="tag">Draft preview</span><h3>Review the motion before the final render</h3><p class="hint">Play the storyboard, change any scene, then render the final video from Review. This draft has not been archived or published.</p><a class="btn btn-white btn-lg" href="#review">Review scenes →</a></div>`;
+    setHero("done");
+    $("#tabs a[data-view=review]").classList.add("notify");
+    if (location.hash === "#review") loadReview();
     return;
   }
   if (!d.has_video || (lastRequest && !lastRequest[2].includes("video"))) {
@@ -93,6 +108,7 @@ async function onFinished(d) {
   setHero("done");
   $("#tabs a[data-view=review]").classList.add("notify");
   toast("Your video is ready", "ok");
+  if (location.hash === "#review") loadReview();
 }
 
 function startSSE() {
@@ -128,21 +144,24 @@ function log(msg) {
   c.scrollTop = c.scrollHeight;
 }
 
-async function startRun(topic, surprise) {
-  const steps = $$("#steps input:checked").map(i => i.value);
+async function startRun(topic, surprise, options = {}) {
+  const mode = options.visual_mode || $("#visual-mode").value;
+  const preview = mode !== "classic" && (options.preview_only ?? $("#draft-preview").checked);
+  const steps = (options.steps || $$("#steps input:checked").map(i => i.value)).filter(step => mode !== "classic" || step !== "visuals");
   if (!steps.length) return toast("Turn on at least one step under More options", "err");
-  if (!surprise && !topic) { $("#topic-input").focus(); return toast("Type a topic first, or let AI pick one"); }
-  lastRequest = [topic, surprise, steps];
-  runSteps = steps.length === 6 ? [] : steps;
+  if (!surprise && !topic && (steps.includes("research") || steps.includes("script"))) { $("#topic-input").focus(); return toast("Type a topic first, or let AI pick one"); }
+  lastRequest = [topic, surprise, steps, mode, preview];
+  runSteps = ["preparation", ...steps];
   lastRunError = "";
   $("#console").innerHTML = "";
   $("#log-details").open = false;
-  $("#run-title").textContent = "Making your video…";
-  $("#run-topic").textContent = surprise ? "AI is choosing a topic…" : `“${topic}”`;
+  $("#run-title").textContent = preview ? "Making your draft…" : "Making your video…";
+  $("#run-topic").textContent = surprise ? "AI is choosing a topic…" : topic ? `“${topic}”` : "Using your current storyboard and narration";
   setHero("running");
   renderRun({ stages: {}, running: true });
   const r = await api("/api/run", {
-    steps, topic: surprise ? "" : topic, video_type: videoType,
+    steps, topic: surprise ? "" : topic, video_type: options.video_type || videoType,
+    visual_mode: mode, preview_only: preview,
     focus_angle: surprise ? $("#focus-angle").value : "",
     use_trends: surprise && $("#quick-trends").checked,
   }).catch(e => ({ ok: false, error: e.message }));
@@ -150,8 +169,9 @@ async function startRun(topic, surprise) {
   status.running = true;
   startSSE(); pollOnce();
   window.scrollTo({ top: 0, behavior: "smooth" });
+  return true;
 }
-function retry() { lastRequest ? startRun(lastRequest[0], lastRequest[1]) : setHero("form"); }
+function retry() { lastRequest ? startRun(lastRequest[0], lastRequest[1], { steps: lastRequest[2], visual_mode: lastRequest[3], preview_only: lastRequest[4] }) : setHero("form"); }
 $("#ask-form").onsubmit = e => { e.preventDefault(); startRun($("#topic-input").value.trim(), false); };
 $("#surprise-btn").onclick = () => startRun("", true);
 $("#stop-btn").onclick = () => api("/api/stop", {}).then(() => { toast("Stopping after the current step…"); $("#run-title").textContent = "Stopping…"; });
@@ -164,5 +184,33 @@ $$("#steps .chip, #img-sources .chip").forEach(c => {
   c.classList.toggle("on", input.checked);
   input.addEventListener("change", () => c.classList.toggle("on", input.checked));
 });
-$("#quick-voice").onchange = e => api("/api/save-settings", { voice_id: e.target.value }).then(() => toast("Voice saved"));
-$("#quick-grounding").onchange = e => api("/api/save-settings", { fact_grounding: e.target.checked });
+$("#quick-voice").onchange = e => api("/api/save-settings", { voice_id: e.target.value }).then(() => toast("Voice saved")).catch(e => toast(e.message, "err"));
+$("#quick-grounding").onchange = e => api("/api/save-settings", { fact_grounding: e.target.checked }).catch(e => toast(e.message, "err"));
+
+function updateVisualMode() {
+  const mode = $("#visual-mode").value, classic = mode === "classic";
+  $("#draft-preview").disabled = classic;
+  if (classic) $("#draft-preview").checked = false;
+  $("#visual-mode-note").textContent = {
+    motion: "Diagrams, comparisons, timelines and text move with the narration.",
+    hybrid: "Animated explanations with relevant licensed footage when available.",
+    classic: "The original photo, zoom and transition renderer.",
+  }[mode];
+  const storyboard = $('#steps input[value="visuals"]');
+  storyboard.disabled = classic;
+  storyboard.closest(".chip").classList.toggle("disabled", classic);
+  if (typeof renderChecklist === "function") renderChecklist();
+}
+$("#visual-mode").onchange = updateVisualMode;
+function environmentHTML(result, failuresOnly = false) {
+  return (result.checks || []).filter(check => !failuresOnly || !check.ok).map(check => `<div class="environment-check ${check.ok ? "ok" : "failed"}"><span>${check.ok ? "✓" : "!"}</span><div>${esc(check.message)}${check.fix ? `<pre><code>${esc(check.fix)}</code></pre>` : ""}</div></div>`).join("");
+}
+$("#check-environment").onclick = async () => {
+  const button = $("#check-environment"); busy(button, true, "Checking…");
+  try {
+    const steps = $$("#steps input:checked").map(input => input.value);
+    const result = await api("/api/preflight", { steps, visual_mode: $("#visual-mode").value });
+    $("#environment-results").innerHTML = environmentHTML(result);
+  } catch (e) { $("#environment-results").textContent = e.message; }
+  busy(button, false);
+};

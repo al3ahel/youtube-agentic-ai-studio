@@ -29,7 +29,10 @@ def _no_credits_file(monkeypatch):
 
 def test_description_has_chapters_sources_and_credit(monkeypatch):
     monkeypatch.setattr(config, "CREDIT_YAAS", True, raising=False)
-    d = description.build_description(SCRIPT, RESEARCH, "normal")
+    from video.timeline import script_signature
+    timeline = {"script_signature": script_signature(SCRIPT), "timing_source": "measured_sections",
+                "sections": [{"id": section["id"], "start": i * 60} for i, section in enumerate(SCRIPT["sections"])]}
+    d = description.build_description(SCRIPT, RESEARCH, "normal", timeline=timeline)
     assert "⏱ CHAPTERS" in d and "\n0:00 Part 1" in d
     assert "https://en.wikipedia.org/wiki/Moon" in d
     assert "https://raunakpatil.com" in d
@@ -145,4 +148,4 @@ def test_page_and_every_static_file_it_references_are_served():
 
 
 def test_blueprints_are_registered():
-    assert set(gui.app.blueprints) == {"pipeline", "review", "library", "upload", "settings", "dashboard"}
+    assert set(gui.app.blueprints) == {"pipeline", "review", "library", "upload", "settings", "dashboard", "visuals"}

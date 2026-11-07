@@ -13,6 +13,7 @@ build/
 # ── Virtual environments ─────────────────
 venv/
 .venv/
+.venv-*/
 env/
 .env/
 ENV/
@@ -58,3 +59,8 @@ desktop.ini
 
 # ── Logs ─────────────────────────────────
 *.log
+
+# Local motion renderer dependencies and generated fixtures
+node_modules/
+renderers/hyperframes/.smoke/
+.pytest_cache/

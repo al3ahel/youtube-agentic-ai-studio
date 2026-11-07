@@ -4,7 +4,7 @@ const KEYS = [
   ["pexels_key", "Pexels", "High-quality stock photos for your scenes.", "https://www.pexels.com/api/"],
   ["pixabay_key", "Pixabay", "Even more stock photos.", "https://pixabay.com/api/docs/"],
   ["groq_key", "Groq", "Backup AI for when Gemini runs out of free quota.", "https://console.groq.com/keys"],
-  ["openrouter_key", "OpenRouter", "Another backup AI.", "https://openrouter.ai/keys"],
+  ["openrouter_key", "OpenRouter", "Free scene planning and optional visual review, plus a script backup.", "https://openrouter.ai/keys"],
   ["youtube_key", "YouTube Data API", "Shows your subscribers and views on Home.", "https://console.cloud.google.com/apis/library/youtube.googleapis.com"],
   ["youtube_channel", "Your channel", "Channel ID or @handle, used with the key above.", ""],
 ];
@@ -23,8 +23,8 @@ const RANGES = {
   broll_interval: { to: v => Math.round(v), from: v => +v, label: v => v + " s" },
   broll_xfade:    { to: v => Math.round(v * 10), from: v => v / 10, label: v => (v / 10).toFixed(1) + " s" },
 };
-const TEXT = ["channel_name", "channel_desc", "brand_text", "thumb_style", "gemini_model", "groq_model", "openrouter_model", "render_preset", "kb_start", "kb_end", "privacy", "voice_id", "trends_geo"];
-const BOOLS = ["fact_grounding", "keyless_llm", "music_enabled", "show_brand", "credit_yaas"];
+const TEXT = ["channel_name", "channel_desc", "brand_text", "thumb_style", "gemini_model", "groq_model", "openrouter_model", "render_preset", "kb_start", "kb_end", "privacy", "voice_id", "trends_geo", "visual_mode", "visual_planner_model", "visual_review_model", "motion_quality", "motion_workers"];
+const BOOLS = ["fact_grounding", "keyless_llm", "music_enabled", "show_brand", "credit_yaas", "visual_ai_enabled", "visual_review_enabled", "openrouter_free_only"];
 Object.entries(RANGES).forEach(([k, r]) => { const el = $("#r-" + k); el.addEventListener("input", () => $("#v-" + k).textContent = r.label(+el.value)); });
 
 let settingsSnap = "";
@@ -48,6 +48,7 @@ async function loadSettings() {
   $("#s-banned").value = (d.banned_topics || []).filter(t => !["The Boltzmann Brain", "Simulation Theory", "Quantum Immortality"].includes(t)).join("\n");
   $("#quick-voice").value = d.voice_id;
   $("#quick-grounding").checked = !!d.fact_grounding;
+  if (!status.running) { $("#visual-mode").value = d.visual_mode || "motion"; updateVisualMode(); }
   $("#upload-privacy").value = d.privacy;
   brandPreview();
   settingsSnap = JSON.stringify(collectSettings());
@@ -67,10 +68,24 @@ function brandPreview() {
   brandPreview(); settingsChanged();
 }));
 async function saveSettings() {
-  const r = await api("/api/save-settings", collectSettings());
+  const r = await api("/api/save-settings", collectSettings()).catch(e => ({ ok: false, error: e.message }));
   if (r.ok) { toast("Settings saved", "ok"); await loadSettings(); loadHealth(); pollOnce(); }
   else toast(r.error, "err");
 }
+$("#discover-models").onclick = async () => {
+  const button = $("#discover-models"), note = $("#model-discovery-status");
+  busy(button, true, "Loading catalogue…");
+  note.textContent = "Checking available free models…";
+  try {
+    const results = await Promise.all(["planner", "reviewer"].map(purpose => api(`/api/visuals/models?purpose=${purpose}&limit=30`)));
+    results.forEach((result, index) => {
+      const purpose = index ? "reviewer" : "planner";
+      $("#free-" + purpose + "-models").innerHTML = result.models.map(model => `<option value="${esc(model.id)}">${esc(model.name || model.id)}</option>`).join("");
+    });
+    note.textContent = `${results[0].models.length} planners and ${results[1].models.length} reviewers loaded. Select a model in the fields above, then save. Availability can change.`;
+  } catch (e) { note.textContent = e.message; }
+  busy(button, false);
+};
 $("#save-banned").onclick = async () => {
   const topics = $("#s-banned").value.split("\n").map(s => s.trim()).filter(Boolean);
   const r = await api("/api/save-banned-topics", { topics });

@@ -806,7 +806,7 @@ def _apply_watermark(clip, w: int, h: int):
 
 
 def create_video(script: dict, audio_path: str, output_dir: str,
-                 image_map: dict = None, video_type: str = "normal") -> str:
+                 image_map: dict = None, video_type: str = "normal", timeline: dict = None) -> str:
     """
     Assembles the final video.
     image_map for Shorts: {section_id: [path, path, …]}
@@ -892,10 +892,17 @@ def create_video(script: dict, audio_path: str, output_dir: str,
         print(f"\n   Building {total_sections} section clips (B-roll cycling every {BROLL_INTERVAL:.0f}s):")
         clips           = []
         section_start_t = 0.0   # running global timestamp for SRT lookup
+        measured = (timeline or {}).get("sections", [])
+        if measured:
+            from video.timeline import script_signature
+            if timeline.get("script_signature") != script_signature(script) or len(measured) != len(sections):
+                raise ValueError("Narration timings do not match the script. Regenerate narration.")
 
         for i, section in enumerate(sections):
             words    = len(section.get("narration", "").split())
-            duration = max(8.0, (words / 110) * 60)
+            duration = measured[i]["duration"] if measured else max(8.0, (words / 110) * 60)
+            if measured:
+                section_start_t = measured[i]["start"]
             s_type   = section.get("section_type", "content")
             print(f"     [{section['id']:02d}] {section['title']:<42} {duration:5.1f}s  [{s_type}]")
 
@@ -919,14 +926,24 @@ def create_video(script: dict, audio_path: str, output_dir: str,
             clips.append(clip)
             section_start_t += duration   # advance global timestamp
 
-        print("\n   → Crossfading sections…")
-        final = clips[0]
-        for clip in clips[1:]:
-            final = _crossfade(final, clip, fade_dur=0.7)
+        if measured:
+            print("\n   → Joining sections on the measured speech clock…")
+            # An overlapping crossfade consumes timeline time. Keep the measured
+            # boundaries intact so subtitles and the final spoken words survive.
+            final = concatenate_videoclips(clips, method="chain")
+        else:
+            print("\n   → Crossfading legacy sections…")
+            final = clips[0]
+            for clip in clips[1:]:
+                final = _crossfade(final, clip, fade_dur=0.7)
 
         print("   → Attaching narration…")
         audio = AudioFileClip(audio_path)
-        if audio.duration > final.duration:
+        if measured:
+            if abs(audio.duration - final.duration) > max(.35, 2 / FPS):
+                raise ValueError("The soundtrack does not match the measured narration.")
+            final = final.set_duration(max(audio.duration, final.duration))
+        elif audio.duration > final.duration:
             audio = audio.subclip(0, final.duration)
         else:
             final = final.subclip(0, audio.duration)

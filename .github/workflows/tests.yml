@@ -2,12 +2,21 @@ name: tests
 
 on:
   push:
-    branches: [main]
+    branches: [main, feat/motion-studio]
   pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   pytest:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -15,14 +24,162 @@ jobs:
         # numpy<2 / moviepy 1.x pins are lifted (no numpy<2 wheels for 3.13).
         python-version: ["3.10", "3.11", "3.12"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt pytest
+          python -m pip install -r requirements.txt pytest
+          python -m pip check
       - name: Run tests
-        run: pytest -q
+        run: python -m pytest -q
+
+  motion:
+    name: Motion browser tests and MP4 smoke
+    # Fixed OS family; use its managed Chrome, not a third-party browser action.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    env:
+      CI: "true"
+      STUDIO_NO_BROWSER: "1"
+      HYPERFRAMES_NO_CAPTURE_DOTENV: "1"
+      HYPERFRAMES_SKIP_SKILLS: "1"
+      # Smoke fixtures use synthetic audio/video and never call a model or TTS.
+      OPENROUTER_API_KEY: ""
+      PEXELS_API_KEY: ""
+      GEMINI_API_KEY: ""
+      GOOGLE_API_KEY: ""
+      GROQ_API_KEY: ""
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+          cache: pip
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: renderers/hyperframes/package-lock.json
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip check
+      - name: Install locked renderer dependencies
+        working-directory: renderers/hyperframes
+        run: npm ci --no-audit --no-fund
+      - name: Require Chrome, FFmpeg and ffprobe
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends ffmpeg
+          yaas_chrome="$(command -v google-chrome || command -v google-chrome-stable || true)"
+          if [[ -z "$yaas_chrome" || ! -x "$yaas_chrome" ]]; then
+            echo "::error::The runner's managed Google Chrome is missing. Browser tests must not be skipped."
+            exit 1
+          fi
+          command -v ffmpeg
+          command -v ffprobe
+          printf 'HYPERFRAMES_BROWSER_PATH=%s\nYAAS_TEST_BROWSER=%s\n' "$yaas_chrome" "$yaas_chrome" >> "$GITHUB_ENV"
+          printf 'HYPERFRAMES_FFMPEG_PATH=%s\nHYPERFRAMES_FFPROBE_PATH=%s\n' "$(command -v ffmpeg)" "$(command -v ffprobe)" >> "$GITHUB_ENV"
+          mkdir -p "$RUNNER_TEMP/yaas-motion-artifacts"
+          {
+            python --version
+            node --version
+            npm --version
+            "$yaas_chrome" --version
+            ffmpeg -version
+            ffprobe -version
+          } > "$RUNNER_TEMP/yaas-motion-artifacts/tool-versions.txt"
+      - name: Prepare both offline browser fixtures
+        working-directory: renderers/hyperframes
+        run: |
+          python smoke.py --prepare-only --seconds-per-scene 2
+          python smoke.py --portrait --prepare-only --seconds-per-scene 2
+      - name: Run browser assertions with no skipped tests
+        working-directory: renderers/hyperframes
+        timeout-minutes: 5
+        run: |
+          test -x "$YAAS_TEST_BROWSER"
+          node --test --test-reporter=tap tests/*.test.mjs | tee "$RUNNER_TEMP/yaas-motion-artifacts/browser.tap"
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          import re
+          report = Path(os.environ["RUNNER_TEMP"], "yaas-motion-artifacts", "browser.tap").read_text()
+          totals = {name: int(count) for name, count in re.findall(
+              r"^# (tests|pass|fail|cancelled|skipped) (\d+)\s*$", report, re.MULTILINE)}
+          assert totals.get("tests", 0) >= 5, f"Browser assertions did not run: {totals}"
+          assert totals.get("pass") == totals["tests"], f"Browser assertions did not all pass: {totals}"
+          assert all(totals.get(name) == 0 for name in ("fail", "cancelled", "skipped")), totals
+          PY
+      - name: Render landscape MP4 with audio
+        timeout-minutes: 10
+        run: python renderers/hyperframes/smoke.py --seconds-per-scene 2
+      - name: Render portrait MP4 with audio
+        timeout-minutes: 10
+        run: python renderers/hyperframes/smoke.py --portrait --seconds-per-scene 2
+      - name: Verify both encoded videos
+        run: |
+          python - <<'PY'
+          from fractions import Fraction
+          import json
+          import os
+          from pathlib import Path
+          import subprocess
+          root = Path("renderers/hyperframes/.smoke")
+          artifacts = Path(os.environ["RUNNER_TEMP"], "yaas-motion-artifacts")
+          for orientation, dimensions in (("landscape", (640, 360)), ("portrait", (360, 640))):
+              source = root / orientation / "motion_preview.mp4"
+              assert source.is_file() and source.stat().st_size > 1000, source
+              probe = subprocess.run(
+                  ["ffprobe", "-v", "error", "-show_streams", "-show_format", "-of", "json", str(source)],
+                  check=True, capture_output=True, text=True, timeout=30)
+              (artifacts / f"{orientation}-ffprobe.json").write_text(probe.stdout)
+              info = json.loads(probe.stdout)
+              video = next(s for s in info["streams"] if s["codec_type"] == "video")
+              assert (video["width"], video["height"]) == dimensions, video
+              assert Fraction(video["avg_frame_rate"]) == 12, video
+              assert int(video["nb_frames"]) == 168, video
+              assert any(s["codec_type"] == "audio" for s in info["streams"]), info
+              assert abs(float(info["format"]["duration"]) - 14) <= .2, info["format"]
+              print(f"Verified {orientation}: 168 frames, 12 fps, 14 seconds, audio present")
+          PY
+      - name: Collect videos, screenshots and diagnostics
+        if: always()
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          import shutil
+          root = Path("renderers/hyperframes/.smoke")
+          artifacts = Path(os.environ["RUNNER_TEMP"], "yaas-motion-artifacts")
+          artifacts.mkdir(parents=True, exist_ok=True)
+          for orientation in ("landscape", "portrait"):
+              for filename in ("motion_preview.mp4", "scene_plan.json", "motion/render.log"):
+                  source = root / orientation / filename
+                  if source.is_file():
+                      shutil.copy2(source, artifacts / f"{orientation}-{source.name}")
+          screenshots = root / "screenshots"
+          if screenshots.is_dir():
+              shutil.copytree(screenshots, artifacts / "screenshots", dirs_exist_ok=True)
+          PY
+      - name: Upload motion smoke artifacts
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: motion-smoke-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/yaas-motion-artifacts/
+          if-no-files-found: warn
+          retention-days: 7
+          compression-level: 0

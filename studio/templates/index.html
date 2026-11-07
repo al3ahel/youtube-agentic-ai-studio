@@ -52,6 +52,19 @@
         </div>
       </div>
 
+      <div class="motion-options">
+        <div class="field">
+          <label class="label" for="visual-mode">Visual style</label>
+          <select id="visual-mode" aria-describedby="visual-mode-note">
+            <option value="motion">Motion — animated explanations</option>
+            <option value="hybrid">Hybrid — motion with licensed footage</option>
+            <option value="classic">Classic — photos and transitions</option>
+          </select>
+          <div class="hint" id="visual-mode-note">Diagrams, comparisons, timelines and text move with the narration.</div>
+        </div>
+        <label class="toggle first"><span><b>Draft preview first</b><small>Review the storyboard and a quick MP4 before the final render</small></span><input type="checkbox" id="draft-preview"><span class="switch"></span></label>
+      </div>
+
       <details class="more" style="margin-top:18px">
         <summary>More options</summary>
         <div class="more-body" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px 24px">
@@ -96,9 +109,10 @@
             <div class="chips" id="steps">
               <label class="chip on"><input type="checkbox" value="research" checked>Research</label>
               <label class="chip on"><input type="checkbox" value="script" checked>Script</label>
-              <label class="chip on"><input type="checkbox" value="images" checked>Visuals</label>
+              <label class="chip on"><input type="checkbox" value="images" checked>Photos / footage</label>
               <label class="chip on"><input type="checkbox" value="narration" checked>Voice</label>
               <label class="chip on"><input type="checkbox" value="music" checked>Music</label>
+              <label class="chip on"><input type="checkbox" value="visuals" checked>Storyboard</label>
               <label class="chip on"><input type="checkbox" value="video" checked>Render</label>
             </div>
           </div>
@@ -142,6 +156,8 @@
       <div class="card-label"><svg viewBox="0 0 24 24"><path d="M9 11l3 3 8-8"/><path d="M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9"/></svg>Your setup</div>
       <div class="ready-meter"><strong id="ready-num">–</strong><span id="ready-text">checking…</span></div>
       <div id="checklist"></div>
+      <button class="btn btn-ghost btn-sm" id="check-environment" style="margin-top:12px">Check local setup</button>
+      <div id="environment-results" class="environment-results" aria-live="polite"></div>
     </article>
 
     <article class="card">
@@ -182,8 +198,8 @@
 
   <article class="card s24 flat" id="review-empty" hidden>
     <div class="empty" style="min-height:320px">
-      <div style="font-size:28px;font-weight:300;color:var(--on-card)">No video to review yet</div>
-      <div>Make one on Home. When it's done it appears here, ready to polish and publish.</div>
+      <div style="font-size:28px;font-weight:300;color:var(--on-card)">No draft or video to review yet</div>
+      <div>Make a draft on Home, review its scenes here, then render the final video.</div>
       <div style="display:flex;gap:8px;justify-content:center"><a class="btn btn-white" href="#home">Make a video</a><a class="btn btn-ghost" href="#library">Open a past video</a></div>
     </div>
   </article>
@@ -191,21 +207,47 @@
   <article class="card s24 flat review-part">
     <div class="guide">
       <div>
-        <h2>Review &amp; publish</h2>
-        <p>Watch your video, polish the title, description and thumbnail, then upload it. Nothing goes to YouTube until you press Upload.</p>
+        <h2 id="review-heading">Review &amp; publish</h2>
+        <p id="review-intro">Watch your video, polish the title, description and thumbnail, then upload it. Nothing goes to YouTube until you press Upload.</p>
       </div>
       <nav class="guide-steps">
+        <a href="#rv-storyboard" id="storyboard-nav"><i>◎</i>Scenes</a>
         <a href="#rv-watch"><i>1</i>Watch</a>
         <a href="#rv-title"><i>2</i>Title</a>
         <a href="#rv-desc"><i>3</i>Description &amp; tags</a>
         <a href="#rv-thumb"><i>4</i>Thumbnail</a>
-        <a href="#rv-publish"><i>5</i>Publish</a>
+        <a href="#rv-publish" id="publish-nav"><i>5</i>Publish</a>
       </nav>
     </div>
   </article>
 
+  <article class="card s24 review-part" id="rv-storyboard" hidden>
+    <div class="card-label">Storyboard <span class="tag" id="storyboard-status">Draft</span></div>
+    <p class="card-intro">Review the explanation scene by scene. Changing one scene keeps your script and narration, then rebuilds the local preview.</p>
+    <div class="storyboard-layout">
+      <div>
+        <iframe id="motion-preview" title="Motion storyboard preview" sandbox="allow-scripts" referrerpolicy="no-referrer" allow="autoplay 'none'; camera 'none'; microphone 'none'; geolocation 'none'"></iframe>
+        <div class="hint" id="motion-preview-note">Use the preview controls to play or scrub the narration.</div>
+        <div class="storyboard-actions">
+          <button class="btn btn-ghost btn-sm" id="render-draft">Render draft MP4</button>
+          <button class="btn btn-white" id="render-final">Render final video</button>
+        </div>
+        <div id="visual-qa" class="hint" aria-live="polite"></div>
+      </div>
+      <div class="storyboard-editor">
+        <div class="scene-list" id="scene-list" aria-label="Storyboard scenes"></div>
+        <div id="scene-details" class="scene-details"></div>
+        <label class="label" for="scene-instructions">Change this scene</label>
+        <textarea id="scene-instructions" maxlength="1000" rows="3" placeholder="For example: show the two ideas side by side and highlight each difference."></textarea>
+        <div class="hint">Describe the visual change. Timing and narration stay in place.</div>
+        <button class="btn btn-ghost" id="regenerate-scene">Regenerate selected scene</button>
+        <div id="scene-edit-result" class="hint" aria-live="polite"></div>
+      </div>
+    </div>
+  </article>
+
   <article class="card s14 review-part" id="rv-watch">
-    <div class="card-label"><span class="num">1</span>Watch it</div>
+    <div class="card-label"><span class="num">1</span><span id="watch-label">Watch it</span></div>
     <div class="card-tools"><span class="card-note" id="review-src"></span></div>
     <div class="thumb-frame player contain" id="player"></div>
     <div class="dl-row">
@@ -402,6 +444,22 @@
   </article>
 
   <article class="card s12">
+    <div class="card-label">Motion studio</div>
+    <div class="field"><label class="label" for="s-visual_mode">Default visual style</label>
+      <select id="s-visual_mode"><option value="motion">Motion — animated explanations</option><option value="hybrid">Hybrid — motion with footage</option><option value="classic">Classic — photos and transitions</option></select></div>
+    <label class="toggle"><span><b>AI scene planning</b><small>A free OpenRouter model chooses from local animation templates. Local planning remains available without a key.</small></span><input type="checkbox" id="s-visual_ai_enabled"><span class="switch"></span></label>
+    <label class="toggle"><span><b>Require free OpenRouter models</b><small>Allow only models with zero input and output token prices</small></span><input type="checkbox" id="s-openrouter_free_only"><span class="switch"></span></label>
+    <div class="field"><label class="label" for="s-visual_planner_model">Scene planner</label><input id="s-visual_planner_model" type="text" maxlength="200" list="free-planner-models" placeholder="openrouter/free"><datalist id="free-planner-models"></datalist></div>
+    <label class="toggle"><span><b>Send preview frames for AI review</b><small>Optional: upload rendered frames to the selected OpenRouter vision model to review visual quality</small></span><input type="checkbox" id="s-visual_review_enabled"><span class="switch"></span></label>
+    <div class="field"><label class="label" for="s-visual_review_model">Visual reviewer</label><input id="s-visual_review_model" type="text" maxlength="200" list="free-reviewer-models" placeholder="openrouter/free"><datalist id="free-reviewer-models"></datalist></div>
+    <div class="model-discovery"><button class="btn btn-ghost btn-sm" id="discover-models">Find available free models</button><div class="hint" id="model-discovery-status" aria-live="polite">Loads a model catalogue only. No generation or frame upload.</div></div>
+    <div class="motion-setting-grid">
+      <div class="field"><label class="label" for="s-motion_quality">Motion quality</label><select id="s-motion_quality"><option value="draft">Draft</option><option value="standard">Standard</option><option value="high">High</option></select></div>
+      <div class="field"><label class="label" for="s-motion_workers">Render workers</label><select id="s-motion_workers"><option value="1">1 — low memory use</option><option value="2">2</option><option value="3">3</option><option value="4">4</option></select></div>
+    </div>
+  </article>
+
+  <article class="card s12">
     <div class="card-label"><svg viewBox="0 0 24 24"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg>Advanced</div>
     <details class="more">
       <summary>AI models, image sources and video style</summary>
@@ -463,6 +521,7 @@
 <script src="/static/js/run.js"></script>
 <script src="/static/js/home.js"></script>
 <script src="/static/js/review.js"></script>
+<script src="/static/js/visuals.js"></script>
 <script src="/static/js/library.js"></script>
 <script src="/static/js/settings.js"></script>
 <script src="/static/js/boot.js"></script>

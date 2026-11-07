@@ -19,11 +19,9 @@ YAAS researches a topic, checks the facts, writes the script, records a voiceove
 
 </div>
 
-
+**Original YAAS demo (Classic workflow)**
 
 https://github.com/user-attachments/assets/e94dab2d-3110-440c-b82e-b9289c0e6b51
-
-
 
 ---
 
@@ -37,15 +35,53 @@ Choose **Motion** for diagrams, timelines, comparisons, charts and kinetic text;
 Review the storyboard, change one scene, then render a draft or final MP4 without
 recording the voice again. [Motion workflow and architecture](docs/MOTION_STUDIO.md).
 
+#### Rendered video samples
+
+These are actual **14-second HyperFrames MP4s** from the renderer used by
+**Make video** and the storyboard's draft/final buttons. They show all seven
+templates: kinetic text, flow, comparison, timeline, chart, explainer and footage.
+
+**Landscape (16:9)** — [Watch or download the MP4](docs/samples/motion-landscape.mp4)
+
+https://github.com/user-attachments/assets/479bc47c-e349-461b-b3b6-97b20a55628c
+
+<details>
+<summary><b>Portrait sample (9:16)</b></summary>
+
+https://github.com/user-attachments/assets/1b71f0e6-3086-4726-a168-bb2bede6f185
+
+[Watch or download the portrait MP4](docs/samples/motion-portrait.mp4)
+
+</details>
+
+These small renderer demos use synthetic tone audio, labelled synthetic chart
+values and a moving test-pattern clip. They are draft-resolution samples
+(640×360 and 360×640 at 12 fps), not finished narrated videos. To reproduce them,
+see [the renderer verification commands](docs/MOTION_STUDIO.md#verification).
+
+#### Storyboard editor
+
 ![Motion Studio: editable scenes beside the local animated preview](docs/screenshots/motion-studio.png)
+
+The screenshot shows **YAAS → Review → Storyboard**, added by this fork. Its
+interactive preview plays the same HTML/SVG composition that HyperFrames renders
+into an MP4. Motion/Hybrid generation already uses HyperFrames during **Make video**;
+this screen lets you inspect, edit and render that project again. The original
+upstream YAAS renderer remains available as **Classic**.
+
+#### Install and run
 
 Install **Python 3.12**, **Node.js 22 or later**, and **FFmpeg with ffprobe** first.
 Use a separate environment; the full app still contains the pinned legacy MoviePy stack.
 
+Copy this repository's HTTPS clone URL from **Code → HTTPS** and replace
+`REPOSITORY_URL` below with it. Use a repository containing the `feat/motion-studio`
+branch; the original upstream repository does not include these changes.
+
 **Windows PowerShell:**
 
 ```powershell
-git clone --branch feat/motion-studio https://github.com/al3ahel/youtube-agentic-ai-studio.git yaas-motion
+git clone --branch feat/motion-studio REPOSITORY_URL yaas-motion
 cd yaas-motion
 py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install --upgrade pip
@@ -60,7 +96,7 @@ $env:STUDIO_PORT = "8765"
 **macOS / Linux:**
 
 ```bash
-git clone --branch feat/motion-studio https://github.com/al3ahel/youtube-agentic-ai-studio.git yaas-motion
+git clone --branch feat/motion-studio REPOSITORY_URL yaas-motion
 cd yaas-motion
 python3.12 -m venv .venv
 .venv/bin/python -m pip install -r requirements.txt
@@ -91,8 +127,8 @@ The app has three screens, in the order you use them:
 
 | Screen | What you do there |
 |---|---|
-| **Home** | Type a topic, or press **Let AI pick a topic**, or click a **trending idea**. Choose long video or Short. Watch plain-English progress: *researching → writing → finding visuals → recording voice → rendering*. |
-| **Review & publish** | Five numbered steps: **1** watch it, **2** polish the title (or let AI suggest 6 better ones), **3** edit description & tags (with real YouTube search suggestions), **4** make a thumbnail (photo or new AI artwork), **5** upload now or schedule. A live *How easy is it to find?* score tells you what to fix. |
+| **Home** | Type a topic, choose a long video or Short, then select Motion, Hybrid or Classic. **Make video** runs the generation pipeline, including HyperFrames rendering for Motion/Hybrid. Choose **Draft preview** to inspect an initial MP4 before the final render. |
+| **Review & publish** | Watch the MP4 or inspect the live storyboard. In Motion/Hybrid, edit one scene and render a draft or final video from the updated composition. Then polish the title, description, tags and thumbnail before uploading or scheduling. |
 | **My videos** | Every finished video is saved automatically, with **Long videos** and **Shorts** in separate sections. Re-open, re-edit, re-publish, download or delete. |
 
 **Settings** (top right) holds your channel name, voice, optional keys and advanced options. Everything has a sensible default.
@@ -110,13 +146,30 @@ The app has three screens, in the order you use them:
 
 ![The four thumbnail styles in 16:9 and 9:16](docs/screenshots/thumbnail-styles.png)
 
-Behind the scenes:
+### Where HyperFrames runs
 
+The normal **Motion/Hybrid** pipeline is:
+
+```mermaid
+flowchart TD
+    A["Research and fact grounding"] --> B["Script and measured narration"]
+    B --> C["Scene plan and HTML/SVG composition"]
+    C --> D["HyperFrames draft or final MP4"]
+    D --> E["Review and storyboard editor"]
+    E -->|Edit a scene| C
+    E -->|Final video ready| F["Publish"]
 ```
-topic ──► Research ──► Fact-check ──► Script ──► Visuals ──► Voice ──► Render ──► Review ──► Publish
-          (AI +        (Wikipedia    (AI)       (Pexels →   (Edge     (MoviePy)   (title lab,  (YouTube
-          trends)       + arXiv)                 NASA → …)   TTS)                  SEO score)   API)
-```
+
+HyperFrames is the video-rendering stage. The Review screen previews the same
+composition directly in the browser; scrubbing it does not encode another MP4.
+After a scene edit, **Render draft MP4** or **Render final video** runs HyperFrames
+again with the saved narration and updated storyboard. Changing a scene invalidates
+the previous MP4 until it is rendered again.
+
+This fork adds the HyperFrames path. **Classic** continues to use the original
+upstream pipeline: stock photos, narration and MoviePy rendering. Optional
+OpenRouter frame review runs after rendering; it is separate from both the
+renderer and the interactive Review screen.
 
 ---
 

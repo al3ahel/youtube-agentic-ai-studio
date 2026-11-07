@@ -26,8 +26,11 @@ The full requirements include the original MoviePy/NumPy pins for Classic mode.
 
 ### 1a. Clone the repository
 
+Copy this repository's HTTPS clone URL from **Code → HTTPS**, then replace
+`REPOSITORY_URL` below. The repository must contain the `feat/motion-studio` branch.
+
 ```bash
-git clone --branch feat/motion-studio https://github.com/al3ahel/youtube-agentic-ai-studio.git yaas-motion
+git clone --branch feat/motion-studio REPOSITORY_URL yaas-motion
 cd yaas-motion
 ```
 

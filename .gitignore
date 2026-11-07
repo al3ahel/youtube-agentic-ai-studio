@@ -45,6 +45,8 @@ output/images/
 *.png
 # allow docs screenshots
 !docs/screenshots/*.png
+# Keep the small, verified README video samples.
+!docs/samples/*.mp4
 
 # ── OS junk ──────────────────────────────
 .DS_Store

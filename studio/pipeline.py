@@ -8,6 +8,7 @@ from flask import Blueprint, Response, current_app, jsonify, request
 
 import config
 from studio.files import send, slug
+from studio.revisions import file_revision, plan_revision, validate_expected_revision
 from studio.runner import run_pipeline_thread
 from studio.state import job_lock, log, log_queue, state, stop_event
 
@@ -59,6 +60,9 @@ def start_run():
         profile_values = capture_profile_settings(profile["id"])
         with config.profile_context(profile_values):
             steps, visual_mode = _run_options(body)
+        expected_revision = validate_expected_revision(body.get("expected_plan_revision"))
+        if expected_revision is not None and steps != ["video"]:
+            raise ValueError("A storyboard revision can only be used when rendering the current video.")
         topic, focus_angle = body.get("topic", ""), body.get("focus_angle", "")
         if not isinstance(topic, str) or not isinstance(focus_angle, str) or len(topic) > 2000 or len(focus_angle) > 2000:
             raise ValueError("Topic and focus angle must be text of at most 2,000 characters.")
@@ -76,6 +80,8 @@ def start_run():
     with job_lock:
         if state["running"] or state.get("visual_editing") or state.get("uploading") or is_connecting():
             return jsonify({"ok": False, "error": "A job is already running. Wait for it to finish."}), 409
+        if expected_revision is not None and expected_revision != plan_revision(state.get("visual_plan")):
+            return jsonify({"ok": False, "error": "The storyboard changed before rendering. Reload Review to render the current scene edits."}), 409
         try:
             profile = get_profile(profile["id"])
             profile_values = capture_profile_settings(profile["id"])
@@ -150,6 +156,9 @@ def status_route():
         "has_preview":    bool(state.get("preview_path") and os.path.isfile(state["preview_path"])),
         "has_storyboard": bool(state.get("visual_plan")),
         "has_html_preview": bool(state.get("visual_plan") and os.path.isfile(os.path.join(config.OUTPUT_DIR, "motion", "index.html"))),
+        "plan_revision": plan_revision(state.get("visual_plan")),
+        "preview_revision": file_revision(state.get("preview_path")),
+        "video_revision": file_revision(state.get("video_path")),
         "has_captions":   os.path.exists(os.path.join(config.OUTPUT_DIR, "narration.srt")),
         "yt_url":         state.get("yt_url"),
         "error":          state.get("error"),

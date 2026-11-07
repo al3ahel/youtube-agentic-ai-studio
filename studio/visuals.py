@@ -9,6 +9,7 @@ import tempfile
 from flask import Blueprint, abort, jsonify, request, send_file
 
 import config
+from studio.revisions import file_revision, plan_revision, validate_expected_revision
 from studio.state import job_lock, state
 
 bp = Blueprint("visuals", __name__)
@@ -47,6 +48,8 @@ def storyboard():
         "qa": state.get("visual_qa"), "editing": state.get("visual_editing", False),
         "visual_mode": state.get("visual_mode") or config.VISUAL_MODE,
         "revision": state.get("visual_revision", 0),
+        "plan_revision": plan_revision(plan),
+        "preview_revision": file_revision(_output_root() / "motion" / "index.html") if plan else None,
         "preview_url": "/api/visuals/preview/index.html?preview=1" if plan and (_output_root() / "motion" / "index.html").is_file() else None,
     })
 
@@ -76,8 +79,10 @@ def preview_video():
     candidate = Path(path).resolve() if path else None
     if not candidate or not candidate.is_relative_to(output) or candidate.suffix.lower() != ".mp4" or not candidate.is_file():
         abort(404)
-    return send_file(candidate, mimetype="video/mp4", conditional=True,
-                     download_name="motion-draft-preview.mp4", as_attachment=request.args.get("download") == "1")
+    response = send_file(candidate, mimetype="video/mp4", conditional=True,
+                         download_name="motion-draft-preview.mp4", as_attachment=request.args.get("download") == "1")
+    response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 @bp.get("/api/visuals/models")
@@ -116,18 +121,28 @@ def _save_plan(plan, output):
 @bp.post("/api/visuals/scenes/<scene_id>/regenerate")
 def regenerate(scene_id):
     body = request.get_json(force=True) or {}
-    if not isinstance(body, dict) or any(key != "instructions" for key in body):
-        return jsonify({"ok": False, "error": "Only scene instructions may be supplied."}), 400
+    if not isinstance(body, dict) or set(body) - {"instructions", "replace_image", "expected_plan_revision"}:
+        return jsonify({"ok": False, "error": "Only scene instructions, the saved-photo option and the storyboard revision may be supplied."}), 400
     instructions = body.get("instructions", "")
     if not isinstance(instructions, str) or len(instructions) > 1000:
         return jsonify({"ok": False, "error": "Scene instructions must be text of at most 1,000 characters."}), 400
+    replace_image = body.get("replace_image", False)
+    if not isinstance(replace_image, bool):
+        return jsonify({"ok": False, "error": "The saved-photo option must be true or false."}), 400
+    try:
+        expected_revision = validate_expected_revision(body.get("expected_plan_revision"))
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
     with job_lock:
         if state.get("running") or state.get("visual_editing") or state.get("uploading"):
             return jsonify({"ok": False, "error": "Wait for the current job to finish before editing a scene."}), 409
         plan = deepcopy(state.get("visual_plan"))
+        if expected_revision is not None and expected_revision != plan_revision(plan):
+            return jsonify({"ok": False, "error": "The storyboard changed in another tab. Reload Review before changing this scene."}), 409
         if not plan or not any(str(scene.get("id")) == scene_id for scene in plan.get("scenes", [])):
             return jsonify({"ok": False, "error": "That storyboard scene was not found."}), 404
         script = deepcopy(state.get("script") or {})
+        image_map = deepcopy(state.get("image_map") or {})
         output = _output_root()
         audio_path = state.get("render_audio_path") or state.get("audio_path")
         audio = Path(audio_path).resolve() if audio_path else None
@@ -137,7 +152,8 @@ def regenerate(scene_id):
     try:
         from agents.visual_director import regenerate_scene
         from video.renderers.html import prepare_motion_project
-        updated = regenerate_scene(plan, scene_id, script, instructions=instructions.strip())
+        options = {"replace_image": True, "image_map": image_map, "output_dir": str(output)} if replace_image else {}
+        updated = regenerate_scene(plan, scene_id, script, instructions=instructions.strip(), **options)
         output.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(prefix=".motion-edit-", dir=output) as directory:
             staging = Path(directory)
@@ -166,7 +182,15 @@ def regenerate(scene_id):
                          visual_revision=state.get("visual_revision", 0) + 1)
             state["stages"]["visuals"] = "done"
             state["stages"]["video"] = "pending"
+        # QA belongs to the previous frames. A later render will write its own
+        # result; reopening the project must not resurrect this stale report.
+        try:
+            (output / "visual_qa.json").unlink(missing_ok=True)
+        except OSError:
+            pass
         return jsonify({"ok": True, "plan": updated, "revision": state["visual_revision"],
+                        "plan_revision": plan_revision(updated),
+                        "preview_revision": file_revision(output / "motion" / "index.html"),
                         "preview_url": "/api/visuals/preview/index.html?preview=1"})
     except Exception as exc:
         return jsonify({"ok": False, "error": f"Could not rebuild this scene: {exc}"}), 422

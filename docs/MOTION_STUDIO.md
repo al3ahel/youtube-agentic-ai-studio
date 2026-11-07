@@ -37,15 +37,23 @@ photo motion. Both are editable. See [Channels and schedules](CHANNELS_AND_SCHED
 4. Open **Review → Storyboard**. Play or scrub the HTML preview and inspect the
    scenes beside their visual goals.
 5. Select a scene, enter a change such as “use a comparison” or “less text”, and
-   regenerate it. The recording and existing scene boundaries are preserved.
-6. Choose **Render draft MP4** to check the encode, or **Render final video** when
-   ready. These actions reuse the storyboard and recording.
+   regenerate it. The browser preview updates and a new draft MP4 renders
+   automatically while you stay on Review. The recording, scene boundaries and
+   other scenes are preserved. To replace its picture, enable **Use another saved
+   photo**; this chooses a different downloaded photo from the same section.
+6. Watch the refreshed draft at the edited scene, then choose **Render final video**
+   when ready. If encoding fails, the updated browser preview remains available;
+   **Render draft MP4** retries using the same storyboard and recording.
 7. Review the final video, metadata and channel identity, then publish separately.
 
 The HTML preview runs the same composition used for encoding. Scrubbing it does
 not create another MP4. Scene edits invalidate the previous final render, and a
 draft cannot be published as a final video. Changing the spoken script requires
-new narration and visual planning; merely changing a scene does not.
+new narration and visual planning; merely changing a scene does not. Draft updates
+preserve saved titles, descriptions, tags and the existing thumbnail, along with
+unsaved metadata edits in the open Review form. If there is no different saved
+photo for the selected section, the editor explains that and keeps the previous
+scene. Regeneration also reports when the requested design makes no visible change.
 
 Final renders are archived. Scheduled runs also archive their drafts, marked
 **Draft** in **My videos**. Opening an archive restores its saved channel profile,

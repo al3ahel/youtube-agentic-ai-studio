@@ -247,7 +247,7 @@
 
   <article class="card s24 review-part" id="rv-storyboard" hidden>
     <div class="card-label">Storyboard <span class="tag" id="storyboard-status">Draft</span></div>
-    <p class="card-intro">Review the explanation scene by scene. Changing one scene keeps your script and narration, then rebuilds the local preview.</p>
+    <p class="card-intro">Review the explanation scene by scene. Changing one scene keeps your script and narration, then updates the preview and renders a replacement draft video.</p>
     <div class="storyboard-layout">
       <div>
         <iframe id="motion-preview" title="Motion storyboard preview" sandbox="allow-scripts" referrerpolicy="no-referrer" allow="autoplay 'none'; camera 'none'; microphone 'none'; geolocation 'none'"></iframe>
@@ -258,6 +258,7 @@
           <button class="btn btn-ghost btn-sm" id="render-draft">Render draft MP4</button>
           <button class="btn btn-white" id="render-final">Render final video</button>
         </div>
+        <div id="review-render-status" class="hint" role="status" aria-live="polite" hidden></div>
         <div id="visual-qa" class="hint" aria-live="polite"></div>
       </div>
       <div class="storyboard-editor">
@@ -266,7 +267,9 @@
         <label class="label" for="scene-instructions">Change this scene</label>
         <textarea id="scene-instructions" maxlength="1000" rows="3" placeholder="For example: show the two ideas side by side and highlight each difference."></textarea>
         <div class="hint">Describe the visual change. Timing and narration stay in place.</div>
-        <button class="btn btn-ghost" id="regenerate-scene">Regenerate selected scene</button>
+        <label class="scene-photo-option"><input type="checkbox" id="replace-scene-image" aria-describedby="replace-scene-image-note"> Use another saved photo</label>
+        <div class="hint" id="replace-scene-image-note">Choose a different photo already downloaded for this section.</div>
+        <button class="btn btn-ghost" id="regenerate-scene">Regenerate scene &amp; draft</button>
         <div id="scene-edit-result" class="hint" aria-live="polite"></div>
       </div>
     </div>

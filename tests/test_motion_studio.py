@@ -257,3 +257,194 @@ def test_page_has_motion_controls_and_opaque_preview_iframe(client):
     assert 'id="s-visual_review_enabled"' in html
     assert 'sandbox="allow-scripts"' in html and "allow-same-origin" not in html
     assert 'src="/static/js/visuals.js"' in html
+
+
+def _review_files():
+    output = Path(config.OUTPUT_DIR)
+    return {path.relative_to(output).as_posix(): path.read_bytes()
+            for path in output.rglob("*") if path.is_file()}
+
+
+def _forbid_review_mutations(monkeypatch):
+    def forbidden(*args, **kwargs):
+        pytest.fail("A rejected Review request must not edit files or start work")
+    monkeypatch.setattr(sys.modules["agents.visual_director"], "regenerate_scene", forbidden)
+    monkeypatch.setattr(sys.modules["video.renderers.html"], "prepare_motion_project", forbidden)
+    monkeypatch.setattr(visuals, "_save_plan", forbidden)
+    monkeypatch.setattr(pipeline.threading, "Thread", forbidden)
+
+
+@pytest.mark.parametrize("route,options", [
+    ("/api/visuals/scenes/scene-001/regenerate", {"instructions": "Updated"}),
+    ("/api/run", {"steps": ["video"], "visual_mode": "motion", "preview_only": True}),
+])
+@pytest.mark.parametrize("revision", [False, 7, "not-a-revision", "a" * 63, "G" * 64])
+def test_malformed_storyboard_revision_rejects_before_any_mutation(
+        client, monkeypatch, route, options, revision):
+    _editable_plan(monkeypatch)
+    _forbid_review_mutations(monkeypatch)
+    before, files = deepcopy(state), _review_files()
+    response = client.post(route, json={**options, "expected_plan_revision": revision})
+    assert response.status_code == 400
+    assert response.json["ok"] is False
+    assert state == before and _review_files() == files
+
+
+@pytest.mark.parametrize("route,options", [
+    ("/api/visuals/scenes/scene-001/regenerate", {"instructions": "Updated"}),
+    ("/api/run", {"steps": ["video"], "visual_mode": "motion", "preview_only": True}),
+])
+def test_stale_storyboard_revision_rejects_without_losing_current_edits(
+        client, monkeypatch, route, options):
+    _editable_plan(monkeypatch)
+    stale_revision = client.get("/api/visuals").json["plan_revision"]
+    state["visual_plan"]["scenes"][0]["title"] = "Saved in another tab"
+    _forbid_review_mutations(monkeypatch)
+    before, files = deepcopy(state), _review_files()
+    response = client.post(route, json={**options, "expected_plan_revision": stale_revision})
+    assert response.status_code == 409
+    assert response.json["ok"] is False
+    assert state == before and _review_files() == files
+
+
+@pytest.mark.parametrize("module,route,options", [
+    (visuals, "/api/visuals/scenes/scene-001/regenerate", {"instructions": "Updated"}),
+    (pipeline, "/api/run", {"steps": ["video"], "visual_mode": "motion", "preview_only": True}),
+])
+def test_revision_guard_checks_current_storyboard_after_acquiring_job_lock(
+        client, monkeypatch, module, route, options):
+    from contextlib import contextmanager
+    _editable_plan(monkeypatch)
+    stale_revision = client.get("/api/visuals").json["plan_revision"]
+    _forbid_review_mutations(monkeypatch)
+    before, files = deepcopy(state), _review_files()
+    before["visual_plan"]["scenes"][0]["title"] = "Changed while waiting for the lock"
+
+    @contextmanager
+    def concurrent_edit():
+        # A request may wait for another editor between validation and reservation.
+        state["visual_plan"] = deepcopy(before["visual_plan"])
+        yield
+
+    monkeypatch.setattr(module, "job_lock", concurrent_edit())
+    response = client.post(route, json={**options, "expected_plan_revision": stale_revision})
+    assert response.status_code == 409
+    assert state == before and _review_files() == files
+
+
+def test_storyboard_revision_changes_for_same_scene_ids_and_count(client, monkeypatch):
+    original, _ = _editable_plan(monkeypatch)
+    first = client.get("/api/visuals").json
+    assert len(first["plan_revision"]) == 64
+    assert set(first["plan_revision"]) <= set("0123456789abcdef")
+    assert first["plan_revision"] == client.get("/api/status").json["plan_revision"]
+    assert client.get("/api/visuals").json["plan_revision"] == first["plan_revision"]
+    state["visual_plan"]["scenes"][0]["title"] = "Another saved project with the same scene IDs"
+    second = client.get("/api/visuals").json
+    assert len(second["plan"]["scenes"]) == len(original["scenes"])
+    assert second["plan"]["scenes"][0]["id"] == original["scenes"][0]["id"]
+    assert second["revision"] == first["revision"]
+    assert second["plan_revision"] != first["plan_revision"]
+    assert second["preview_revision"] == first["preview_revision"]
+    assert client.get("/api/status").json["plan_revision"] == second["plan_revision"]
+
+
+def test_media_revisions_refresh_same_path_equal_size_replacements(client, monkeypatch):
+    import os
+    _editable_plan(monkeypatch)
+    output = Path(config.OUTPUT_DIR)
+    html_path = output / "motion" / "index.html"
+    draft = output / "motion_preview.mp4"
+    final = output / "final_video.mp4"
+    draft.write_bytes(b"old draft")
+    final.write_bytes(b"old final")
+    state.update(preview_path=str(draft), video_path=str(final))
+    visuals_before = client.get("/api/visuals").json
+    status_before = client.get("/api/status").json
+    assert status_before["preview_revision"] and status_before["video_revision"]
+    for path in (html_path, draft, final):
+        stat = path.stat()
+        path.write_bytes(b"x" * stat.st_size)
+        # Explicitly advance the clock; the test must not rely on timer precision.
+        os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns + 2_000_000_000))
+    visuals_after = client.get("/api/visuals").json
+    status_after = client.get("/api/status").json
+    assert visuals_after["plan_revision"] == visuals_before["plan_revision"]
+    assert visuals_after["preview_revision"] != visuals_before["preview_revision"]
+    assert status_after["preview_revision"] != status_before["preview_revision"]
+    assert status_after["video_revision"] != status_before["video_revision"]
+    response = client.get("/preview-video?v=" + status_after["preview_revision"])
+    assert response.status_code == 200 and response.data == draft.read_bytes()
+    assert response.headers["Cache-Control"] == "no-store"
+    response.close()
+    draft.unlink()
+    final.unlink()
+    missing = client.get("/api/status").json
+    assert missing["preview_revision"] is None and missing["video_revision"] is None
+    assert not missing["has_preview"] and not missing["has_video"]
+
+
+@pytest.mark.parametrize("expected", ["current", None])
+def test_scene_edit_returns_fresh_revisions_and_discards_previous_qa(client, monkeypatch, expected):
+    _editable_plan(monkeypatch)
+    output = Path(config.OUTPUT_DIR)
+    qa_file = output / "visual_qa.json"
+    qa_file.write_text(json.dumps({"passed": True, "summary": "Previous frames"}), encoding="utf-8")
+    state["visual_qa"] = {"passed": True, "summary": "Previous frames"}
+    before = client.get("/api/visuals").json
+    response = client.post("/api/visuals/scenes/scene-001/regenerate", json={
+        "instructions": "An updated visual direction", "expected_plan_revision":
+        before["plan_revision"] if expected == "current" else None,
+    })
+    assert response.status_code == 200
+    after = client.get("/api/visuals").json
+    assert response.json["plan_revision"] == after["plan_revision"] != before["plan_revision"]
+    assert response.json["preview_revision"] == after["preview_revision"] != before["preview_revision"]
+    assert after["qa"] is None and not qa_file.exists()
+    status = client.get("/api/status").json
+    assert status["plan_revision"] == after["plan_revision"]
+    assert status["preview_revision"] is None and status["video_revision"] is None
+
+
+@pytest.mark.parametrize("replace_image", ["true", 1, None, {}])
+def test_invalid_saved_photo_option_is_rejected_without_mutation(client, monkeypatch, replace_image):
+    _editable_plan(monkeypatch)
+    _forbid_review_mutations(monkeypatch)
+    before, files = deepcopy(state), _review_files()
+    response = client.post("/api/visuals/scenes/scene-001/regenerate", json={"replace_image": replace_image})
+    assert response.status_code == 400
+    assert state == before and _review_files() == files
+
+
+def test_photo_replacement_passes_isolated_saved_images_and_project_output(client, monkeypatch):
+    _editable_plan(monkeypatch)
+    saved_images = {"1": [str(Path(config.OUTPUT_DIR) / "images" / "saved-photo.png")]}
+    state["image_map"] = deepcopy(saved_images)
+    received = []
+
+    def regenerate(plan, scene_id, script, instructions="", **options):
+        received.append(deepcopy(options))
+        options["image_map"]["1"].append("must not alter the project's cached images")
+        updated = deepcopy(plan)
+        updated["scenes"][0]["title"] = "A different saved picture"
+        return updated
+
+    monkeypatch.setattr(sys.modules["agents.visual_director"], "regenerate_scene", regenerate)
+    response = client.post("/api/visuals/scenes/scene-001/regenerate", json={"replace_image": True})
+    assert response.status_code == 200
+    assert received == [{"replace_image": True, "image_map": saved_images,
+                         "output_dir": str(Path(config.OUTPUT_DIR).resolve())}]
+    assert state["image_map"] == saved_images
+
+
+def test_storyboard_guard_cannot_be_used_to_replan_during_draft_render(client, monkeypatch):
+    _editable_plan(monkeypatch)
+    revision = client.get("/api/visuals").json["plan_revision"]
+    _forbid_review_mutations(monkeypatch)
+    before, files = deepcopy(state), _review_files()
+    response = client.post("/api/run", json={
+        "steps": ["visuals", "video"], "visual_mode": "motion", "preview_only": True,
+        "expected_plan_revision": revision,
+    })
+    assert response.status_code == 400
+    assert state == before and _review_files() == files

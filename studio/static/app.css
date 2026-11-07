@@ -466,6 +466,11 @@ details.more > .more-body { margin-top: 14px; }
 .scene-details p { color: var(--on-card-2); font-size: 13px; line-height: 1.6; }
 .storyboard-editor > .btn { margin-top: 12px; }
 #scene-edit-result { margin-top: 10px; overflow-wrap: anywhere; }
+#review-render-status { margin: 0 0 12px; overflow-wrap: anywhere; }
+#scene-edit-result.error, #review-render-status.error { color: #edb7bf; }
+.scene-photo-option { display: flex; gap: 8px; align-items: center; margin: 12px 0 4px; font-size: 13px; }
+.scene-photo-option input { width: auto; }
+.scene-choice:disabled { opacity: .6; }
 .motion-setting-grid { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 16px; margin-top: 14px; }
 .motion-setting-grid .field { margin: 0; }
 .model-discovery { display: grid; gap: 8px; justify-items: start; margin-top: 14px; }

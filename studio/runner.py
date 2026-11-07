@@ -391,13 +391,18 @@ def _run_pipeline(steps, topic_override, video_type, focus_angle, use_trends,
             check_stop("video rendering")
             stage("video", "done")
             try:
-                image_map = state.get("image_map", {})
-                state["thumb_path"] = make_thumbnail(script, image_map, str(output))
+                thumb = state.get("thumb_path")
+                if set(steps) != {"video"} or not thumb or not Path(thumb).is_file():
+                    image_map = state.get("image_map", {})
+                    state["thumb_path"] = make_thumbnail(script, image_map, str(output))
             except Exception as exc:
                 log(f"Thumbnail unavailable: {exc}", "warn")
 
-        state["description"] = build_description(script, state.get("research") or {},
-                                                  video_type=video_type, timeline=state.get("timeline"))
+        # Updating the scene's encoded frames must preserve publishing edits,
+        # including a deliberately empty description and a custom thumbnail.
+        if set(steps) != {"video"} or not isinstance(state.get("description"), str):
+            state["description"] = build_description(script, state.get("research") or {},
+                                                      video_type=video_type, timeline=state.get("timeline"))
         if "video" in steps and (not preview_only or schedule_id):
             try:
                 if preview_only:

@@ -157,7 +157,8 @@ def test_hybrid_without_stock_key_still_produces_complete_motion(tmp_path):
     assert director.validate_plan(plan) is plan
 
 
-def test_regeneration_preserves_timeline_captions_other_scenes_and_attribution(tmp_path):
+@pytest.mark.parametrize("shortening", ["Simpler labels", "Use less text"])
+def test_regeneration_preserves_timeline_captions_other_scenes_and_attribution(tmp_path, shortening):
     script, timeline = source()
     original = director.plan_scenes(script, timeline, use_ai=False)
     regenerated = director.regenerate_scene(original, "scene-001", script, "Make a comparison with less text")
@@ -170,9 +171,11 @@ def test_regeneration_preserves_timeline_captions_other_scenes_and_attribution(t
     footage = {"path": str(tmp_path / "asset.mp4"), "source_url": "https://www.pexels.com/video/123/",
                "credit": "Video by Author on Pexels", "in_point": 0.5}
     original["scenes"][0].update(template="footage", footage=footage)
-    regenerated = director.regenerate_scene(original, "scene-001", script, "Simpler labels")
+    original["scenes"][0]["items"][0]["label"] = "Sunlight reaches the panel and becomes electricity"
+    regenerated = director.regenerate_scene(original, "scene-001", script, shortening)
     assert regenerated["scenes"][0]["footage"] == footage
     assert regenerated["scenes"][0]["template"] == "footage"
+    assert regenerated["scenes"][0]["items"][0]["label"] == "Sunlight reaches the panel and"
 
 
 def test_arabic_text_survives_and_credentials_never_reach_saved_plan(monkeypatch, tmp_path):
@@ -255,3 +258,157 @@ def test_long_sections_cycle_existing_pictures_and_charts_keep_data_space(tmp_pa
                                 image_map={1: [str(first), str(second)], 2: [str(first)]}, use_ai=False)
     assert [scene["image"]["path"] for scene in plan["scenes"][:2]] == [str(first), str(second)]
     assert all("image" not in scene for scene in plan["scenes"] if scene["template"] == "chart")
+
+
+def _photo_plan(output):
+    from PIL import Image
+    first, duplicate, broken, second = [output / name for name in (
+        "first.jpg", "duplicate.jpg", "broken.jpg", "second.jpg")]
+    Image.new("RGB", (40, 30), "navy").save(first)
+    duplicate.write_bytes(first.read_bytes())
+    broken.write_bytes(b"not a picture")
+    Image.new("RGB", (40, 30), "gold").save(second)
+    (output / "credits.json").write_text(json.dumps([{
+        "file": second.name, "source": "NASA", "author": "NASA/JPL", "license": "Public domain",
+        "link": "https://images.nasa.gov/details/alternate",
+    }]))
+    script, timeline = source()
+    image_map = {1: [path.name for path in (first, duplicate, broken, second)], "2": [second.name]}
+    plan = director.plan_scenes(script, timeline, use_ai=False, image_map=image_map, output_dir=output)
+    plan.update(script_signature="same-script", timeline_signature="same-narration")
+    return script, plan, image_map
+
+
+def test_scene_photo_replacement_cycles_distinct_saved_images_and_preserves_timing(tmp_path):
+    script, plan, image_map = _photo_plan(tmp_path)
+    before = copy.deepcopy((script, plan, image_map))
+    edited = director.regenerate_scene(plan, "scene-001", script, replace_image=True,
+                                        image_map=image_map, output_dir=tmp_path)
+    asset = edited["scenes"][0]["image"]
+    assert asset["path"] == str(tmp_path / "second.jpg")
+    assert asset["credit"] == "NASA/JPL · NASA" and asset["license"] == "Public domain"
+    assert asset["source_url"] == "https://images.nasa.gov/details/alternate"
+    assert edited["scenes"][1:] == plan["scenes"][1:]
+    for key in ("sections", "captions", "words", "script_signature", "timeline_signature", "duration"):
+        assert edited[key] == plan[key]
+    for key in ("id", "section_id", "start", "duration"):
+        assert edited["scenes"][0][key] == plan["scenes"][0][key]
+    cycled = director.regenerate_scene(edited, "scene-001", script, replace_image=True,
+                                       image_map=image_map, output_dir=tmp_path)
+    assert cycled["scenes"][0]["image"]["path"] == str(tmp_path / "first.jpg")
+    assert (script, plan, image_map) == before
+
+
+def test_scene_photo_replacement_rejects_missing_duplicate_and_unsafe_alternatives(tmp_path, monkeypatch):
+    output = tmp_path / "project"
+    output.mkdir()
+    monkeypatch.setattr(director.config, "OUTPUT_DIR", str(output))
+    script, plan, _ = _photo_plan(output)
+    private = tmp_path / "outside.jpg"
+    private.write_bytes((output / "second.jpg").read_bytes())
+    (output / "escape.jpg").symlink_to(private)
+    image_map = {1: ["first.jpg", "duplicate.jpg", "broken.jpg", "missing.jpg", "escape.jpg",
+                     str(private), "https://example.com/remote.jpg"], 2: ["second.jpg"]}
+    before = copy.deepcopy(plan)
+    inspected = []
+    digest = director._image_digest
+
+    def inspect(path):
+        inspected.append(path)
+        assert str(path).startswith(str(output) + "/")
+        return digest(path)
+
+    monkeypatch.setattr(director, "_image_digest", inspect)
+    with pytest.raises(ValueError, match="No alternative saved photo"):
+        director.regenerate_scene(plan, "scene-001", script, replace_image=True,
+                                  image_map=image_map, output_dir=output)
+    assert str(private) not in inspected and str(output / "second.jpg") not in inspected
+    assert plan == before
+
+
+@pytest.mark.parametrize("use_footage", [False, True])
+def test_explicit_scene_layout_and_short_labels_override_ai(tmp_path, monkeypatch, use_footage):
+    script, plan, _ = _photo_plan(tmp_path)
+    scene = plan["scenes"][0]
+    scene["items"][0]["label"] = "Sunlight reaches the panel and becomes electricity"
+    if use_footage:
+        scene.pop("image")
+        scene.update(template="footage", footage={
+            "path": str(tmp_path / "clip.mp4"), "source_url": "https://www.pexels.com/video/123/",
+            "credit": "Video by Author on Pexels", "in_point": .5,
+        })
+    original = copy.deepcopy(plan)
+    repeated = {"scenes": [{key: copy.deepcopy(scene[key]) for key in (
+        "id", "template", "title", "visual_goal", "items")}]}
+    monkeypatch.setattr(director.config, "OPENROUTER_API_KEY", "test-key")
+    monkeypatch.setattr(director.openrouter, "plan_json", lambda *a, **k: repeated)
+    edited = director.regenerate_scene(plan, scene["id"], script, "Use a comparison with shorter labels")
+    replacement = edited["scenes"][0]
+    assert replacement["template"] == "comparison" and "footage" not in replacement
+    assert replacement["items"][0]["label"] == "Sunlight reaches the panel and"
+    if not use_footage:
+        assert replacement["image"] == scene["image"]
+    assert edited["scenes"][1:] == plan["scenes"][1:]
+    assert edited["sections"] == plan["sections"] and edited["captions"] == plan["captions"]
+    assert plan == original
+
+
+@pytest.mark.parametrize("template", ["flow", "explain"])
+def test_scene_regeneration_uses_visible_fallback_when_ai_repeats_design(tmp_path, monkeypatch, template):
+    script, plan, _ = _photo_plan(tmp_path)
+    scene = plan["scenes"][0]
+    scene["template"] = template
+    repeated = {"scenes": [{key: copy.deepcopy(scene[key]) for key in (
+        "id", "template", "title", "visual_goal", "items")}]}
+    repeated["scenes"][0]["visual_goal"] = "A different planning note that is never displayed"
+    monkeypatch.setattr(director.config, "OPENROUTER_API_KEY", "test-key")
+    monkeypatch.setattr(director.openrouter, "plan_json", lambda *a, **k: repeated)
+    edited = director.regenerate_scene(plan, scene["id"], script)
+    assert edited["scenes"][0]["template"] == ("text" if template == "explain" else "explain")
+    assert edited["scenes"][0]["image"] == scene["image"]
+
+
+@pytest.mark.parametrize("template,instructions", [("flow", "Use flow"), ("footage", ""), ("chart", "")])
+def test_scene_regeneration_reports_no_visible_change_without_mutating_plan(tmp_path, template, instructions):
+    script, timeline = source()
+    if template == "chart":
+        script["sections"][0]["chart_data"] = [{"label": "First", "value": 1}, {"label": "Second", "value": 2}]
+    plan = director.plan_scenes(script, timeline, use_ai=False)
+    if template == "footage":
+        plan["scenes"][0].update(template="footage", footage={
+            "path": str(tmp_path / "clip.mp4"), "source_url": "https://www.pexels.com/video/123/",
+            "credit": "Video by Author on Pexels", "in_point": .5,
+        })
+    original = copy.deepcopy(plan)
+    with pytest.raises(ValueError, match="visible design is unchanged"):
+        director.regenerate_scene(plan, "scene-001", script, instructions)
+    assert plan == original
+
+
+def test_photo_replacement_can_replace_footage_with_local_picture(tmp_path):
+    script, plan, image_map = _photo_plan(tmp_path)
+    plan["scenes"][0].pop("image")
+    plan["scenes"][0].update(template="footage", footage={
+        "path": str(tmp_path / "clip.mp4"), "source_url": "https://www.pexels.com/video/123/",
+        "credit": "Video by Author on Pexels", "in_point": .5,
+    })
+    edited = director.regenerate_scene(plan, "scene-001", script, replace_image=True,
+                                       image_map=image_map, output_dir=tmp_path)
+    assert edited["scenes"][0]["template"] == "explain"
+    assert "footage" not in edited["scenes"][0]
+    assert edited["scenes"][0]["image"]["path"] == str(tmp_path / "first.jpg")
+    assert "footage" in plan["scenes"][0]
+
+
+def test_requested_chart_needs_source_data_and_cannot_silently_hide_replacement_photo(tmp_path):
+    script, plan, image_map = _photo_plan(tmp_path)
+    with pytest.raises(ValueError, match="no supplied chart data"):
+        director.regenerate_scene(plan, "scene-001", script, "Use a chart")
+    script["sections"][0]["chart_data"] = [{"label": "First", "value": 1}, {"label": "Second", "value": 2}]
+    edited = director.regenerate_scene(plan, "scene-001", script, "Use a chart")
+    assert edited["scenes"][0]["template"] == "chart"
+    assert edited["scenes"][0]["items"] == script["sections"][0]["chart_data"]
+    assert "image" not in edited["scenes"][0] and edited["image_status"]["scenes"] == 1
+    with pytest.raises(ValueError, match="A chart does not display a photo"):
+        director.regenerate_scene(plan, "scene-001", script, "Use a chart", replace_image=True,
+                                  image_map=image_map, output_dir=tmp_path)

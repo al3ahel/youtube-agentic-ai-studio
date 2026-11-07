@@ -124,8 +124,11 @@ node renderers/hyperframes/node_modules/hyperframes/bin/hyperframes.mjs browser 
 
 Open **Check local setup** on Home, choose or add a channel profile, then choose
 **Motion** and **Draft preview first**. Enter a topic and press **Make video**.
-Review → Storyboard lets you scrub the local HTML preview, regenerate one scene
-and render the final video. Try **Profile settings → Preview voice** before making
+Review → Storyboard lets you scrub the local HTML preview and regenerate one scene.
+Each scene edit updates the preview and automatically renders a fresh draft MP4
+on the same screen. Select **Use another saved photo** to swap that scene's picture
+for another image already downloaded for its section, then render the final video
+when ready. Try **Profile settings → Preview voice** before making
 a long recording; it auditions the currently selected voice, speed and pitch.
 
 For recurring videos, use **Home → Scheduled videos → Add schedule**. Choose a
@@ -194,9 +197,12 @@ flowchart TD
 
 HyperFrames is the video-rendering stage. The Review screen previews the same
 composition directly in the browser; scrubbing it does not encode another MP4.
-After a scene edit, **Render draft MP4** or **Render final video** runs HyperFrames
-again with the saved narration and updated storyboard. Changing a scene invalidates
-the previous MP4 until it is rendered again.
+Regenerating a scene refreshes its browser preview immediately and automatically
+runs HyperFrames for a new draft MP4 with the saved narration and updated storyboard.
+Review stays open, shows progress or an actionable error, and seeks the new MP4 to
+the selected scene when ready. **Render draft MP4** retries the current storyboard;
+**Render final video** encodes the final version. Scene edits invalidate the previous
+final render. Your publishing metadata and existing thumbnail are preserved.
 
 This fork adds the HyperFrames path while keeping the original picture acquisition
 available in every mode. **Classic** renders those pictures and narration with

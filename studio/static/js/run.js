@@ -8,7 +8,7 @@ const STEPS = [
   ["visuals",   "Building the storyboard", "Choosing scenes and timing their motion to the voiceover"],
   ["video",     "Rendering the video",     "The slow part, usually 2–10 minutes"],
 ];
-let status = {}, es = null, heroMode = "form", runSteps = [], videoType = "normal", lastRunError = "", lastRequest = null;
+let status = {}, es = null, heroMode = "form", runSteps = [], videoType = "normal", lastRunError = "", lastRequest = null, statusRequestSerial = 0;
 
 function setHero(mode) {
   heroMode = mode;
@@ -78,12 +78,19 @@ function applyStatus(d) {
   } else if (was && !d.running) onFinished(d);
 }
 async function pollStatus() {
-  try { applyStatus(await api("/api/status")); } catch (e) { }
+  await pollOnce();
   setTimeout(pollStatus, status.running || status.uploading ? 1500 : 5000);
 }
-const pollOnce = () => api("/api/status").then(applyStatus).catch(() => {});
+async function pollOnce() {
+  const serial = ++statusRequestSerial;
+  try {
+    const current = await api("/api/status");
+    if (serial === statusRequestSerial) applyStatus(current);
+  } catch (e) { }
+}
 
 async function onFinished(d) {
+  const reviewed = typeof finishReviewRender === "function" && await finishReviewRender(d);
   renderRun(d);
   loadLibrary();
   const msg = d.error || lastRunError;
@@ -107,7 +114,7 @@ async function onFinished(d) {
     $("#run-done").innerHTML = `<div class="draft-ready"><span class="tag">Draft preview</span><h3>Review the motion before the final render</h3><p class="hint">Play the storyboard, change any scene, then render the final video from Review. This draft has not been archived or published.</p><a class="btn btn-white btn-lg" href="#review">Review scenes →</a></div>`;
     setHero("done");
     $("#tabs a[data-view=review]").classList.add("notify");
-    if (location.hash === "#review") loadReview();
+    if (!reviewed && location.hash === "#review") loadReview();
     return;
   }
   if (!d.has_video || (lastRequest && !lastRequest[2].includes("video"))) {
@@ -127,7 +134,7 @@ async function onFinished(d) {
   setHero("done");
   $("#tabs a[data-view=review]").classList.add("notify");
   toast("Your video is ready", "ok");
-  if (location.hash === "#review") loadReview();
+  if (!reviewed && location.hash === "#review") loadReview();
 }
 
 function startSSE() {
@@ -171,7 +178,7 @@ async function startRun(topic, surprise, options = {}) {
   const steps = (options.steps || $$("#steps input:checked").map(i => i.value)).filter(step => mode !== "classic" || step !== "visuals");
   if (!steps.length) return toast("Turn on at least one step under More options", "err");
   if (!surprise && !topic && (steps.includes("research") || steps.includes("script"))) { $("#topic-input").focus(); return toast("Type a topic first, or let AI pick one"); }
-  lastRequest = [topic, surprise, steps, mode, preview, profileId, format];
+  lastRequest = [topic, surprise, steps, mode, preview, profileId, format, options.expected_plan_revision];
   runSteps = ["preparation", ...steps];
   lastRunError = "";
   $("#console").innerHTML = "";
@@ -183,16 +190,27 @@ async function startRun(topic, surprise, options = {}) {
   const r = await api("/api/run", {
     steps, topic: surprise ? "" : topic, video_type: format,
     visual_mode: mode, preview_only: preview, profile_id: profileId,
+    ...(options.expected_plan_revision ? { expected_plan_revision: options.expected_plan_revision } : {}),
     focus_angle: surprise ? $("#focus-angle").value : "",
     use_trends: surprise && $("#quick-trends").checked,
   }).catch(e => ({ ok: false, error: e.message }));
-  if (!r.ok) { setHero("form"); return toast(r.error, "err"); }
+  if (!r.ok) {
+    setHero("form");
+    if (options.throwOnError) throw new Error(r.error || "Could not start the video render.");
+    return toast(r.error, "err");
+  }
   status.running = true;
   startSSE(); pollOnce();
-  window.scrollTo({ top: 0, behavior: "smooth" });
+  if (options.scroll !== false) window.scrollTo({ top: 0, behavior: "smooth" });
   return true;
 }
-function retry() { lastRequest ? startRun(lastRequest[0], lastRequest[1], { steps: lastRequest[2], visual_mode: lastRequest[3], preview_only: lastRequest[4], profile_id: lastRequest[5], video_type: lastRequest[6] }) : setHero("form"); }
+function retry() {
+  if (!lastRequest) return setHero("form");
+  if (lastRequest[7]) return renderStoryboard(lastRequest[4], {
+    visualMode: lastRequest[3], profileId: lastRequest[5], videoType: lastRequest[6], planRevision: lastRequest[7],
+  });
+  return startRun(lastRequest[0], lastRequest[1], { steps: lastRequest[2], visual_mode: lastRequest[3], preview_only: lastRequest[4], profile_id: lastRequest[5], video_type: lastRequest[6] });
+}
 $("#ask-form").onsubmit = e => { e.preventDefault(); startRun($("#topic-input").value.trim(), false); };
 $("#surprise-btn").onclick = () => startRun("", true);
 $("#stop-btn").onclick = () => api("/api/stop", {}).then(() => { toast("Stopping after the current step…"); $("#run-title").textContent = "Stopping…"; });

@@ -8,6 +8,7 @@ by the narration timeline.
 from __future__ import annotations
 
 import copy
+import hashlib
 import html
 import json
 import math
@@ -523,10 +524,8 @@ def _source_url(value) -> str:
     return value
 
 
-def _attach_images(plan: dict, image_map: dict | None, output_dir) -> None:
-    """Reuse the classic pipeline's downloaded pictures; never fetch model URLs."""
-    if image_map is None:
-        return
+def _saved_images(image_map: dict, output_dir) -> tuple[dict, int]:
+    """Validate the classic pipeline's local pictures and retain their credits."""
     if not isinstance(image_map, dict):
         raise ValueError("Image map must contain local image paths keyed by section ID.")
     output = Path(output_dir).expanduser().resolve() if output_dir is not None else None
@@ -570,6 +569,14 @@ def _attach_images(plan: dict, image_map: dict | None, output_dir) -> None:
             if asset not in valid:
                 valid.append(asset)
         images[str(section_id)] = valid
+    return images, rejected
+
+
+def _attach_images(plan: dict, image_map: dict | None, output_dir) -> None:
+    """Reuse the classic pipeline's downloaded pictures; never fetch model URLs."""
+    if image_map is None:
+        return
+    images, rejected = _saved_images(image_map, output_dir)
     used = {}
     attached = 0
     for scene in plan["scenes"]:
@@ -584,6 +591,54 @@ def _attach_images(plan: dict, image_map: dict | None, output_dir) -> None:
                             "reason": "reused_local_images" if attached else "no_local_images"}
     if rejected:
         plan["warnings"].append("Some saved pictures were missing or outside the project image directory; those scenes use graphics.")
+
+
+def _image_digest(path: str) -> str | None:
+    """Compare a bounded, readable picture without trusting its filename alone."""
+    from PIL import Image
+    limit = 32 * 1024 * 1024
+    try:
+        source = Path(path)
+        if not 0 < source.stat().st_size <= limit:
+            return None
+        with Image.open(source) as picture:
+            width, height = picture.size
+            if (picture.format not in {"JPEG", "PNG", "WEBP"} or min(width, height) < 1
+                    or max(width, height) > 16384 or width * height > 40_000_000):
+                return None
+            picture.verify()
+        digest = hashlib.sha256()
+        with source.open("rb") as handle:
+            remaining = limit
+            while chunk := handle.read(min(1024 * 1024, remaining + 1)):
+                remaining -= len(chunk)
+                if remaining < 0:
+                    return None
+                digest.update(chunk)
+        return digest.hexdigest()
+    except (OSError, ValueError, Image.DecompressionBombError):
+        return None
+
+
+def _next_saved_image(scene: dict, image_map: dict | None, output_dir) -> dict:
+    if not isinstance(image_map, dict):
+        raise ValueError("No alternative saved photo is available for this section. Fetch more pictures first.")
+    section_id = scene["section_id"]
+    images, _ = _saved_images({key: value for key, value in image_map.items()
+                              if str(key) == section_id}, output_dir)
+    choices = images.get(section_id, [])
+    current, _ = _saved_images({section_id: [scene.get("image", {}).get("path")]}, output_dir)
+    current_path = next((asset["path"] for asset in current.get(section_id, [])), None)
+    current_digest = _image_digest(current_path) if current_path else None
+    position = next((index for index, asset in enumerate(choices)
+                     if asset["path"] == current_path), -1)
+    for asset in choices[position + 1:] + choices[:position + 1]:
+        if asset["path"] == current_path:
+            continue
+        fingerprint = _image_digest(asset["path"])
+        if fingerprint and fingerprint != current_digest:
+            return copy.deepcopy(asset)
+    raise ValueError("No alternative saved photo is available for this section. Fetch another distinct, readable picture first.")
 
 
 def validate_plan(plan: dict) -> dict:
@@ -785,11 +840,40 @@ def plan_scenes(script: dict, timeline: dict, mode: str = "motion",
     return plan
 
 
-def regenerate_scene(plan: dict, scene_id: str, script: dict, instructions: str = "") -> dict:
-    """Replace one scene's visual design, preserving timing and existing footage."""
+def _set_scene_template(scene: dict, template: str, source_section: dict) -> None:
+    scene["template"] = template
+    if template == "chart":
+        data = _chart_data(source_section)
+        if not data:
+            raise ValueError("This section has no supplied chart data. Choose another layout.")
+        scene["items"] = data
+        scene.pop("image", None)
+    else:
+        scene["items"] = [{"label": item["label"]} for item in scene["items"]]
+    if template != "footage":
+        scene.pop("footage", None)
+
+
+def _visible_design(scene: dict) -> tuple:
+    """Ignore planning notes and attribution URLs that do not appear on screen."""
+    media = scene.get("footage") if scene["template"] == "footage" else (
+        scene.get("image") if scene["template"] != "chart" else None)
+    visible_media = ((media.get("path"), media.get("credit"), media.get("in_point"))
+                     if media else None)
+    items = scene["items"] if scene["template"] in {"chart", "timeline"} else [
+        item["label"] for item in scene["items"]]
+    return scene["template"], scene["title"], items, visible_media
+
+
+def regenerate_scene(plan: dict, scene_id: str, script: dict, instructions: str = "", *,
+                     replace_image: bool = False, image_map: dict | None = None,
+                     output_dir=None) -> dict:
+    """Edit one scene, keeping its narration clock and using only trusted media."""
     validate_plan(plan)
     if not isinstance(instructions, str):
         raise ValueError("Scene instructions must be text.")
+    if not isinstance(replace_image, bool):
+        raise ValueError("The saved-photo replacement option must be true or false.")
     result = copy.deepcopy(plan)
     index = next((index for index, scene in enumerate(result["scenes"])
                   if scene["id"] == str(scene_id)), None)
@@ -803,21 +887,17 @@ def regenerate_scene(plan: dict, scene_id: str, script: dict, instructions: str 
     source_section = lookup[original["section_id"]]
     narration = _scene_text(section, original["start"], original["start"] + original["duration"], result["captions"])
     replacement = copy.deepcopy(original)
+    layout_words = re.sub(r"\b(?:less|shorter|simpler|concise)\s+text\b", "", instructions.casefold())
     preference = next((name for name in ("comparison", "timeline", "flow", "chart", "explain", "text")
-                       if re.search(r"\b" + name + r"\b", instructions.casefold())), None)
-    if not original.get("footage"):
-        if preference == "chart" and _chart_data(source_section):
-            replacement["template"], replacement["items"] = "chart", _chart_data(source_section)
-        elif preference and preference != "chart":
-            replacement["template"] = preference
-            replacement["items"] = [{"label": item["label"]} for item in original["items"]]
-        elif original["template"] != "chart":
-            replacement["template"] = "text" if original["template"] == "explain" else "explain"
-    if re.search(r"\b(shorter|less text|simpler|concise)\b", instructions, flags=re.IGNORECASE):
-        replacement["items"] = [
-            {**item, "label": _text(" ".join(item["label"].split()[:5]), 48)}
-            for item in replacement["items"]
-        ]
+                       if re.search(r"\b" + name + r"\b", layout_words)), None)
+    if replace_image and preference == "chart":
+        raise ValueError("A chart does not display a photo. Choose another layout to use a saved picture.")
+    new_image = _next_saved_image(original, image_map, output_dir) if replace_image else None
+    if preference:
+        _set_scene_template(replacement, preference, source_section)
+    elif not original.get("footage") and original["template"] != "chart":
+        _set_scene_template(replacement, "text" if original["template"] == "explain" else "explain", source_section)
+    simpler = bool(re.search(r"\b(shorter|less text|simpler|concise)\b", instructions, flags=re.IGNORECASE))
     sources = {original["id"]: {"section": source_section, "narration": narration}}
     if bool(getattr(config, "VISUAL_AI_ENABLED", True)) and openrouter._api_key():
         try:
@@ -829,15 +909,42 @@ def regenerate_scene(plan: dict, scene_id: str, script: dict, instructions: str 
             result.setdefault("warnings", []).extend(temporary["warnings"])
         except (openrouter.OpenRouterError, ValueError, KeyError, TypeError):
             result.setdefault("warnings", []).append("Scene regeneration used local templates because visual AI was unavailable.")
+    # A supported user layout takes precedence over an optional model's choice.
+    if preference:
+        _set_scene_template(replacement, preference, source_section)
+    if simpler:
+        replacement["items"] = [
+            {**item, "label": _text(" ".join(item["label"].split()[:5]), 48)}
+            for item in replacement["items"]
+        ]
     # These fields belong to the measured timeline and the trusted media adapter.
     for field in ("id", "section_id", "start", "duration"):
         replacement[field] = original[field]
-    if original.get("footage"):
+    if new_image is not None:
+        if replacement["template"] in {"footage", "chart"}:
+            _set_scene_template(replacement, preference or "explain", source_section)
+        replacement.pop("footage", None)
+        replacement["image"] = new_image
+    elif original.get("footage") and not preference:
         replacement["footage"] = copy.deepcopy(original["footage"])
         replacement["template"] = "footage"
-    if original.get("image"):
+    elif original.get("image") and replacement["template"] != "chart":
         replacement["image"] = copy.deepcopy(original["image"])
+    if _visible_design(replacement) == _visible_design(original):
+        if not preference and not original.get("footage") and original["template"] != "chart":
+            _set_scene_template(replacement, "text" if original["template"] == "explain" else "explain", source_section)
+        else:
+            raise ValueError("This scene's visible design is unchanged. Request a different layout or choose another saved photo.")
     replacement["beats"], replacement["beat_timing"] = _beats(replacement, result.get("words", []), result["fps"], result.get("captions", []))
     result["scenes"][index] = replacement
+    if "image_status" in result:
+        attached = sum(bool(scene.get("image")) and scene["template"] not in {"chart", "footage"}
+                       for scene in result["scenes"])
+        result["image_status"].update(available=bool(attached), scenes=attached,
+                                      reason="reused_local_images" if attached else "no_local_images")
+    if "stock_status" in result and original.get("footage") and not replacement.get("footage"):
+        clips = sum(scene["template"] == "footage" for scene in result["scenes"])
+        result["stock_status"].update(available=bool(clips), clips=clips,
+                                      reason="reused_local_footage" if clips else "no_footage_scenes")
     result["warnings"] = list(dict.fromkeys(result.get("warnings", [])))
     return validate_plan(result)

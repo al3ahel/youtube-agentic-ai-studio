@@ -203,3 +203,149 @@ def test_classic_render_and_thumbnail_reuse_cached_pictures_with_numeric_or_text
     assert Path(state["video_path"]).is_file() and Path(state["thumb_path"]).is_file()
     assert state["timeline"]["narration_reused"] is True
     assert archived == [True]
+
+
+@pytest.mark.parametrize("saved_description", ["My carefully edited publishing description.", ""])
+def test_scene_edit_then_video_only_draft_reuses_audio_plan_and_publishing_edits(
+        job, monkeypatch, saved_description):
+    """Review saves one scene, then the guarded render encodes that exact plan."""
+    from PIL import Image
+    from agents import visual_director
+    from studio import create_app, pipeline
+    from video import narrator
+    from video.renderers import html
+
+    output, script, archived = job
+    script["sections"] = [
+        {"id": 1, "title": "Observe", "narration": "Observe the pattern. Test the idea."},
+        {"id": 2, "title": "Compare", "narration": "Compare the evidence. Record the result."},
+    ]
+    (output / "script.json").write_text(json.dumps(script), encoding="utf-8")
+    (output / "narration.timings.json").write_text(json.dumps({
+        "version": 1, "script_signature": script_signature(script), "duration": 6,
+        "sections": [
+            {"id": 1, "start": 0, "duration": 3, "caption_timing": "estimated"},
+            {"id": 2, "start": 3, "duration": 3, "caption_timing": "estimated"},
+        ], "words": [],
+    }), encoding="utf-8")
+    images = output / "images"
+    images.mkdir()
+    for section_id in (1, 2):
+        picture = images / f"section-{section_id}.png"
+        Image.new("RGB", (64, 36), (30 * section_id, 80, 120)).save(picture)
+        state["image_map"][section_id] = [str(picture)]
+
+    prepared, rendered, initial_packaging = [], [], []
+
+    def prepare(plan, audio, directory):
+        prepared.append(copy.deepcopy(plan))
+        index = Path(directory) / "motion" / "index.html"
+        index.parent.mkdir(parents=True, exist_ok=True)
+        index.write_text(json.dumps(plan), encoding="utf-8")
+        return index
+
+    def render(current_script, audio, directory, plan, **kwargs):
+        assert kwargs["preview"] is True
+        rendered.append({"plan": copy.deepcopy(plan), "audio": audio,
+                         "script": copy.deepcopy(current_script)})
+        target = Path(directory) / "motion_preview.mp4"
+        target.write_bytes(json.dumps(plan, sort_keys=True).encode("utf-8"))
+        return str(target)
+
+    def initial_thumbnail(*args):
+        initial_packaging.append("thumbnail")
+        target = output / "thumbnail.jpg"
+        target.write_bytes(b"generated thumbnail")
+        return str(target)
+
+    def initial_description(*args, **kwargs):
+        initial_packaging.append("description")
+        return "Initially generated description"
+
+    monkeypatch.setattr(html, "prepare_motion_project", prepare)
+    monkeypatch.setattr(html, "render_motion_video", render)
+    monkeypatch.setattr(runner, "make_thumbnail", initial_thumbnail)
+    monkeypatch.setattr(runner, "build_description", initial_description)
+    runner.run_pipeline_thread(["visuals", "video"], visual_mode="motion", preview_only=True)
+    assert state["error"] is None
+    assert initial_packaging == ["thumbnail", "description"]
+    original_plan = copy.deepcopy(state["visual_plan"])
+    assert len(original_plan["scenes"]) >= 2
+    assert all(scene.get("image") for scene in original_plan["scenes"])
+
+    app = create_app()
+    app.config["TESTING"] = True
+    client = app.test_client()
+    saved = {"title": "My saved publishing title", "description": saved_description,
+             "tags": ["my-tag", "second-tag"]}
+    assert client.post("/api/save-output", json=saved).status_code == 200
+    thumbnail = output / "custom-thumbnail.jpg"
+    thumbnail.write_bytes(b"custom thumbnail chosen in Review")
+    state["thumb_path"] = str(thumbnail)
+    retained = {path: path.read_bytes() for path in [
+        output / "narration.wav", output / "narration.timings.json", output / "script.json",
+        thumbnail, *images.glob("*.png"),
+    ]}
+    image_map = copy.deepcopy(state["image_map"])
+    timeline = copy.deepcopy(state["timeline"])
+    before = client.get("/api/visuals").json
+    previous_draft_revision = client.get("/api/status").json["preview_revision"]
+    assert previous_draft_revision
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("A scene-only draft refresh must preserve speech, planning and publishing edits")
+
+    monkeypatch.setattr(visual_director, "plan_scenes", forbidden)
+    monkeypatch.setattr(narrator, "generate_narration", forbidden)
+    monkeypatch.setattr(runner, "make_thumbnail", forbidden)
+    monkeypatch.setattr(runner, "build_description", forbidden)
+    scene_id = original_plan["scenes"][0]["id"]
+    layout = "text" if original_plan["scenes"][0]["template"] != "text" else "flow"
+    edited = client.post(f"/api/visuals/scenes/{scene_id}/regenerate", json={
+        "instructions": f"Use a {layout} layout", "expected_plan_revision": before["plan_revision"],
+    })
+    assert edited.status_code == 200, edited.json
+    edited_plan = edited.json["plan"]
+    assert edited.json["plan_revision"] != before["plan_revision"]
+    assert edited_plan["scenes"][0]["template"] == layout
+    assert edited_plan["scenes"][1:] == original_plan["scenes"][1:]
+    assert edited_plan["scenes"][0]["image"] == original_plan["scenes"][0]["image"]
+    assert state["preview_path"] is None and state["video_path"] is None
+    assert not (output / "visual_qa.json").exists()
+
+    dispatched = []
+
+    class InlineThread:
+        def __init__(self, *, target, args, kwargs, daemon):
+            self.target, self.args, self.kwargs = target, args, kwargs
+            dispatched.append({"steps": args[0], **kwargs})
+
+        def start(self):
+            assert state["running"] is True
+            self.target(*self.args, **self.kwargs)
+
+    monkeypatch.setattr(pipeline.threading, "Thread", InlineThread)
+    response = client.post("/api/run", json={
+        "steps": ["video"], "visual_mode": "motion", "preview_only": True,
+        "expected_plan_revision": edited.json["plan_revision"],
+    })
+    assert response.status_code == 200 and response.json["ok"]
+    assert state["error"] is None and not state["running"]
+    assert dispatched[0]["steps"] == ["video"] and dispatched[0]["preview_only"] is True
+    assert len(rendered) == 2
+    assert rendered[-1]["plan"] == edited_plan
+    assert prepared[-1] == edited_plan
+    assert json.loads((output / "scene_plan.json").read_text(encoding="utf-8")) == edited_plan
+    assert rendered[-1]["audio"] == rendered[0]["audio"] == str(output / "narration.wav")
+    assert state["timeline"] == {**timeline, "title": saved["title"]}
+    assert state["image_map"] == image_map
+    assert all(path.read_bytes() == data for path, data in retained.items())
+    assert state["description"] == saved_description
+    assert state["script"]["title"] == saved["title"] and state["script"]["tags"] == saved["tags"]
+    assert state["thumb_path"] == str(thumbnail)
+    assert state["preview_path"] == str(output / "motion_preview.mp4")
+    assert state["video_path"] is None and not archived
+    status = client.get("/api/status").json
+    assert status["plan_revision"] == edited.json["plan_revision"]
+    assert status["preview_revision"] != previous_draft_revision
+    assert status["has_preview"] and not status["has_video"]

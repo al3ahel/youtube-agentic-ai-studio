@@ -19,7 +19,7 @@ const serverCode = String.raw`
 import sys
 import time
 from pathlib import Path
-from flask import g, jsonify
+from flask import g, jsonify, send_file
 from werkzeug.serving import make_server
 import config
 scratch = Path(sys.argv[1])
@@ -44,6 +44,7 @@ def fixture_stats():
     return jsonify({"ok": False, "configured": False})
 app.view_functions["dashboard.channel_stats"] = fixture_stats
 app.view_functions["pipeline.start_run"] = lambda: (jsonify({"ok": False, "error": "Generation is disabled in browser tests."}), 400)
+app.view_functions["visuals.preview_video"] = lambda: send_file(Path.cwd() / "docs" / "samples" / "motion-portrait.mp4", mimetype="video/mp4", conditional=True)
 list_profiles = app.view_functions["channels.channels_list_route"]
 def fixture_profiles():
     payload = list_profiles().get_json()
@@ -373,6 +374,208 @@ test("studio: legacy photo conversion preserves the reviewed project channel and
   assert.equal(requests[0].profile_id, project.id);
   assert.equal(requests[0].visual_mode, "motion");
   assert.equal(requests[0].preview_only, true);
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+async function openSceneReview() {
+  let profiles = await (await fetch(`${origin}/api/channels`)).json();
+  let project = profiles.profiles.find(profile => profile.name === "Review fixture");
+  if (!project) project = (await (await fetch(`${origin}/api/channels`, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({name: "Review fixture"})})).json()).profile;
+  await fetch(`${origin}/api/channels/default/activate`, {method: "POST", headers: {"Content-Type": "application/json"}, body: "{}"});
+  const plan = {width: 360, height: 640, fps: 12, duration: 14, scenes: [
+    {id: "scene-one", title: "First scene", template: "explain", goal: "Keep this explanation", start: 0, duration: 7},
+    {id: "scene-two", title: "Original second scene", template: "footage", goal: "Show this part differently", start: 7, duration: 7},
+  ]};
+  const st = {running: false, stages: {}, profile_id: project.id, profile_name: project.name,
+    active_profile_id: "default", video_type: "shorts", visual_mode: "hybrid", preview_only: true,
+    has_preview: true, has_storyboard: true, has_audio: true, has_script: true, has_thumb: false,
+    plan_revision: "1".repeat(64), preview_revision: "mp4-before"};
+  const fixture = {regenerations: [], runs: [], regenerationError: null, startError: null};
+  let revision = 1, holdVisuals = null, holdRegeneration = null;
+  const visuals = () => ({ok: true, plan: structuredClone(plan), revision, plan_revision: st.plan_revision,
+    preview_revision: `html-${revision}`, visual_mode: "hybrid", preview_url: "/api/visuals/preview/index.html?preview=1"});
+  const {page, errors} = await openStudio(request => {
+    const url = new URL(request.url());
+    const respond = (data, code = 200) => { request.respond({status: code, contentType: "application/json", body: JSON.stringify(data)}); return true; };
+    if (url.pathname === "/api/status") return respond({...st});
+    if (url.pathname === "/api/output") return respond({title: "Saved title", description: "Saved description", tags: ["saved tag"], sections: [{narration: "The recorded narration stays unchanged."}]});
+    if (url.pathname === "/api/visuals") {
+      const data = visuals();
+      if (holdVisuals) { const resolve = holdVisuals; holdVisuals = null; resolve(() => request.respond({status: 200, contentType: "application/json", body: JSON.stringify(data)})); return true; }
+      return respond(data);
+    }
+    if (url.pathname === "/api/visuals/scenes/scene-two/regenerate") {
+      fixture.regenerations.push(JSON.parse(request.postData()));
+      const answer = () => {
+        if (fixture.regenerationError) { st.visual_editing = false; return respond({ok: false, error: fixture.regenerationError}, 422); }
+        revision++;
+        plan.scenes[1] = {...plan.scenes[1], title: "Updated second scene", template: "comparison"};
+        Object.assign(st, {has_preview: false, has_video: false, preview_revision: null, visual_editing: false, plan_revision: String(revision).repeat(64)});
+        return respond(visuals());
+      };
+      if (holdRegeneration) { const resolve = holdRegeneration; holdRegeneration = null; st.visual_editing = true; resolve(answer); return true; }
+      return answer();
+    }
+    if (url.pathname === "/api/visuals/preview/index.html") {
+      request.respond({status: 200, contentType: "text/html", headers: {"Cache-Control": "no-store"}, body: `<!doctype html><meta charset="utf-8"><body style="background:#13291e;color:#e8f4eb;font:24px sans-serif"><h1>${plan.scenes[1].title}</h1><output id="seek">0</output><script>window.addEventListener("message", event => { if(event.source === parent && event.data?.type === "yaas:seek") document.getElementById("seek").textContent = String(event.data.time); }); parent.postMessage({type:"yaas:ready"}, "*");</script>`});
+      return true;
+    }
+    if (url.pathname === "/api/run") {
+      fixture.runs.push(JSON.parse(request.postData()));
+      if (fixture.startError) return respond({ok: false, error: fixture.startError}, 409);
+      Object.assign(st, {running: true, error: null, stop_requested: false, started_at: Date.now() / 1000, stages: {preparation: "done", visuals: "done", video: "running"}});
+      return respond({ok: true});
+    }
+    if (url.pathname === "/api/stream") { request.respond({status: 200, contentType: "text/event-stream", body: 'data: {"kind":"ping"}\n\n'}); return true; }
+    if (url.pathname === "/api/keywords") return respond({suggestions: [], related: []});
+    if (url.pathname === "/api/seo") return respond({score: 100, checks: []});
+    return false;
+  });
+  await page.click('#tabs a[data-view="review"]');
+  await page.waitForSelector('[data-scene="scene-two"]');
+  await page.click('[data-scene="scene-two"]');
+  await page.waitForFunction(() => document.querySelector("#player video")?.readyState >= 1);
+  fixture.page = page; fixture.errors = errors; fixture.profileId = project.id;
+  fixture.holdVisuals = () => new Promise(resolve => { holdVisuals = resolve; });
+  fixture.holdRegeneration = () => new Promise(resolve => { holdRegeneration = resolve; });
+  fixture.finish = async (error = null) => {
+    Object.assign(st, {running: false, error, has_preview: !error, preview_revision: error ? null : `mp4-after-${fixture.runs.length}`, stages: {preparation: "done", visuals: "done", video: error ? "error" : "done"}});
+    await page.evaluate(() => pollOnce());
+  };
+  return fixture;
+}
+
+test("studio: scene regeneration refreshes the preview and automatically renders and seeks the draft", {skip: skipped, timeout: 60000}, async () => {
+  const fixture = await openSceneReview(), {page, errors} = fixture;
+  const before = await page.$eval("#player video", video => video.getAttribute("src"));
+  await fill(page, "#edit-title", "My unsaved title");
+  await fill(page, "#edit-desc", "My unsaved description");
+  await fill(page, "#new-tag", "unsaved tag"); await page.keyboard.press("Enter");
+  await fill(page, "#scene-instructions", "Compare the two ideas side by side.");
+  await page.click("#replace-scene-image");
+
+  const staleVisuals = fixture.holdVisuals();
+  const staleLoad = page.evaluate(() => loadStoryboard(status, {preserveEditor: true}));
+  const releaseStaleVisuals = await staleVisuals;
+  const regeneration = fixture.holdRegeneration();
+  await page.click("#regenerate-scene");
+  const releaseRegeneration = await regeneration;
+  await page.evaluate(() => loadReview());
+  assert.equal(await page.$eval("#edit-title", node => node.value), "My unsaved title", "A Review load during regeneration must preserve edits");
+  assert.equal(await page.$eval("#replace-scene-image", node => node.checked), true);
+  releaseRegeneration();
+  await page.waitForFunction(() => document.querySelector("#review-render-status").textContent.startsWith("Rendering the draft"));
+  assert.equal(fixture.regenerations.length, 1);
+  assert.deepEqual(fixture.regenerations[0], {instructions: "Compare the two ideas side by side.", replace_image: true, expected_plan_revision: "1".repeat(64)});
+  assert.equal(fixture.runs.length, 1);
+  assert.deepEqual(fixture.runs[0].steps, ["video"]);
+  assert.equal(fixture.runs[0].profile_id, fixture.profileId);
+  assert.equal(fixture.runs[0].visual_mode, "hybrid");
+  assert.equal(fixture.runs[0].video_type, "shorts");
+  assert.equal(fixture.runs[0].preview_only, true);
+  assert.equal(fixture.runs[0].expected_plan_revision, "2".repeat(64));
+  assert.equal(new URL(page.url()).hash, "#review");
+  assert.equal(await page.$("#player video"), null, "The previous draft must not masquerade as the updated render");
+  assert.equal(await page.$eval("#regenerate-scene", node => node.disabled), true);
+  assert.equal(await page.$eval("#replace-scene-image", node => node.checked), false);
+  await page.waitForFunction(() => document.querySelector("#motion-preview").getAttribute("src").includes("revision=html-2"));
+  const frame = await (await page.$("#motion-preview")).contentFrame();
+  await frame.waitForFunction(() => document.getElementById("seek").textContent === "7.35");
+  assert.equal(await frame.$eval("h1", node => node.textContent), "Updated second scene");
+  await releaseStaleVisuals();
+  await staleLoad;
+  assert.match(await page.$eval("#scene-details", node => node.textContent), /Updated second scene/);
+
+  await fill(page, "#edit-desc", "An additional edit made while rendering");
+  await fixture.finish();
+  await page.waitForFunction(() => document.querySelector("#review-render-status").textContent.startsWith("Updated draft ready"));
+  await page.waitForFunction(() => {
+    const video = document.querySelector("#player video");
+    return video?.readyState >= 1 && Math.abs(video.currentTime - 7.35) < .05;
+  }, {timeout: 10000}).catch(async error => {
+    const state = await page.evaluate(() => {
+      const video = document.querySelector("#player video");
+      return {readyState: video?.readyState, currentTime: video?.currentTime, duration: video?.duration, error: video?.error?.message, source: video?.getAttribute("src"), selected: selectedScene, target: selectedSceneTime()};
+    });
+    error.message += `; refreshed player: ${JSON.stringify(state)}`;
+    throw error;
+  });
+  assert.notEqual(await page.$eval("#player video", video => video.getAttribute("src")), before);
+  assert.match(await page.$eval("#player video", video => video.getAttribute("src")), /mp4-after-1/);
+  assert.equal(await page.$eval("#player video", video => video.paused), true, "A refreshed draft must not autoplay its audio");
+  assert.equal(await page.$eval("#edit-title", node => node.value), "My unsaved title");
+  assert.equal(await page.$eval("#edit-desc", node => node.value), "An additional edit made while rendering");
+  assert.match(await page.$eval("#tag-list", node => node.textContent), /unsaved tag/);
+  assert.equal(await page.$eval("#savebar", node => node.classList.contains("show")), true);
+  assert.equal(await page.$eval("#scene-list .selected", node => node.dataset.scene), "scene-two");
+  assert.equal(await page.$eval("#regenerate-scene", node => node.disabled), false);
+  assert.equal(new URL(page.url()).hash, "#review");
+  await page.$eval("#rv-watch", node => window.scrollTo({top: window.scrollY + node.getBoundingClientRect().top - 85, behavior: "instant"}));
+  await page.waitForFunction(() => {
+    const card = document.querySelector("#rv-watch"), video = document.querySelector("#player video");
+    const style = getComputedStyle(card), box = video?.getBoundingClientRect();
+    return !card.hidden && style.display !== "none" && style.visibility === "visible" && Number(style.opacity) > .99
+      && box?.width > 0 && box.height > 0 && video.readyState >= 2 && !video.seeking;
+  });
+  assert.deepEqual(errors, []);
+  await page.screenshot({path: path.join(screenshots, "studio-review-regenerated-draft.png")});
+  await page.close();
+});
+
+test("studio: scene and render failures stay actionable on Review without losing edits", {skip: skipped, timeout: 60000}, async () => {
+  const fixture = await openSceneReview(), {page, errors} = fixture;
+  await fill(page, "#edit-title", "Keep this unsaved title");
+  await fill(page, "#edit-desc", "Keep this unsaved description");
+  await fill(page, "#new-tag", "keep this tag"); await page.keyboard.press("Enter");
+  await fill(page, "#scene-instructions", "Use a different photo.");
+  await page.click("#replace-scene-image");
+  const previous = await page.$eval("#player video", video => video.getAttribute("src"));
+  fixture.regenerationError = "There is no other saved photo for this section.";
+  await page.click("#regenerate-scene");
+  await page.waitForSelector("#scene-edit-result.error");
+  assert.match(await page.$eval("#scene-edit-result", node => node.textContent), /no other saved photo/);
+  assert.equal(fixture.runs.length, 0);
+  assert.equal(await page.$eval("#replace-scene-image", node => node.checked), true);
+  assert.equal(await page.$eval("#scene-instructions", node => node.value), "Use a different photo.");
+  assert.equal(await page.$eval("#player video", video => video.getAttribute("src")), previous);
+
+  fixture.regenerationError = null;
+  fixture.startError = "Another job started. Wait for it to finish.";
+  await page.click("#regenerate-scene");
+  await page.waitForSelector("#review-render-status.error");
+  assert.match(await page.$eval("#review-render-status", node => node.textContent), /Could not start the draft.*Another job started/);
+  assert.equal(new URL(page.url()).hash, "#review");
+  assert.equal(await page.$("#player video"), null);
+  assert.equal(await page.$eval("#render-draft", node => node.disabled), false);
+
+  fixture.startError = null;
+  await page.click("#render-draft");
+  await page.waitForFunction(() => document.querySelector("#review-render-status").textContent.startsWith("Rendering the draft"));
+  await fixture.finish("The local renderer stopped unexpectedly.");
+  await page.waitForSelector("#review-render-status.error");
+  assert.match(await page.$eval("#review-render-status", node => node.textContent), /Draft rendering failed: The local renderer stopped unexpectedly.*Render draft MP4/);
+  assert.equal(await page.$eval("#render-draft", node => node.disabled), false);
+  assert.match(await page.$eval("#scene-details", node => node.textContent), /Updated second scene/);
+  assert.equal(await page.$eval("#edit-title", node => node.value), "Keep this unsaved title");
+  assert.equal(await page.$eval("#edit-desc", node => node.value), "Keep this unsaved description");
+  assert.match(await page.$eval("#tag-list", node => node.textContent), /keep this tag/);
+
+  await page.click('#tabs a[data-view="home"]');
+  await page.waitForSelector('#run-error button[onclick="retry()"]');
+  await page.click('#run-error button[onclick="retry()"]');
+  await page.waitForFunction(() => document.querySelector("#review-render-status").textContent.startsWith("Rendering the draft"));
+  await page.click('#tabs a[data-view="review"]');
+  await page.waitForSelector("#view-review.active");
+  await fixture.finish();
+  await page.waitForFunction(() => document.querySelector("#review-render-status").textContent.startsWith("Updated draft ready"));
+  assert.equal(fixture.regenerations.length, 2, "Retry rendering must reuse the updated scene without another regeneration");
+  assert.equal(fixture.runs.length, 3);
+  assert.ok(fixture.runs.every(run => run.steps.length === 1 && run.steps[0] === "video" && run.expected_plan_revision === "2".repeat(64)));
+  assert.equal(new URL(page.url()).hash, "#review");
+  assert.equal(await page.$eval("#edit-title", node => node.value), "Keep this unsaved title");
+  assert.equal(await page.$eval("#edit-desc", node => node.value), "Keep this unsaved description");
+  assert.match(await page.$eval("#tag-list", node => node.textContent), /keep this tag/);
   assert.deepEqual(errors, []);
   await page.close();
 });

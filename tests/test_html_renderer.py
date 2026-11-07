@@ -133,6 +133,45 @@ def test_local_image_is_normalized_copied_and_attributed_without_mutating_plan(p
     assert plan == before
 
 
+def test_graphics_motion_replaces_old_photo_composition_in_same_output(plan, audio, tmp_path, vendor):
+    from PIL import Image
+    picture = tmp_path / "old-project-photo.png"
+    Image.new("RGB", (64, 36), "red").save(picture)
+    old = copy.deepcopy(plan)
+    old["use_project_photos"] = True
+    old["scenes"][0]["image"] = {"path": str(picture)}
+    entry = renderer.prepare_motion_project(old, str(audio), str(tmp_path))
+    previous = json.loads((entry.parent / "project.json").read_text())
+    old_asset = previous["scenes"][0]["image"]["path"]
+    assert previous["use_project_photos"] is True
+    assert 'id="image-0"' in entry.read_text()
+
+    plan["use_project_photos"] = False
+    entry = renderer.prepare_motion_project(plan, str(audio), str(tmp_path))
+    current = json.loads((entry.parent / "project.json").read_text())
+    assert current["use_project_photos"] is False
+    assert all("image" not in scene and "footage" not in scene for scene in current["scenes"])
+    assert 'id="image-' not in entry.read_text()
+    assert old_asset not in entry.read_text()
+    assert current["scenes"][0]["template"] == "flow"
+    assert current["scenes"][0]["beats"] == plan["scenes"][0]["beats"]
+
+
+@pytest.mark.parametrize("asset", ["image", "footage"])
+def test_graphics_only_motion_cannot_render_inherited_media(plan, asset):
+    plan["use_project_photos"] = False
+    plan["scenes"][0][asset] = {"path": "old.jpg" if asset == "image" else "old.mp4"}
+    with pytest.raises(ValueError, match="does not use photos|animated graphics"):
+        renderer._validate_plan(plan)
+
+
+@pytest.mark.parametrize("value", ["false", 0, None])
+def test_photo_policy_is_not_coerced_from_an_invalid_value(plan, value):
+    plan["use_project_photos"] = value
+    with pytest.raises(ValueError, match="true or false"):
+        renderer._validate_plan(plan)
+
+
 @pytest.mark.parametrize("kind", ["remote", "svg", "fake_raster", "outside"])
 def test_scene_pictures_cannot_fetch_or_embed_unsupported_files(plan, audio, tmp_path, vendor, monkeypatch, kind):
     output = tmp_path / "job"

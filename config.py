@@ -2,6 +2,7 @@ import ast
 import copy
 import json
 import os
+import re
 
 # ─────────────────────────────────────────────────────────────────────────────
 #  YAAS — youtube-agentic-ai-studio · Configuration (defaults)
@@ -245,6 +246,11 @@ VIDEO_PRIVACY         = "public"   # "public" | "unlisted" | "private"
 MUSIC_ENABLED     = False        # clean narration by default; enable a local music bed
 MUSIC_VOLUME      = 0.08          # quiet bed, ducked further while narration speaks
 MUSIC_LIBRARY_DIR = os.path.join(os.path.dirname(__file__), "music library")
+MUSIC_TRACK       = ""           # selected imported music ID; empty uses the local folder
+SFX_ENABLED       = False
+SFX_TRACK         = ""           # selected imported effect ID; never a random music track
+SFX_VOLUME        = 0.08
+SFX_MODE          = "transitions"  # brief section transitions | looping ambience
 
 # ─────────────────────────────────────────
 #  Paths  (do not change unless you know what you're doing)
@@ -266,7 +272,8 @@ USER_SETTINGS = (
     "VISUAL_REVIEW_MODEL", "VISUAL_REVIEW_ENABLED", "OPENROUTER_FREE_ONLY",
     "MOTION_QUALITY", "MOTION_WORKERS",
     "FACT_GROUNDING", "KEYLESS_LLM_FALLBACK", "IMAGE_SOURCES", "TRENDS_GEO",
-    "MUSIC_ENABLED", "MUSIC_VOLUME",
+    "MUSIC_ENABLED", "MUSIC_VOLUME", "MUSIC_TRACK",
+    "SFX_ENABLED", "SFX_TRACK", "SFX_VOLUME", "SFX_MODE",
     "OVERLAY_OPACITY", "KB_ZOOM_START", "KB_ZOOM_END",
     "BROLL_INTERVAL", "BROLL_XFADE_DUR", "RENDER_PRESET", "VIDEO_PRIVACY",
 )
@@ -283,11 +290,16 @@ def _valid_setting(key: str, value) -> bool:
         "VISUAL_MODE": {"motion", "hybrid", "classic"},
         "MOTION_QUALITY": {"draft", "standard", "high"},
         "CHANNEL_PRESET": {"general", "news", "asmr"},
+        "SFX_MODE": {"transitions", "ambience"},
     }
     if key in choices:
         return isinstance(value, str) and value in choices[key]
     if key == "MOTION_WORKERS":
         return type(value) is int and 1 <= value <= 4
+    if key in {"MUSIC_TRACK", "SFX_TRACK"}:
+        return isinstance(value, str) and (not value or re.fullmatch(r"[a-f0-9]{32}", value) is not None)
+    if key == "SFX_VOLUME":
+        return isinstance(value, (int, float)) and not isinstance(value, bool) and 0 <= value <= 1
     if key == "TARGET_DURATION_MINUTES":
         return isinstance(value, (int, float)) and not isinstance(value, bool) and .25 <= value <= 60
     if key in {"VISUAL_PLANNER_MODEL", "VISUAL_REVIEW_MODEL"}:

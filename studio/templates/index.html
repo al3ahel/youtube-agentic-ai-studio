@@ -67,6 +67,7 @@
           <input type="text" id="topic-input" placeholder="What's your video about?  e.g. Why time slows down near black holes">
           <button class="btn-go" type="submit">Make video →</button>
         </form>
+        <p class="hint" id="run-intent-note" role="status" hidden></p>
         <div class="ask-row">
           <div class="or">no idea yet? <button class="surprise" type="button" id="surprise-btn"><b>✦</b> Let AI pick a topic</button></div>
           <div class="seg" id="format-seg" title="Video format">
@@ -80,11 +81,12 @@
         <div class="field">
           <label class="label" for="visual-mode">Visual style</label>
           <select id="visual-mode" aria-describedby="visual-mode-note">
-            <option value="motion">Motion — animated explanations</option>
-            <option value="hybrid">Hybrid — motion with licensed footage</option>
+            <option value="motion">Motion — animated graphics</option>
+            <option value="hybrid">Hybrid — motion, photos and footage</option>
             <option value="classic">Classic — photos and transitions</option>
           </select>
           <div class="hint" id="visual-mode-note">Diagrams, comparisons, timelines and text move with the narration.</div>
+          <div class="hint">Applies to new or rebuilt scenes. Review keeps the saved storyboard's style.</div>
         </div>
         <label class="toggle first"><span><b>Draft preview first</b><small>Review the storyboard and a quick MP4 before the final render</small></span><input type="checkbox" id="draft-preview"><span class="switch"></span></label>
       </div>
@@ -248,8 +250,15 @@
   </article>
 
   <article class="card s24 flat review-part legacy-motion-card" id="legacy-motion-card" hidden>
-    <div><h3>Bring this project's photos into motion</h3><p class="hint">Keep the recorded voice and existing pictures. YAAS reuses available captions for timing and labels any estimated timing.</p></div>
-    <button type="button" class="btn btn-white" id="animate-legacy">Animate these photos</button>
+    <div><h3>Rebuild this project's visuals</h3><p class="hint">Keep the saved script and recorded voice. Choose animated graphics or animate the existing pictures. YAAS reuses available captions for timing and labels any estimated timing.</p></div>
+    <div class="draft-actions"><button type="button" class="btn btn-white" id="rebuild-motion-graphics">Rebuild as Motion graphics</button><button type="button" class="btn btn-ghost" id="animate-legacy">Animate these photos</button></div>
+  </article>
+
+  <article class="card s24 flat review-part" id="rv-audio" hidden>
+    <div class="card-label">Music &amp; effects</div>
+    <div id="review-audio-credits" class="review-audio-credits"></div>
+    <p class="hint" id="review-audio-note">Save this channel's audio choices in Settings, then apply them to the current draft. Your script and recorded voice stay the same.</p>
+    <div class="draft-actions" style="margin-top:12px"><button class="btn btn-white" type="button" id="apply-review-audio">Apply music &amp; effects to current draft</button><button class="btn btn-ghost" type="button" id="review-audio-settings">Choose audio in Settings</button></div>
   </article>
 
   <article class="card s24 review-part" id="rv-storyboard" hidden>
@@ -464,12 +473,57 @@
   </article>
 
   <article class="card s12">
-    <div class="card-label"><svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>Music &amp; publishing</div>
-    <label class="toggle first"><span><b>Background music</b><small>Drop MP3s into the <span class="mono">music library</span> folder</small></span><input type="checkbox" id="s-music_enabled"><span class="switch"></span></label>
+    <div class="card-label">Publishing</div>
     <label class="toggle"><span><b>Credit YAAS in descriptions</b><small>Adds “Made with YAAS by Raunak Patil · raunakpatil.com”</small></span><input type="checkbox" id="s-credit_yaas"><span class="switch"></span></label>
-    <div class="field"><div class="label">Music volume</div><div class="range-row"><input type="range" id="r-music_volume" min="0" max="100"><span id="v-music_volume"></span></div></div>
     <div class="field"><div class="label">Default visibility</div>
       <select id="s-privacy"><option value="public">Everyone (public)</option><option value="unlisted">Anyone with the link (unlisted)</option><option value="private">Only me (private)</option></select></div>
+  </article>
+
+  <article class="card s24" id="settings-audio" aria-labelledby="audio-library-title">
+    <div class="card-label" id="audio-library-title">Audio library <span class="tag" id="audio-library-channel"></span></div>
+    <p class="card-intro">Import music or sound effects you downloaded, listen to them here, then choose this channel's soundtrack.</p>
+    <div class="draft-actions"><a class="btn btn-ghost btn-sm" href="https://pixabay.com/music/" target="_blank" rel="noopener">Browse Pixabay music ↗</a><a class="btn btn-ghost btn-sm" href="https://pixabay.com/sound-effects/" target="_blank" rel="noopener">Browse Pixabay sound effects ↗</a></div>
+    <div class="audio-settings-grid">
+      <div>
+        <label class="toggle first"><span><b>Background music</b><small>Loop beneath the narration at the level below</small></span><input type="checkbox" id="s-music_enabled"><span class="switch"></span></label>
+        <div class="field"><label class="label" for="s-music_track">Music track</label><select id="s-music_track"><option value="">Use the existing music folder</option></select></div>
+        <div class="field"><label class="label" for="r-music_volume">Music volume</label><div class="range-row"><input type="range" id="r-music_volume" min="0" max="100"><span id="v-music_volume"></span></div></div>
+      </div>
+      <div>
+        <label class="toggle first"><span><b>Sound effects</b><small>Off until you enable a selected effect</small></span><input type="checkbox" id="s-sfx_enabled"><span class="switch"></span></label>
+        <div class="field"><label class="label" for="s-sfx_track">Effect track</label><select id="s-sfx_track"><option value="">Choose an imported effect</option></select></div>
+        <div class="audio-effect-options">
+          <div class="field"><label class="label" for="s-sfx_mode">Play effect as</label><select id="s-sfx_mode"><option value="transitions">Transitions</option><option value="ambience">Ambience</option></select></div>
+          <div class="field"><label class="label" for="r-sfx_volume">Effect volume</label><div class="range-row"><input type="range" id="r-sfx_volume" min="0" max="100"><span id="v-sfx_volume"></span></div></div>
+        </div>
+        <p class="hint" id="audio-effect-mode-note">Transitions plays briefly between script sections. Ambience loops under the narration.</p>
+      </div>
+    </div>
+    <p class="hint">Importing or selecting a file does not turn it on. Enable the layer and save Settings. Use Review to apply saved choices to an existing draft.</p>
+    <details class="more audio-import" open>
+      <summary>Import a downloaded audio file</summary>
+      <form id="audio-import-form" class="more-body">
+        <div class="audio-import-grid">
+          <div class="field"><label class="label" for="audio-import-file">Audio file <small>MP3, WAV, OGG, M4A or FLAC · up to 20 MiB</small></label><input id="audio-import-file" type="file" accept=".mp3,.wav,.ogg,.m4a,.flac" required></div>
+          <div class="field"><label class="label" for="audio-import-kind">Add as</label><select id="audio-import-kind"><option value="music">Music</option><option value="sfx">Sound effect</option></select></div>
+          <div class="field"><label class="label" for="audio-import-title">Title <small>optional</small></label><input id="audio-import-title" type="text" maxlength="200" placeholder="Use the filename"></div>
+        </div>
+        <details class="more">
+          <summary>Source details <span class="hint">optional</span></summary>
+          <div class="more-body audio-source-grid">
+            <div class="field"><label class="label" for="audio-import-source">Source page</label><input id="audio-import-source" type="url" maxlength="2048" placeholder="https://pixabay.com/…"></div>
+            <div class="field"><label class="label" for="audio-import-creator">Creator</label><input id="audio-import-creator" type="text" maxlength="200"></div>
+            <div class="field"><label class="label" for="audio-import-content-id">Content ID label</label><select id="audio-import-content-id"><option value="unknown">Not checked</option><option value="registered">Registered with Content ID</option><option value="not_registered">Not registered, as listed by the source</option></select></div>
+            <div class="field"><label class="label" for="audio-import-license">License or download note</label><textarea id="audio-import-license" rows="2" maxlength="2000" placeholder="Keep the certificate reference or license note with this track"></textarea></div>
+          </div>
+        </details>
+        <div class="draft-actions" style="margin-top:12px"><button class="btn btn-white btn-sm" id="audio-import-submit" type="submit">Import audio</button><span class="hint" id="audio-import-status" role="status" aria-live="polite"></span></div>
+      </form>
+    </details>
+    <p class="hint audio-license-note">Some Pixabay tracks can trigger Content ID claims; keep the download certificate or source link. <a class="link" href="https://pixabay.com/service/faq/" target="_blank" rel="noopener">Pixabay FAQ ↗</a></p>
+    <div class="audio-library-heading"><h3>Imported tracks</h3><button class="btn btn-ghost btn-xs" id="audio-library-refresh" type="button">Refresh library</button></div>
+    <p class="hint" id="audio-library-status" role="status" aria-live="polite">Loading this channel's audio…</p>
+    <div class="audio-library-list" id="audio-library-list"></div>
   </article>
 
   <article class="card s12">
@@ -482,7 +536,7 @@
   <article class="card s12">
     <div class="card-label">Motion studio</div>
     <div class="field"><label class="label" for="s-visual_mode">Default visual style</label>
-      <select id="s-visual_mode"><option value="motion">Motion — animated explanations</option><option value="hybrid">Hybrid — motion with footage</option><option value="classic">Classic — photos and transitions</option></select></div>
+      <select id="s-visual_mode"><option value="motion">Motion — animated graphics</option><option value="hybrid">Hybrid — motion, photos and footage</option><option value="classic">Classic — photos and transitions</option></select></div>
     <label class="toggle"><span><b>AI scene planning</b><small>A free OpenRouter model chooses from local animation templates. Local planning remains available without a key.</small></span><input type="checkbox" id="s-visual_ai_enabled"><span class="switch"></span></label>
     <label class="toggle"><span><b>Require free OpenRouter models</b><small>Allow only models with zero input and output token prices</small></span><input type="checkbox" id="s-openrouter_free_only"><span class="switch"></span></label>
     <div class="field"><label class="label" for="s-visual_planner_model">Scene planner</label><input id="s-visual_planner_model" type="text" maxlength="200" list="free-planner-models" placeholder="openrouter/free"><datalist id="free-planner-models"></datalist></div>
@@ -561,7 +615,7 @@
     <div id="profile-defaults" hidden>
       <div class="form-grid">
         <div class="field"><label class="label" for="profile-voice">Narrator</label><select id="profile-voice"></select></div>
-        <div class="field"><label class="label" for="profile-visual-mode">Visual style</label><select id="profile-visual-mode"><option value="motion">Motion — animated scenes</option><option value="hybrid">Hybrid — motion and stock footage</option><option value="classic">Classic — your photo pipeline</option></select></div>
+        <div class="field"><label class="label" for="profile-visual-mode">Visual style</label><select id="profile-visual-mode"><option value="motion">Motion — animated graphics</option><option value="hybrid">Hybrid — motion, photos and footage</option><option value="classic">Classic — photos and transitions</option></select></div>
         <div class="field"><label class="label" for="profile-voice-rate">Voice speed</label><select id="profile-voice-rate"><option value="-20%">Slower · −20%</option><option value="-15%">Calm · −15%</option><option value="-10%">Gentle · −10%</option><option value="+0%">Natural speed</option><option value="+10%">Brisk · +10%</option><option value="+20%">Fast · +20%</option></select></div>
         <div class="field"><label class="label" for="profile-format">Default format</label><select id="profile-format"><option value="normal">Long video · 16:9</option><option value="shorts">Short · 9:16</option></select></div>
       </div>
@@ -569,7 +623,7 @@
         <div class="voice-preview-heading"><button type="button" class="btn btn-ghost btn-sm" id="preview-profile-voice">Preview voice</button><span class="hint" id="voice-preview-status" aria-live="polite">Hear a short sample with these voice settings.</span></div>
         <audio id="profile-voice-audio" controls preload="none" aria-label="Narrator voice sample" hidden></audio>
       </div>
-      <label class="toggle"><span><b>Background music</b><small>Use this channel's local music folder beneath the voice</small></span><input type="checkbox" id="profile-music"><span class="switch"></span></label>
+      <label class="toggle"><span><b>Background music</b><small>Use this channel's saved music choice beneath the voice</small></span><input type="checkbox" id="profile-music"><span class="switch"></span></label>
       <div class="field" id="profile-music-level"><label class="label" for="profile-music-volume">Music level</label><div class="range-row"><input type="range" id="profile-music-volume" min="0" max="100" step="1" value="8"><span id="profile-music-value">8%</span></div></div>
       <details class="more profile-advanced"><summary>More channel settings</summary><div class="more-body">
         <div class="field"><label class="label" for="profile-duration">Target long-video duration <small>minutes</small></label><input type="number" id="profile-duration" min="0.25" max="60" step="0.25" value="8"><p class="hint">Guides the script length. Shorts keep their shorter format.</p></div>
@@ -597,7 +651,7 @@
     <div class="field cron-field"><label class="label" for="schedule-cron">Cron expression</label><input type="text" id="schedule-cron" class="mono" maxlength="120" required value="0 9 * * *" aria-describedby="schedule-cron-help" spellcheck="false"><p class="hint" id="schedule-cron-help">Five fields: minute, hour, day, month, weekday. Jobs must be at least 15 minutes apart.</p></div>
     <div class="form-grid">
       <div class="field"><label class="label" for="schedule-format">Video format</label><select id="schedule-format"><option value="normal">Long video · 16:9</option><option value="shorts">Short · 9:16</option></select></div>
-      <div class="field"><label class="label" for="schedule-visual-mode">Visual style</label><select id="schedule-visual-mode"><option value="motion">Motion — animated scenes</option><option value="hybrid">Hybrid — motion and stock footage</option><option value="classic">Classic — your photo pipeline</option></select></div>
+      <div class="field"><label class="label" for="schedule-visual-mode">Visual style</label><select id="schedule-visual-mode"><option value="motion">Motion — animated graphics</option><option value="hybrid">Hybrid — motion, photos and footage</option><option value="classic">Classic — photos and transitions</option></select></div>
       <div class="field"><label class="label" for="schedule-output">Output</label><select id="schedule-output"><option value="draft">Draft for review</option><option value="final">Final MP4 · keep local</option></select><p class="hint" id="schedule-output-note">Review the scenes and voice before making a final video.</p></div>
       <label class="toggle first"><span><b>Use current trends</b><small>Include timely ideas when researching the brief</small></span><input type="checkbox" id="schedule-trends"><span class="switch"></span></label>
     </div>
@@ -621,6 +675,7 @@
 <script src="/static/js/visuals.js"></script>
 <script src="/static/js/library.js"></script>
 <script src="/static/js/settings.js"></script>
+<script src="/static/js/audio.js"></script>
 <script src="/static/js/channels.js"></script>
 <script src="/static/js/schedules.js"></script>
 <script src="/static/js/boot.js"></script>

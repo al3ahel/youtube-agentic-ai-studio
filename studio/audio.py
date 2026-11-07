@@ -1,10 +1,11 @@
 """An explicit, short voice audition using the profile editor's unsaved values."""
 import asyncio
+import json
 from pathlib import Path
 import re
 import uuid
 
-from flask import Blueprint, abort, jsonify, request, send_file
+from flask import Blueprint, abort, g, jsonify, request, send_file
 
 import config
 from studio.state import job_lock, state
@@ -66,3 +67,54 @@ def voice_file(identifier):
     if not path.is_file():
         abort(404)
     return send_file(path, mimetype="audio/mpeg", conditional=True, max_age=0)
+
+
+@bp.get("/api/audio-library")
+def audio_library_list():
+    from studio.audio_library import AudioLibraryError, list_audio_assets
+    try:
+        response = jsonify({"ok": True, "assets": list_audio_assets(g.profile_id)})
+        response.headers["Cache-Control"] = "no-store"
+        return response
+    except AudioLibraryError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), exc.status
+
+
+@bp.post("/api/audio-library/import")
+def audio_library_import():
+    from werkzeug.exceptions import BadRequest
+    from studio import audio_library
+    try:
+        if request.content_length is not None and request.content_length > audio_library.MAX_REQUEST_BYTES:
+            raise audio_library.AudioLibraryError("Audio files must be 20 MiB or smaller.", 413)
+        raw = request.stream.read(audio_library.MAX_REQUEST_BYTES + 1)
+        if len(raw) > audio_library.MAX_REQUEST_BYTES:
+            raise audio_library.AudioLibraryError("Audio files must be 20 MiB or smaller.", 413)
+        try:
+            body = json.loads(raw)
+        except (ValueError, UnicodeError, TypeError) as exc:
+            raise audio_library.AudioLibraryError("Send the audio file and details as a JSON object.") from exc
+        asset = audio_library.import_audio_asset(g.profile_id, body)
+        return jsonify({"ok": True, "asset": asset}), 201
+    except audio_library.AudioLibraryError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), exc.status
+    except BadRequest:
+        return jsonify({"ok": False, "error": "The audio upload was incomplete. Choose the file again."}), 400
+
+
+@bp.get("/api/audio-library/<identifier>/preview")
+def audio_library_preview(identifier):
+    from studio.audio_library import AudioLibraryError, resolve_audio_asset
+    try:
+        asset = resolve_audio_asset(g.profile_id, identifier)
+        mime = {".mp3": "audio/mpeg", ".wav": "audio/wav", ".ogg": "audio/ogg",
+                ".m4a": "audio/mp4", ".flac": "audio/flac"}[Path(asset["filename"]).suffix.lower()]
+        response = send_file(asset["path"], mimetype=mime, conditional=True,
+                             as_attachment=False, download_name=asset["filename"])
+        response.headers["Cache-Control"] = "no-store"
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        return response
+    except AudioLibraryError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), exc.status
+    except OSError:
+        return jsonify({"ok": False, "error": "That audio file is no longer available in this channel's library."}), 404

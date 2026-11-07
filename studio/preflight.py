@@ -15,6 +15,12 @@ import sys
 import config
 
 
+def validate_topic_steps(steps, topic):
+    """A new topic must reach research instead of silently rendering old work."""
+    if topic.strip() and "research" not in steps:
+        raise ValueError("Enable Research to generate a new topic, or clear the topic to redo the current project.")
+
+
 def _available(module):
     try:
         return find_spec(module) is not None
@@ -68,7 +74,7 @@ def check_environment(steps, visual_mode=None):
         dependencies["edge_tts"] = "edge-tts>=7.3.1"
     if "images" in selected or "video" in selected:
         dependencies["PIL"] = "Pillow>=10.0.0"
-    if ("video" in selected and mode == "classic") or ("music" in selected and config.MUSIC_ENABLED):
+    if "video" in selected and mode == "classic":
         dependencies["moviepy"] = "moviepy==1.0.3"
         dependencies["numpy"] = "numpy>=1.24.0,<2.0.0"
     for module, package in dependencies.items():
@@ -77,19 +83,20 @@ def check_environment(steps, visual_mode=None):
             _pip_fix([f'"{package}"']))
 
     motion = mode in {"motion", "hybrid"} and bool(selected & {"visuals", "video"})
-    if "narration" in selected or motion:
+    mixing = "music" in selected and (config.MUSIC_ENABLED or getattr(config, "SFX_ENABLED", False))
+    if "narration" in selected or motion or mixing:
         path = shutil.which("ffmpeg")
         add("ffmpeg", bool(path), f"ffmpeg: {path or 'not on PATH'}",
+            "Install FFmpeg including ffprobe, add its bin directory to PATH, then restart YAAS.")
+    if motion or mixing:
+        path = shutil.which("ffprobe")
+        add("ffprobe", bool(path), f"ffprobe: {path or 'not on PATH'}",
             "Install FFmpeg including ffprobe, add its bin directory to PATH, then restart YAAS.")
     if motion:
         version = _node_version()
         add("node", bool(version and version[0] >= 22),
             "Node.js " + (".".join(map(str, version)) if version else "not found") + " (22 or later required)",
             "Install Node.js 22 or later, then reopen the terminal and restart YAAS.")
-        for executable in ("ffprobe",):
-            path = shutil.which(executable)
-            add(executable, bool(path), f"{executable}: {path or 'not on PATH'}",
-                "Install FFmpeg including ffprobe, add its bin directory to PATH, then restart YAAS.")
         renderer = Path(config.ROOT_DIR) / "renderers" / "hyperframes"
         try:
             manifest = json.loads((renderer / "package.json").read_text(encoding="utf-8"))

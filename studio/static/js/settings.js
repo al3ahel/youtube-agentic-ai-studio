@@ -20,11 +20,12 @@ const RANGES = {
   voice_pitch:    { to: v => parseInt(v) || 0, from: v => (v >= 0 ? "+" : "") + v + "Hz", label: v => (v >= 0 ? "+" : "") + v + "Hz" },
   overlay:        { to: v => Math.round(v * 100), from: v => v / 100, label: v => v + "%" },
   music_volume:   { to: v => Math.round(v * 100), from: v => v / 100, label: v => v + "%" },
+  sfx_volume:     { to: v => Math.round((Number.isFinite(v) ? v : .08) * 100), from: v => v / 100, label: v => v + "%" },
   broll_interval: { to: v => Math.round(v), from: v => +v, label: v => v + " s" },
   broll_xfade:    { to: v => Math.round(v * 10), from: v => v / 10, label: v => (v / 10).toFixed(1) + " s" },
 };
-const TEXT = ["channel_name", "channel_desc", "brand_text", "thumb_style", "gemini_model", "groq_model", "openrouter_model", "render_preset", "kb_start", "kb_end", "privacy", "voice_id", "trends_geo", "visual_mode", "visual_planner_model", "visual_review_model", "motion_quality", "motion_workers"];
-const BOOLS = ["fact_grounding", "keyless_llm", "music_enabled", "show_brand", "credit_yaas", "visual_ai_enabled", "visual_review_enabled", "openrouter_free_only"];
+const TEXT = ["channel_name", "channel_desc", "brand_text", "thumb_style", "gemini_model", "groq_model", "openrouter_model", "render_preset", "kb_start", "kb_end", "privacy", "voice_id", "trends_geo", "visual_mode", "visual_planner_model", "visual_review_model", "motion_quality", "motion_workers", "music_track", "sfx_track", "sfx_mode"];
+const BOOLS = ["fact_grounding", "keyless_llm", "music_enabled", "sfx_enabled", "show_brand", "credit_yaas", "visual_ai_enabled", "visual_review_enabled", "openrouter_free_only"];
 Object.entries(RANGES).forEach(([k, r]) => { const el = $("#r-" + k); el.addEventListener("input", () => $("#v-" + k).textContent = r.label(+el.value)); });
 
 let settingsSnap = "", settingsProfileId = null, settingsLoadSerial = 0, settingsSavePending = false;
@@ -68,7 +69,10 @@ async function loadSettings({ discardChanges = false } = {}) {
     $("#settings-channel-id-note").textContent = connectedIdentity
       ? "This profile uses its verified YouTube connection. Connect or refresh the channel on Home."
       : "Optional channel ID or @handle for the original profile's public statistics. Connecting YouTube verifies the publishing identity separately.";
-    TEXT.forEach(k => { const el = $("#s-" + k); if (el && d[k] !== undefined) el.value = d[k]; });
+    TEXT.forEach(k => {
+      if (k === "music_track" || k === "sfx_track") setAudioTrackSelection(k === "music_track" ? "music" : "sfx", d[k]);
+      else { const el = $("#s-" + k); if (el && d[k] !== undefined) el.value = d[k]; }
+    });
     BOOLS.forEach(k => $("#s-" + k).checked = !!d[k]);
     Object.entries(RANGES).forEach(([k, r]) => { const v = r.to(d[k]); $("#r-" + k).value = v; $("#v-" + k).textContent = r.label(v); });
     $$("#img-sources input").forEach(i => { i.checked = (d.image_sources || []).includes(i.value); i.closest(".chip").classList.toggle("on", i.checked); });
@@ -78,11 +82,13 @@ async function loadSettings({ discardChanges = false } = {}) {
   }
   $("#quick-voice").value = d.voice_id;
   $("#quick-grounding").checked = !!d.fact_grounding;
-  if (!status.running) { $("#visual-mode").value = d.visual_mode || "motion"; updateVisualMode(); }
+  if (!status.running) applyHomeVisualDefault(d.visual_mode, d.profile_id || profileId || "default");
   $("#upload-privacy").value = d.privacy;
   updateSettingsChannelNote();
   settingsChanged();
   renderChecklist();
+  updateAudioSettingsControls();
+  loadAudioLibrary(settingsProfileId);
   return d;
 }
 function settingsChanged() {
@@ -100,10 +106,17 @@ function brandPreview() {
 async function saveSettings() {
   if (settingsSavePending || !settingsProfileId) return;
   const profileId = settingsProfileId, body = collectSettings(), snapshot = JSON.stringify(body);
+  if (body.sfx_enabled && !body.sfx_track) {
+    $("#s-sfx_track").focus();
+    return toast("Choose a sound effect before enabling it, or turn Sound effects off.", "err");
+  }
+  const visualChoice = homeVisualChoices.get(profileId);
+  const visualDefaultChanged = body.visual_mode !== JSON.parse(settingsSnap || "{}").visual_mode;
   settingsSavePending = true; busy($("#savebar-save"), true, "Saving…");
   try {
     const r = await api("/api/save-settings" + settingsProfileQuery(profileId), body);
     if (!r.ok) throw new Error(r.error || "Couldn't save settings.");
+    if (visualDefaultChanged && homeVisualChoices.get(profileId) === visualChoice) homeVisualChoices.delete(profileId);
     // Edits made while the save was in flight remain unsaved rather than being
     // silently replaced by the returned defaults.
     if (settingsProfileId === profileId) settingsSnap = snapshot;

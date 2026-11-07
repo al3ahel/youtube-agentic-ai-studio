@@ -2,6 +2,7 @@
 import json
 import math
 import os
+from pathlib import Path
 from urllib.parse import urlsplit
 
 import config
@@ -60,6 +61,64 @@ def load_credits():
         except (OSError, ValueError):
             pass
     return credits
+
+
+def load_audio_credits(timeline=None):
+    """Read the audio actually mixed into this project, never channel defaults."""
+    path = os.path.join(config.OUTPUT_DIR, "audio_credits.json")
+    try:
+        if os.path.getsize(path) > 1024 * 1024:
+            return []
+        with open(path, encoding="utf-8") as handle:
+            manifest = json.load(handle)
+        if not isinstance(manifest, dict) or manifest.get("version") != 1:
+            return []
+        if isinstance(timeline, dict) and manifest.get("audio_sha256") != timeline.get("audio_sha256"):
+            return []
+        output = Path(config.OUTPUT_DIR).resolve()
+        soundtrack_manifest = output / "render_audio.json"
+        if soundtrack_manifest.stat().st_size > 64 * 1024:
+            return []
+        soundtrack = json.loads(soundtrack_manifest.read_text(encoding="utf-8"))
+        relative = manifest.get("path")
+        if (not isinstance(soundtrack, dict) or not isinstance(relative, str) or not relative
+                or Path(relative).is_absolute() or soundtrack.get("path") != relative
+                or not manifest.get("audio_sha256")
+                or soundtrack.get("audio_sha256") != manifest["audio_sha256"]):
+            return []
+        applied_audio = (output / relative).resolve()
+        if output not in applied_audio.parents or not applied_audio.is_file() or not applied_audio.stat().st_size:
+            return []
+        assets = manifest.get("assets", [])
+        if not isinstance(assets, list):
+            return []
+        result = []
+        for asset in assets[:10]:
+            if not isinstance(asset, dict) or asset.get("kind") not in {"music", "sfx"}:
+                continue
+            clean = {"kind": asset["kind"]}
+            for key, limit in (("id", 32), ("title", 200), ("filename", 255),
+                               ("creator", 200), ("license_note", 2000), ("content_id", 32), ("mode", 32)):
+                value = asset.get(key, "")
+                clean[key] = value[:limit] if isinstance(value, str) else ""
+            source = asset.get("source_url", "")
+            try:
+                parsed = urlsplit(source) if isinstance(source, str) else None
+                valid_url = (parsed and len(source) <= 2048 and parsed.scheme in {"http", "https"}
+                             and parsed.hostname and parsed.username is None and parsed.password is None
+                             and not any(character.isspace() for character in source))
+                if valid_url:
+                    parsed.port
+                clean["source_url"] = source if valid_url else ""
+            except ValueError:
+                clean["source_url"] = ""
+            volume = asset.get("volume")
+            if isinstance(volume, (int, float)) and not isinstance(volume, bool) and math.isfinite(volume) and 0 <= volume <= 1:
+                clean["volume"] = volume
+            result.append(clean)
+        return result
+    except (OSError, ValueError, TypeError, RuntimeError):
+        return []
 
 def _credit_lines(credits, detailed=True):
     """Attribution block. CC images (Openverse) are listed individually — that's a licence requirement."""
@@ -170,8 +229,15 @@ def build_description(script, research, video_type: str = "normal", timeline=Non
         tail.insert(0, CREDIT_LINE + "\n")
 
     credits = load_credits()
+    audio_credit = []
+    for asset in load_audio_credits(timeline):
+        label = "Music" if asset["kind"] == "music" else "Sound effect"
+        detail = " · ".join(value for value in (asset.get("title") or asset.get("filename"),
+                                                   asset.get("creator"), asset.get("source_url")) if value)
+        if detail:
+            audio_credit.append(f"{label}: {detail}")
     for detailed in (True, False):
-        credit = _credit_lines(credits, detailed)
+        credit = _credit_lines(credits, detailed) + audio_credit
         text = "\n".join(lines + (["─"*40] + credit + [""] if credit else []) + tail)
         if len(text) <= 4900:      # YouTube's limit is 5000
             return text

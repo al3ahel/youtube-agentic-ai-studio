@@ -1,7 +1,7 @@
 """Optional music bed with gentle fades, speech ducking and peak limiting.
 
 Missing music preserves the original narration, never WAV bytes under an MP3
-filename. Motion uses a lossless WAV soundtrack. No generated sound effects.
+filename. Motion uses a lossless WAV soundtrack. Selected tracks are exact.
 """
 import math
 import os
@@ -49,7 +49,7 @@ def _run(command, stop_event=None):
 
 
 def mix_music_with_narration(narration_path, output_path, music_volume=.08,
-                              library_dir="", stop_event=None):
+                              library_dir="", stop_event=None, *, track_path=None):
     """Return a mixed soundtrack, or the original speech if music is unavailable."""
     if stop_event is not None and stop_event.is_set():
         raise InterruptedError("Stopped before mixing audio")
@@ -61,7 +61,13 @@ def mix_music_with_narration(narration_path, output_path, music_volume=.08,
         raise ValueError("Keep the original narration and mixed soundtrack in separate files.")
     if output.suffix.lower() not in {".wav", ".mp3"}:
         raise ValueError("Use a WAV or MP3 output for the soundtrack.")
-    tracks = _get_library_tracks(library_dir)
+    if track_path is not None:
+        selected = Path(track_path).resolve()
+        if selected == output:
+            raise ValueError("Keep the selected music and mixed soundtrack in separate files.")
+        tracks = [str(selected)] if selected.is_file() and selected.suffix.lower() in SUPPORTED_EXTENSIONS else []
+    else:
+        tracks = _get_library_tracks(library_dir)
     if not tracks or music_volume == 0:
         print("   → Music is unavailable or muted; preserving the original narration.")
         return str(narration)
@@ -111,7 +117,8 @@ def mix_music_with_narration(narration_path, output_path, music_volume=.08,
             _run([ffmpeg, "-nostdin", "-y", "-v", "error", "-i", str(narration),
                   "-stream_loop", "-1", "-i", str(bed), "-filter_complex", graph,
                   "-map", "[out]", "-ar", "48000", "-ac", "2", *codec, str(temporary)], stop_event)
-            if abs(probe_duration(str(temporary)) - duration) > .08:
+            tolerance = 1 / 48000 + 1e-9 if output.suffix.lower() == ".wav" else .08
+            if abs(probe_duration(str(temporary)) - duration) > tolerance:
                 raise RuntimeError("Soundtrack length changed during mixing.")
             os.replace(temporary, output)
         except InterruptedError:

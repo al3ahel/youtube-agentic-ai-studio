@@ -155,6 +155,7 @@ def archive_project(allow_draft=False):
     mixed_name = next((name for name in ("narration_mixed.wav", "narration_mixed.mp3") if os.path.isfile(os.path.join(config.OUTPUT_DIR, name))), None)
     files["mixed_audio"] = _put(os.path.join(config.OUTPUT_DIR, mixed_name), mixed_name) if mixed_name else None
     files["render_audio_manifest"] = _put(os.path.join(config.OUTPUT_DIR, "render_audio.json"), "render_audio.json")
+    files["audio_credits"] = _put(os.path.join(config.OUTPUT_DIR, "audio_credits.json"), "audio_credits.json")
     render_audio = state.get("render_audio_path") or audio_path
     if render_audio and os.path.isfile(render_audio):
         if audio_path and os.path.abspath(render_audio) == os.path.abspath(audio_path):
@@ -361,10 +362,10 @@ def library_load(pid):
         return _load_project(pid)
 
 
-_PROJECT_CACHE = ("script.json", "research.json", "project_profile.json", "workspace.json", "image_map.json", "credits.json", "video_credits.json", "narration.srt",
+_PROJECT_CACHE = ("script.json", "research.json", "project_profile.json", "workspace.json", "image_map.json", "credits.json", "video_credits.json", "audio_credits.json", "narration.srt",
                   "narration.wav", "narration.mp3", "narration.m4a", "narration.ogg", "narration.timings.json",
                   "timeline.json", "scene_plan.json", "visual_qa.json", "motion", "assets", "images",
-                  "motion_preview.mp4", "narration_with_music.mp3", "narration_mixed.mp3", "narration_mixed.wav", "audio_mixed.mp3",
+                  "motion_preview.mp4", "narration_with_music.mp3", "narration_mixed.mp3", "narration_mixed.wav", "narration_effects.wav", "audio_mixed.mp3",
                   "render_audio.wav", "render_audio.mp3", "render_audio.m4a", "render_audio.ogg", "render_audio.json")
 
 
@@ -419,7 +420,7 @@ def _load_project(pid):
             _write_json(staging / "research.json", research)
             from studio.project_identity import write_project_identity
             write_project_identity(staging, profile["id"], profile["name"])
-            for archive_name, current_name in (("credits.json", "credits.json"), ("captions.srt", "narration.srt")):
+            for archive_name, current_name in (("credits.json", "credits.json"), ("audio_credits.json", "audio_credits.json"), ("captions.srt", "narration.srt")):
                 if (archive / archive_name).exists():
                     shutil.copy2(_relative_file(archive, archive_name), staging / current_name)
             narration = files.get("narration") or next((name for name in ("narration.wav", "narration.mp3", "narration.m4a", "narration.ogg") if (archive / name).is_file()), None)
@@ -463,6 +464,12 @@ def _load_project(pid):
                     raise ValueError("Invalid archived soundtrack manifest")
                 manifest["path"] = render_audio_name
                 _write_json(staging / "render_audio.json", manifest)
+            if render_audio_name and (staging / "audio_credits.json").exists():
+                credits = json.loads((staging / "audio_credits.json").read_text(encoding="utf-8"))
+                if not isinstance(credits, dict):
+                    raise ValueError("Invalid archived audio credits")
+                credits["path"] = render_audio_name
+                _write_json(staging / "audio_credits.json", credits)
             if (archive / "timeline.json").exists():
                 timeline = json.loads(_relative_file(archive, "timeline.json").read_text(encoding="utf-8"))
                 from video.timeline import script_signature

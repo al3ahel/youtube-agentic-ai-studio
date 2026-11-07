@@ -157,3 +157,64 @@ def test_source_invalidation_removes_persisted_photo_map(workspace, changed_sour
     assert state["image_map"] == {}
     assert not (workspace / "image_map.json").exists()
     assert runner._load_image_map(workspace) == {}
+
+
+@pytest.mark.parametrize("steps", [["video"], ["visuals", "video"], ["script", "narration", "visuals", "video"]])
+def test_new_topic_without_research_cannot_reserve_or_replace_cached_project(workspace, monkeypatch, steps):
+    picture = photo(workspace / "images" / "previous-project.png")
+    script = {"title": "Previous volcano project", "sections": [
+        {"id": 1, "narration": "The volcano belongs to the previous video."}]}
+    runner._save_json(workspace / "script.json", script)
+    state.update(script=script, image_map={1: [str(picture)]}, profile_id="default")
+    runner._save_image_map(workspace, state["image_map"])
+    app = create_app()
+    app.testing = True
+    before = deepcopy(state)
+    files = {path: path.read_bytes() for path in workspace.rglob("*") if path.is_file()}
+    thread = Mock(name="Thread")
+    monkeypatch.setattr(pipeline.threading, "Thread", thread)
+
+    response = app.test_client().post("/api/run", json={
+        "topic": "A new ocean video", "steps": steps, "visual_mode": "motion", "preview_only": True,
+    })
+
+    assert response.status_code == 400 and response.json["ok"] is False
+    assert "Enable Research" in response.json["error"] and "clear the topic" in response.json["error"]
+    thread.assert_not_called()
+    assert state == before
+    assert {path: path.read_bytes() for path in workspace.rglob("*") if path.is_file()} == files
+
+
+@pytest.mark.parametrize("value", [None, 0, 1, "true", [], {}])
+def test_photo_option_rejects_non_boolean_before_starting_work(workspace, monkeypatch, value):
+    app = create_app()
+    before = deepcopy(state)
+    thread = Mock(name="Thread")
+    monkeypatch.setattr(pipeline.threading, "Thread", thread)
+    body = {"steps": ["visuals", "video"], "visual_mode": "motion", "use_project_photos": value}
+    for endpoint in ("/api/run", "/api/preflight"):
+        response = app.test_client().post(endpoint, json=body)
+        assert response.status_code == 400
+        assert "true or false" in response.json["error"]
+    thread.assert_not_called()
+    assert state == before
+
+
+@pytest.mark.parametrize("mode,option,expected_images", [
+    ("motion", None, False), ("motion", False, False), ("motion", True, True),
+    ("hybrid", None, True), ("classic", None, True),
+])
+def test_preflight_checks_only_image_work_that_will_execute(workspace, monkeypatch, mode, option, expected_images):
+    from studio import preflight
+    checked = []
+    monkeypatch.setattr(preflight, "check_environment", lambda steps, mode: checked.append((steps, mode)) or {
+        "ok": True, "checks": []})
+    app = create_app()
+    body = {"steps": ["images", "visuals", "video"], "visual_mode": mode}
+    if option is not None:
+        body["use_project_photos"] = option
+    response = app.test_client().post("/api/preflight", json=body)
+    assert response.status_code == 200 and response.json["ok"]
+    assert len(checked) == 1 and checked[0][1] == mode
+    assert ("images" in checked[0][0]) is expected_images
+    assert not state["running"]

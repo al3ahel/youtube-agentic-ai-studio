@@ -88,6 +88,10 @@ def _validate_plan(scene_plan: dict) -> dict:
         "mode": _text(source.get("mode", "motion"), "mode", 40),
         "sections": [], "scenes": [], "captions": [],
     }
+    if "use_project_photos" in source:
+        if not isinstance(source["use_project_photos"], bool):
+            raise ValueError("The saved-photo option must be true or false")
+        plan["use_project_photos"] = source["use_project_photos"]
     if "script_signature" in source:
         plan["script_signature"] = _text(source["script_signature"], "script_signature", 256)
     if "timeline_signature" in source:
@@ -120,6 +124,11 @@ def _validate_plan(scene_plan: dict) -> dict:
     for index, original in enumerate(scenes):
         if not isinstance(original, dict):
             raise ValueError("Each scene must be an object")
+        if source.get("use_project_photos") is False:
+            if original.get("image") is not None:
+                raise ValueError("This storyboard does not use photos. Rebuild its scenes before rendering.")
+            if plan["mode"] == "motion" and original.get("footage") is not None:
+                raise ValueError("Motion uses animated graphics. Choose Hybrid to use footage.")
         scene = {
             "id": _text(str(original.get("id", f"scene-{index}")), "scene.id", 100),
             "section_id": _text(str(original.get("section_id", "")), "section_id", 100),

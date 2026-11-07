@@ -26,6 +26,8 @@ def _run_options(body):
     mode = body.get("visual_mode") or config.VISUAL_MODE
     if not isinstance(mode, str) or mode not in {"motion", "hybrid", "classic"}:
         raise ValueError("Choose Motion, Hybrid or Classic.")
+    if "use_project_photos" in body and not isinstance(body["use_project_photos"], bool):
+        raise ValueError("Use project photos must be true or false.")
     return list(dict.fromkeys(steps)), mode
 
 @bp.route("/")
@@ -63,11 +65,14 @@ def start_run():
         with config.profile_context(profile_values):
             steps, visual_mode = _run_options(body)
         expected_revision = validate_expected_revision(body.get("expected_plan_revision"))
-        if expected_revision is not None and steps != ["video"]:
-            raise ValueError("A storyboard revision can only be used when rendering the current video.")
+        if expected_revision is not None and set(steps) not in ({"video"}, {"music", "video"}):
+            raise ValueError("A storyboard revision can only render the current video, optionally applying music and sound effects.")
         topic, focus_angle = body.get("topic", ""), body.get("focus_angle", "")
         if not isinstance(topic, str) or not isinstance(focus_angle, str) or len(topic) > 2000 or len(focus_angle) > 2000:
             raise ValueError("Topic and focus angle must be text of at most 2,000 characters.")
+        from studio.preflight import validate_topic_steps
+        validate_topic_steps(steps, topic)
+        use_project_photos = body.get("use_project_photos")
         video_type = body.get("video_type", "normal")
         if not isinstance(video_type, str) or video_type not in {"normal", "shorts"}:
             raise ValueError("Choose a normal video or a Short.")
@@ -85,6 +90,11 @@ def start_run():
         if expected_revision is not None and expected_revision != plan_revision(state.get("visual_plan")):
             return jsonify({"ok": False, "error": "The storyboard changed before rendering. Reload Review to render the current scene edits."}), 409
         try:
+            if expected_revision is not None and use_project_photos is None:
+                # Review renders the exact saved storyboard, including old photo
+                # projects created before the graphics-only Motion default.
+                from agents.visual_director import plan_uses_project_photos
+                use_project_photos = plan_uses_project_photos(state.get("visual_plan"))
             profile = get_profile(profile["id"])
             profile_values = capture_profile_settings(profile["id"])
             with config.profile_context(profile_values):
@@ -106,10 +116,13 @@ def start_run():
         if not state.get("profile_id") and (not state.get("script") or profile["id"] == "default"):
             state.update(profile_id=profile["id"], profile_name=profile["name"])
         stop_event.clear()
+        options = {"visual_mode": visual_mode, "preview_only": preview_only,
+                   "profile_id": profile["id"], "profile_values": profile_values}
+        if use_project_photos is not None:
+            options["use_project_photos"] = use_project_photos
         thread = threading.Thread(target=run_pipeline_thread,
                                   args=(steps, topic.strip(), video_type, focus_angle.strip(), use_trends),
-                                  kwargs={"visual_mode": visual_mode, "preview_only": preview_only,
-                                          "profile_id": profile["id"], "profile_values": profile_values}, daemon=True)
+                                  kwargs=options, daemon=True)
         try:
             thread.start()
         except Exception:
@@ -127,6 +140,9 @@ def preflight_route():
     }
     try:
         steps, mode = _run_options(body or {})
+        photos = (body or {}).get("use_project_photos", mode != "motion")
+        if mode != "classic" and not photos:
+            steps = [step for step in steps if step != "images"]
     except (TypeError, ValueError) as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
     return jsonify(check_environment(steps, mode))

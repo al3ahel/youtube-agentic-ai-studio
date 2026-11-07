@@ -36,6 +36,8 @@ DEFAULT_CONFIG_MAP = {
     "thumb_style": "THUMB_STYLE", "credit_yaas": "CREDIT_YAAS",
     "voice_id": "VOICE_ID", "voice_rate": "VOICE_RATE", "voice_pitch": "VOICE_PITCH",
     "music_enabled": "MUSIC_ENABLED", "music_volume": "MUSIC_VOLUME",
+    "music_track": "MUSIC_TRACK", "sfx_enabled": "SFX_ENABLED", "sfx_track": "SFX_TRACK",
+    "sfx_volume": "SFX_VOLUME", "sfx_mode": "SFX_MODE",
     "music_library": "MUSIC_LIBRARY_DIR", "visual_mode": "VISUAL_MODE",
     "visual_ai_enabled": "VISUAL_AI_ENABLED", "visual_planner_model": "VISUAL_PLANNER_MODEL",
     "visual_review_model": "VISUAL_REVIEW_MODEL", "visual_review_enabled": "VISUAL_REVIEW_ENABLED",
@@ -84,9 +86,17 @@ def _base_defaults():
     return result
 
 
+def _fresh_audio_defaults(preset):
+    return {"music_track": "", "sfx_track": "", "sfx_enabled": False, "sfx_volume": .08,
+            "sfx_mode": "ambience" if preset == "asmr" else "transitions"}
+
+
 def _preset_defaults(preset, name):
     result = _base_defaults()
     result["channel_name"] = name
+    # Imported assets belong to one profile; another channel's selections are
+    # never defaults for a newly created channel.
+    result.update(_fresh_audio_defaults(preset))
     if preset == "news":
         result.update(
             channel_desc="A news channel explaining current events with clear sourcing, context and dates. "
@@ -127,16 +137,17 @@ def validate_defaults(values):
     if not isinstance(values, dict) or values.keys() - PROFILE_DEFAULT_KEYS:
         raise ChannelProfileError("Unknown or invalid channel default settings.")
     out = {}
-    bools = {"show_brand", "credit_yaas", "music_enabled", "visual_ai_enabled",
+    bools = {"show_brand", "credit_yaas", "music_enabled", "sfx_enabled", "visual_ai_enabled",
              "visual_review_enabled", "fact_grounding"}
     choices = {
         "visual_mode": {"motion", "hybrid", "classic"},
         "video_type": {"normal", "shorts"}, "privacy": {"public", "unlisted", "private"},
         "thumb_style": {"impact", "cinematic", "split", "studio"},
         "motion_quality": {"draft", "standard", "high"},
+        "sfx_mode": {"transitions", "ambience"},
         "render_preset": {"ultrafast", "superfast", "veryfast", "faster", "fast", "medium", "slow", "slower", "veryslow"},
     }
-    numbers = {"music_volume": (0, 1), "overlay": (0, .95), "kb_start": (1, 2), "kb_end": (1, 2),
+    numbers = {"music_volume": (0, 1), "sfx_volume": (0, 1), "overlay": (0, .95), "kb_start": (1, 2), "kb_end": (1, 2),
                "broll_interval": (1, 120), "broll_xfade": (0, 10), "duration_mins": (.25, 60)}
     for key, value in values.items():
         if key in bools:
@@ -164,6 +175,9 @@ def validate_defaults(values):
                 raise ChannelProfileError("Choose a valid voice identifier.")
         elif key == "music_library":
             value = _local_path(value, "the music library")
+        elif key in {"music_track", "sfx_track"}:
+            if not isinstance(value, str) or (value and not re.fullmatch(r"[a-f0-9]{32}", value)):
+                raise ChannelProfileError("Choose an imported audio track from this channel's library.")
         elif key == "image_sources":
             if (not isinstance(value, list) or len(value) > 4 or
                     any(not isinstance(v, str) or v not in {"pixabay", "nasa", "openverse", "pollinations"}
@@ -182,6 +196,8 @@ def validate_defaults(values):
 
 
 def _validate_combination(defaults):
+    if defaults.get("sfx_enabled") and not defaults.get("sfx_track"):
+        raise ChannelProfileError("Choose an imported sound effect before enabling sound effects.")
     if defaults.get("broll_xfade", 0) >= defaults.get("broll_interval", 10):
         raise ChannelProfileError("The image crossfade must be shorter than the image interval.")
 
@@ -264,7 +280,11 @@ def _resolved(profile):
         defaults = {key: value for key, value in defaults.items()
                     if DEFAULT_CONFIG_MAP.get(key) not in config.USER_SETTINGS}
         result["preset"] = vars(config).get("CHANNEL_PRESET", "general")
-    result["defaults"] = {**_base_defaults(), **defaults}
+    base = _base_defaults()
+    if result["id"] != "default":
+        # Profiles saved before audio imports existed have no explicit keys yet.
+        base.update(_fresh_audio_defaults(result["preset"]))
+    result["defaults"] = {**base, **defaults}
     return result
 
 
@@ -359,6 +379,8 @@ def config_overrides(profile_id=None):
         if profile["id"] == "default":
             defaults = {key: value for key, value in defaults.items()
                         if DEFAULT_CONFIG_MAP.get(key) not in config.USER_SETTINGS}
+        else:
+            defaults = {**_fresh_audio_defaults(profile["preset"]), **defaults}
         overrides = {attr: deepcopy(defaults[key]) for key, attr in DEFAULT_CONFIG_MAP.items() if key in defaults}
         overrides["CHANNEL_PRESET"] = (_resolved(profile)["preset"] if profile["id"] == "default" else profile["preset"])
         if profile.get("channel"):

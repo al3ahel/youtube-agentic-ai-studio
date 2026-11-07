@@ -4,6 +4,14 @@ let storyboardLoadSerial = 0, reviewRender = null;
 
 function invalidateStoryboardLoads() { storyboardLoadSerial++; }
 
+function storyboardUsesProjectPhotos(data = storyboardData) {
+  const plan = data?.plan;
+  if (typeof plan?.use_project_photos === "boolean") return plan.use_project_photos;
+  // Plans saved before the photo policy was explicit retain their existing look.
+  return ["hybrid", "footage"].includes(plan?.mode || data?.visual_mode)
+    || !!plan?.scenes?.some(scene => scene.image);
+}
+
 function selectedSceneTime() {
   const scene = storyboardData?.plan?.scenes?.find(item => String(item.id) === selectedScene);
   return scene ? Number(scene.start) + Math.min(.35, Number(scene.duration) / 4) : null;
@@ -50,9 +58,17 @@ function updateVisualControls(st = status) {
     if (element) element.disabled = locked || !storyboardData?.plan;
   });
   $("#scene-instructions").disabled = locked;
-  $("#replace-scene-image").disabled = locked;
+  const photos = storyboardUsesProjectPhotos();
+  $("#replace-scene-image").disabled = locked || !photos;
+  $("#replace-scene-image").closest("label").hidden = !photos;
+  $("#replace-scene-image-note").hidden = !photos;
+  if (!photos) $("#replace-scene-image").checked = false;
   $$("#scene-list button").forEach(button => button.disabled = locked);
   $("#animate-legacy").disabled = locked;
+  $("#rebuild-motion-graphics").disabled = locked;
+  $("#apply-review-audio").disabled = locked || !storyboardData?.plan;
+  $("#apply-review-audio").textContent = reviewRender?.steps?.includes("music") ? "Applying music & effects…" : "Apply music & effects to current draft";
+  $("#review-audio-settings").disabled = locked;
   $("#rv-storyboard").setAttribute("aria-busy", String(locked));
   $("#regenerate-scene").textContent = editingScene ? "Updating scene…" : reviewRender ? "Rendering video…" : "Regenerate scene & draft";
   $("#storyboard-status").textContent = reviewRender ? (reviewRender.previewOnly ? "Rendering draft" : "Rendering final")
@@ -141,9 +157,10 @@ $("#regenerate-scene").onclick = async () => {
   const context = {
     sceneId: selectedScene, profileId: reviewProfileId || status.profile_id,
     videoType: reviewVideoType, visualMode: storyboardData?.visual_mode || "motion",
+    useProjectPhotos: storyboardUsesProjectPhotos(),
     planRevision: storyboardData?.plan_revision,
   };
-  const instructions = $("#scene-instructions").value.trim(), replaceImage = $("#replace-scene-image").checked;
+  const instructions = $("#scene-instructions").value.trim(), replaceImage = context.useProjectPhotos && $("#replace-scene-image").checked;
   invalidateReviewLoads();
   editingScene = true; updateVisualControls();
   setSceneEditResult("Updating this scene…");
@@ -179,15 +196,17 @@ async function renderStoryboard(previewOnly, context = {}) {
   invalidateReviewLoads();
   const operation = reviewRender = {
     previewOnly, starting: true,
+    steps: context.steps || ["video"],
     profileId: context.profileId || reviewProfileId || status.profile_id,
     videoType: context.videoType || reviewVideoType,
     visualMode: context.visualMode || storyboardData.visual_mode || "motion",
+    useProjectPhotos: context.useProjectPhotos ?? storyboardUsesProjectPhotos(),
     planRevision: context.planRevision || storyboardData.plan_revision,
   };
   updateVisualControls();
   try {
     const started = await startRun("", false, {
-      steps: ["video"], visual_mode: operation.visualMode,
+      steps: operation.steps, visual_mode: operation.visualMode, use_project_photos: operation.useProjectPhotos,
       preview_only: previewOnly, video_type: operation.videoType,
       profile_id: operation.profileId, expected_plan_revision: operation.planRevision,
       scroll: false, throwOnError: true,
@@ -223,7 +242,8 @@ async function finishReviewRender(st) {
     toast(operation.previewOnly ? "Updated draft ready" : "Final video ready", "ok");
   } catch (failure) {
     error = true;
-    message = `${operation.previewOnly ? "Draft" : "Final video"} rendering failed: ${failure.message} The storyboard is still available; use Render ${operation.previewOnly ? "draft MP4" : "final video"} to try again.`;
+    const retryAction = operation.steps.includes("music") ? "Apply music & effects to current draft" : `Render ${operation.previewOnly ? "draft MP4" : "final video"}`;
+    message = `${operation.previewOnly ? "Draft" : "Final video"} rendering failed: ${failure.message} The storyboard is still available; use ${retryAction} to try again.`;
   } finally {
     if (reviewRender === operation) reviewRender = null;
     updateVisualControls(st);

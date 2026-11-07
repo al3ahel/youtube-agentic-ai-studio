@@ -81,6 +81,54 @@ def test_profiles_keep_independent_defaults_and_activation_never_mutates_config(
     assert channels.config_overrides(calm["id"])["YOUTUBE_CHANNEL_ID"] == ""
 
 
+def test_imported_audio_preferences_remain_owned_by_each_profile(isolated):
+    news = channels.create_profile("News audio", "news")
+    calm = channels.create_profile("Calm audio", "asmr")
+    channels.update_profile_defaults(news["id"], {
+        "music_track": "a" * 32, "sfx_track": "b" * 32,
+        "sfx_enabled": True, "sfx_mode": "transitions", "sfx_volume": .12,
+    })
+    channels.update_profile_defaults(calm["id"], {
+        "music_track": "c" * 32, "sfx_track": "d" * 32,
+        "sfx_enabled": True, "sfx_mode": "ambience", "sfx_volume": .04,
+    })
+    channels.activate_profile(calm["id"])
+    from studio.profile_context import capture_profile_settings
+    news_values = capture_profile_settings(news["id"])
+    calm_values = capture_profile_settings(calm["id"])
+    assert (news_values["MUSIC_TRACK"], news_values["SFX_TRACK"], news_values["SFX_MODE"], news_values["SFX_VOLUME"]) == ("a" * 32, "b" * 32, "transitions", .12)
+    assert (calm_values["MUSIC_TRACK"], calm_values["SFX_TRACK"], calm_values["SFX_MODE"], calm_values["SFX_VOLUME"]) == ("c" * 32, "d" * 32, "ambience", .04)
+
+
+def test_new_and_legacy_profiles_never_inherit_default_channel_audio_ids(isolated, monkeypatch):
+    monkeypatch.setattr(config, "MUSIC_TRACK", "a" * 32)
+    monkeypatch.setattr(config, "SFX_TRACK", "b" * 32)
+    monkeypatch.setattr(config, "SFX_ENABLED", True)
+    monkeypatch.setattr(config, "SFX_MODE", "transitions")
+    monkeypatch.setattr(config, "SFX_VOLUME", .25)
+    calm = channels.create_profile("Independent calm", "asmr")
+    assert calm["defaults"]["music_track"] == calm["defaults"]["sfx_track"] == ""
+    assert calm["defaults"]["sfx_enabled"] is False
+    assert calm["defaults"]["sfx_mode"] == "ambience"
+    # A channel saved by an earlier release has none of the new audio keys.
+    path = Path(config.DATA_DIR) / "channels.json"
+    registry = json.loads(path.read_text())
+    for record in registry["profiles"]:
+        if record["id"] == calm["id"]:
+            for key in ("music_track", "sfx_track", "sfx_enabled", "sfx_volume", "sfx_mode"):
+                record["defaults"].pop(key, None)
+    path.write_text(json.dumps(registry))
+    restored = channels.get_profile(calm["id"])["defaults"]
+    assert restored["music_track"] == restored["sfx_track"] == ""
+    assert restored["sfx_enabled"] is False and restored["sfx_mode"] == "ambience"
+    from studio.profile_context import capture_profile_settings
+    values = capture_profile_settings(calm["id"])
+    assert values["MUSIC_TRACK"] == values["SFX_TRACK"] == ""
+    assert values["SFX_ENABLED"] is False and values["SFX_VOLUME"] == .08
+    assert values["SFX_MODE"] == "ambience"
+    assert capture_profile_settings("default")["MUSIC_TRACK"] == "a" * 32
+
+
 def test_default_profile_edits_share_legacy_settings_without_duplicate_overrides(isolated, monkeypatch):
     original_name = config.CHANNEL_NAME
     channels.update_profile("default", {

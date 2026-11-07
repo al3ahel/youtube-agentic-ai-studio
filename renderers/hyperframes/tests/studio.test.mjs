@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import {after, before, test} from "node:test";
 import {spawn} from "node:child_process";
-import {mkdtemp, mkdir, rm} from "node:fs/promises";
+import {mkdtemp, mkdir, rm, writeFile} from "node:fs/promises";
 import {tmpdir} from "node:os";
 import path from "node:path";
 import {fileURLToPath} from "node:url";
@@ -289,6 +289,197 @@ test("studio: an older settings response cannot replace the newly selected chann
   await page.close();
 });
 
+test("studio: Motion selection survives delayed defaults and a new video resets partial steps", {skip: skipped}, async () => {
+  const create = async (name, visual_mode) => (await (await fetch(`${origin}/api/channels`, {
+    method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({name, defaults: {visual_mode}}),
+  })).json()).profile;
+  const project = await create("Motion controls fixture", "classic");
+  const other = await create("Hybrid controls fixture", "hybrid");
+  await fetch(`${origin}/api/channels/${project.id}/activate`, {method: "POST", headers: {"Content-Type": "application/json"}, body: "{}"});
+  const oldSettings = await (await fetch(`${origin}/api/settings?profile_id=${project.id}`)).json();
+  let hold = false, pending;
+  const requests = [];
+  const {page, errors} = await openStudio(request => {
+    const pathname = new URL(request.url()).pathname;
+    if (hold && pathname === "/api/settings") { pending = request; hold = false; return true; }
+    if (pathname === "/api/run") requests.push(JSON.parse(request.postData()));
+    return false;
+  });
+  assert.equal(await page.$eval("#visual-mode", node => node.value), "classic");
+  hold = true;
+  const settingsRequested = page.waitForRequest(request => new URL(request.url()).pathname === "/api/settings");
+  await page.evaluate(() => { window.delayedSettingsLoad = loadSettings(); });
+  await settingsRequested;
+  await page.select("#visual-mode", "motion");
+  await pending.respond({status: 200, contentType: "application/json", body: JSON.stringify(oldSettings)});
+  await page.evaluate(() => window.delayedSettingsLoad);
+  assert.equal(await page.$eval("#visual-mode", node => node.value), "motion", "An older profile default must not replace the user's selection");
+  assert.equal(await page.$eval('#steps input[value="images"]', node => node.disabled), true);
+  await page.click(`[data-profile-id="${other.id}"]`);
+  await page.waitForFunction(id => settingsProfileId === id && document.querySelector("#visual-mode").value === "hybrid", {}, other.id);
+  assert.equal(await page.$eval('#steps input[value="images"]', node => node.disabled), false);
+  assert.equal(await page.$eval('#steps input[value="images"]', node => node.checked), true);
+  await page.click(`[data-profile-id="${project.id}"]`);
+  await page.waitForFunction(id => settingsProfileId === id && document.querySelector("#visual-mode").value === "motion", {}, project.id);
+
+  const submit = async () => {
+    const response = page.waitForResponse(response => new URL(response.url()).pathname === "/api/run" && response.request().method() === "POST");
+    await page.click('#ask-form button[type="submit"]');
+    assert.equal((await response).status(), 400, "The fixture records the request without running providers");
+    await page.waitForSelector("#hero-form:not([hidden])");
+  };
+  await fill(page, "#topic-input", "A new animated science explanation");
+  await submit();
+  assert.equal(requests[0].visual_mode, "motion");
+  assert.equal(requests[0].use_project_photos, false);
+  assert.equal(requests[0].profile_id, project.id);
+  assert.ok(requests[0].steps.includes("research") && requests[0].steps.includes("script"));
+  assert.ok(!requests[0].steps.includes("images"));
+  await page.evaluate(() => loadSettings());
+  assert.equal(await page.$eval("#visual-mode", node => node.value), "motion");
+
+  await page.$eval("#steps", node => node.closest("details").open = true);
+  for (const step of ["research", "script", "narration", "music", "visuals"]) await page.click(`#steps label:has(input[value="${step}"])`);
+  assert.match(await page.$eval("#run-intent-note", node => node.textContent), /Research is off/);
+  assert.match(await page.$eval('#ask-form button[type="submit"]', node => node.textContent), /Redo selected steps/);
+  assert.equal(await page.$eval("#surprise-btn", node => node.disabled), true);
+  await fill(page, "#topic-input", "A different topic must never reuse the previous project");
+  await page.click('#ask-form button[type="submit"]');
+  await page.waitForFunction(() => [...document.querySelectorAll(".toast")].some(node => node.textContent.includes("Enable Research")));
+  assert.equal(requests.length, 1, "A new topic cannot silently submit a cached render");
+  await fill(page, "#topic-input", "");
+  await submit();
+  assert.deepEqual(requests[1].steps, ["video"]);
+  assert.equal(requests[1].topic, "", "Explicit partial reruns remain available");
+  await page.evaluate(() => showDraftCompletion({has_preview: true, has_storyboard: true, review_ready: true}));
+  await page.click("#make-another-video");
+  assert.equal(await page.$eval("#topic-input", node => node.value), "");
+  assert.equal(await page.$eval("#visual-mode", node => node.value), "motion");
+  assert.equal(await page.$eval("#run-intent-note", node => node.hidden), true);
+  assert.equal(await page.$eval("#surprise-btn", node => node.disabled), false);
+  await fill(page, "#topic-input", "A completely new topic after the old draft");
+  await submit();
+  assert.equal(requests[2].topic, "A completely new topic after the old draft");
+  assert.deepEqual(requests[2].steps, ["research", "script", "narration", "music", "visuals", "video"]);
+  assert.equal(requests[2].use_project_photos, false);
+  await page.select("#visual-mode", "hybrid");
+  await submit();
+  assert.equal(requests[3].use_project_photos, true);
+  assert.ok(requests[3].steps.includes("images"), "Hybrid restores the Photos step selection");
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+test("studio: real audio imports, previews and selections stay with their channel", {skip: skipped}, async () => {
+  const create = async name => (await (await fetch(`${origin}/api/channels`, {
+    method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({name, defaults: {music_enabled: false, sfx_enabled: false}}),
+  })).json()).profile;
+  const project = await create("Audio fixture channel"), other = await create("Other audio fixture channel");
+  await fetch(`${origin}/api/channels/${project.id}/activate`, {method: "POST", headers: {"Content-Type": "application/json"}, body: "{}"});
+  const frames = 2000, rate = 8000, wav = Buffer.alloc(44 + frames * 2);
+  wav.write("RIFF"); wav.writeUInt32LE(wav.length - 8, 4); wav.write("WAVEfmt ", 8);
+  wav.writeUInt32LE(16, 16); wav.writeUInt16LE(1, 20); wav.writeUInt16LE(1, 22);
+  wav.writeUInt32LE(rate, 24); wav.writeUInt32LE(rate * 2, 28); wav.writeUInt16LE(2, 32); wav.writeUInt16LE(16, 34);
+  wav.write("data", 36); wav.writeUInt32LE(frames * 2, 40);
+  for (let index = 0; index < frames; index++) wav.writeInt16LE(Math.round(700 * Math.sin(index * 2 * Math.PI * 220 / rate)), 44 + index * 2);
+  const filename = path.join(temporary, "local-audio-fixture.wav");
+  await writeFile(filename, wav);
+  const runs = [], imports = [];
+  let hold = false, pending;
+  const {page, errors} = await openStudio(request => {
+    const url = new URL(request.url());
+    if (url.pathname === "/api/run") runs.push(JSON.parse(request.postData()));
+    if (url.pathname === "/api/audio-library/import") imports.push({profile: url.searchParams.get("profile_id"), body: JSON.parse(request.postData())});
+    if (hold && url.pathname === "/api/audio-library" && url.searchParams.get("profile_id") === project.id) { pending = request; hold = false; return true; }
+    return false;
+  });
+  await page.click("#settings-btn");
+  await page.waitForFunction(id => settingsProfileId === id && document.querySelector("#audio-library-status").textContent.startsWith("No imported audio"), {}, project.id);
+  assert.equal(await page.$eval("#s-sfx_enabled", node => node.checked), false);
+  const importAudio = async (kind, title, contentId) => {
+    await (await page.$("#audio-import-file")).uploadFile(filename);
+    await page.select("#audio-import-kind", kind);
+    await fill(page, "#audio-import-title", title);
+    await page.$eval("#audio-import-source", node => node.closest("details").open = true);
+    await fill(page, "#audio-import-source", `https://example.com/audio/${kind}`);
+    await fill(page, "#audio-import-creator", "Local test fixture");
+    await fill(page, "#audio-import-license", "Synthetic local browser fixture; no external audio downloaded.");
+    await page.select("#audio-import-content-id", contentId);
+    const response = page.waitForResponse(response => new URL(response.url()).pathname === "/api/audio-library/import");
+    await page.click("#audio-import-submit");
+    const result = await response;
+    assert.equal(result.status(), 201);
+    const asset = (await result.json()).asset;
+    await page.waitForSelector(`[data-audio-id="${asset.id}"]`);
+    await page.waitForFunction(() => !audioImportPending);
+    return asset;
+  };
+  const music = await importAudio("music", "Fixture music", "registered");
+  const effect = await importAudio("sfx", "Fixture ambience", "unknown");
+  assert.ok(imports.every(item => item.profile === project.id));
+  assert.equal(imports[0].body.content_id, "registered");
+  assert.equal(await page.$eval("#s-music_enabled", node => node.checked), false);
+  assert.equal(await page.$eval("#s-sfx_enabled", node => node.checked), false);
+  assert.equal(await page.$eval("#s-music_track", node => node.value), "");
+  assert.equal(await page.$eval("#s-sfx_track", node => node.value), "");
+  assert.equal(await page.evaluate(() => !!settingsDirty()), false, "Imports do not select or enable audio");
+  assert.deepEqual(await page.$$eval("#s-music_track option", nodes => nodes.map(node => node.value)), ["", music.id]);
+  assert.deepEqual(await page.$$eval("#s-sfx_track option", nodes => nodes.map(node => node.value)), ["", effect.id]);
+  assert.match(await page.$eval(`[data-audio-id="${music.id}"]`, node => node.textContent), /Content ID registered/);
+  const previewResponse = page.waitForResponse(response => new URL(response.url()).pathname === `/api/audio-library/${music.id}/preview`);
+  await page.$eval(`[data-audio-id="${music.id}"] audio`, audio => audio.load());
+  assert.ok([200, 206].includes((await previewResponse).status()));
+  await page.waitForFunction(id => document.querySelector(`[data-audio-id="${id}"] audio`).readyState >= 1, {}, music.id);
+  assert.equal(await page.$eval(`[data-audio-id="${music.id}"] audio`, audio => audio.paused), true);
+
+  await page.select("#s-music_track", music.id);
+  await page.select("#s-sfx_track", effect.id);
+  await page.click('#settings-audio label:has(#s-music_enabled)'); await page.click('#settings-audio label:has(#s-sfx_enabled)');
+  await page.select("#s-sfx_mode", "ambience");
+  await page.$eval("#r-sfx_volume", node => { node.value = "12"; node.dispatchEvent(new Event("input", {bubbles: true})); });
+  assert.match(await page.$eval("#audio-effect-mode-note", node => node.textContent), /Ambience loops/);
+  const saving = page.waitForResponse(response => new URL(response.url()).pathname === "/api/save-settings");
+  await page.click("#savebar-save");
+  assert.equal((await saving).status(), 200);
+  await page.waitForFunction(() => !settingsSavePending && !settingsDirty());
+  const stored = await (await fetch(`${origin}/api/settings?profile_id=${project.id}`)).json();
+  assert.equal(stored.music_track, music.id); assert.equal(stored.sfx_track, effect.id);
+  assert.equal(stored.music_enabled, true); assert.equal(stored.sfx_enabled, true);
+  assert.equal(stored.sfx_mode, "ambience"); assert.equal(stored.sfx_volume, .12);
+  const oldList = await (await fetch(`${origin}/api/audio-library?profile_id=${project.id}`)).json();
+  assert.equal(oldList.assets.length, 2);
+  assert.equal(oldList.assets.find(asset => asset.id === music.id).license_note, imports[0].body.license_note);
+  hold = true;
+  const loading = page.waitForRequest(request => new URL(request.url()).pathname === "/api/audio-library");
+  await page.evaluate(() => { window.delayedAudioLoad = loadAudioLibrary(); });
+  await loading;
+  await page.click(`[data-profile-id="${other.id}"]`);
+  await page.waitForFunction(id => settingsProfileId === id && audioLibraryProfileId === id && document.querySelector("#audio-library-status").textContent.startsWith("No imported audio"), {}, other.id);
+  await pending.respond({status: 200, contentType: "application/json", body: JSON.stringify(oldList)});
+  await page.evaluate(() => window.delayedAudioLoad);
+  assert.equal(await page.$$eval(".audio-asset", nodes => nodes.length), 0, "A stale response cannot show another channel's library");
+  assert.equal(await page.$eval("#s-music_track", node => node.value), "");
+  assert.equal(await page.$eval("#s-sfx_enabled", node => node.checked), false);
+  const denied = await fetch(`${origin}/api/audio-library/${music.id}/preview?profile_id=${other.id}`);
+  assert.equal(denied.status, 404);
+  await page.click(`[data-profile-id="${project.id}"]`);
+  await page.waitForFunction(id => settingsProfileId === id && document.querySelectorAll(".audio-asset").length === 2, {}, project.id);
+  assert.equal(await page.$eval("#s-music_track", node => node.value), music.id);
+  assert.equal(await page.$eval("#s-sfx_track", node => node.value), effect.id);
+  assert.equal(await page.$eval("#s-sfx_mode", node => node.value), "ambience");
+  assert.equal(runs.length, 0, "Importing, previewing and saving selections must never generate a video");
+  await page.click("#settings-btn");
+  await page.setViewport({width: 390, height: 844});
+  await page.waitForFunction(() => Number(getComputedStyle(document.querySelector("#settings-audio")).opacity) > .99);
+  await page.$eval("#settings-audio", node => window.scrollTo({top: window.scrollY + node.getBoundingClientRect().top - 80, behavior: "instant"}));
+  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
+  await page.screenshot({path: path.join(screenshots, "studio-audio-library-mobile.png")});
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
 test("studio: a finished scheduled run does not announce the restored editor as its result", {skip: skipped}, async () => {
   const profiles = await (await fetch(`${origin}/api/channels`)).json();
   const profile = profiles.profiles.find(item => item.id === profiles.active_profile_id);
@@ -373,33 +564,46 @@ test("studio: legacy photo conversion preserves the reviewed project channel and
   assert.deepEqual(requests[0].steps, ["visuals", "video"]);
   assert.equal(requests[0].profile_id, project.id);
   assert.equal(requests[0].visual_mode, "motion");
+  assert.equal(requests[0].use_project_photos, true);
   assert.equal(requests[0].preview_only, true);
+  const rebuilding = page.waitForRequest(request => new URL(request.url()).pathname === "/api/run");
+  await page.click("#rebuild-motion-graphics");
+  await rebuilding;
+  assert.equal(requests.length, 2);
+  assert.deepEqual(requests[1].steps, ["visuals", "video"]);
+  assert.equal(requests[1].profile_id, project.id);
+  assert.equal(requests[1].visual_mode, "motion");
+  assert.equal(requests[1].use_project_photos, false);
+  assert.equal(requests[1].preview_only, true);
+  assert.equal(requests[1].topic, "");
   assert.deepEqual(errors, []);
   await page.close();
 });
 
-async function openSceneReview() {
+async function openSceneReview({visualMode = "hybrid", useProjectPhotos, legacyImage = false} = {}) {
   let profiles = await (await fetch(`${origin}/api/channels`)).json();
   let project = profiles.profiles.find(profile => profile.name === "Review fixture");
   if (!project) project = (await (await fetch(`${origin}/api/channels`, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({name: "Review fixture"})})).json()).profile;
   await fetch(`${origin}/api/channels/default/activate`, {method: "POST", headers: {"Content-Type": "application/json"}, body: "{}"});
-  const plan = {width: 360, height: 640, fps: 12, duration: 14, scenes: [
+  const plan = {mode: visualMode, width: 360, height: 640, fps: 12, duration: 14, scenes: [
     {id: "scene-one", title: "First scene", template: "explain", goal: "Keep this explanation", start: 0, duration: 7},
-    {id: "scene-two", title: "Original second scene", template: "footage", goal: "Show this part differently", start: 7, duration: 7},
+    {id: "scene-two", title: "Original second scene", template: visualMode === "hybrid" ? "footage" : "explain", goal: "Show this part differently", start: 7, duration: 7},
   ]};
+  if (useProjectPhotos !== undefined) plan.use_project_photos = useProjectPhotos;
+  if (legacyImage) plan.scenes[1].image = {path: "images/previous-photo.jpg"};
   const st = {running: false, stages: {}, profile_id: project.id, profile_name: project.name,
-    active_profile_id: "default", video_type: "shorts", visual_mode: "hybrid", preview_only: true,
+    active_profile_id: "default", video_type: "shorts", visual_mode: visualMode, preview_only: true,
     has_preview: true, has_storyboard: true, has_audio: true, has_script: true, has_thumb: false,
     plan_revision: "1".repeat(64), preview_revision: "mp4-before"};
-  const fixture = {regenerations: [], runs: [], regenerationError: null, startError: null};
+  const fixture = {regenerations: [], runs: [], regenerationError: null, startError: null, audioCredits: []};
   let revision = 1, holdVisuals = null, holdRegeneration = null;
   const visuals = () => ({ok: true, plan: structuredClone(plan), revision, plan_revision: st.plan_revision,
-    preview_revision: `html-${revision}`, visual_mode: "hybrid", preview_url: "/api/visuals/preview/index.html?preview=1"});
+    preview_revision: `html-${revision}`, visual_mode: visualMode, preview_url: "/api/visuals/preview/index.html?preview=1"});
   const {page, errors} = await openStudio(request => {
     const url = new URL(request.url());
     const respond = (data, code = 200) => { request.respond({status: code, contentType: "application/json", body: JSON.stringify(data)}); return true; };
     if (url.pathname === "/api/status") return respond({...st});
-    if (url.pathname === "/api/output") return respond({title: "Saved title", description: "Saved description", tags: ["saved tag"], sections: [{narration: "The recorded narration stays unchanged."}]});
+    if (url.pathname === "/api/output") return respond({title: "Saved title", description: "Saved description", tags: ["saved tag"], sections: [{narration: "The recorded narration stays unchanged."}], audio_credits: fixture.audioCredits});
     if (url.pathname === "/api/visuals") {
       const data = visuals();
       if (holdVisuals) { const resolve = holdVisuals; holdVisuals = null; resolve(() => request.respond({status: 200, contentType: "application/json", body: JSON.stringify(data)})); return true; }
@@ -446,6 +650,73 @@ async function openSceneReview() {
   return fixture;
 }
 
+test("studio: applying saved audio and both retry paths keep the narration, scenes and unsaved metadata", {skip: skipped}, async () => {
+  const fixture = await openSceneReview(), {page, errors} = fixture;
+  await fill(page, "#edit-title", "Unsaved title during audio mix");
+  await fill(page, "#edit-desc", "Unsaved description during audio mix");
+  await page.click("#apply-review-audio");
+  await page.waitForFunction(() => reviewRender && !reviewRender.starting);
+  assert.equal(fixture.runs.length, 1);
+  assert.deepEqual(fixture.runs[0].steps, ["music", "video"]);
+  assert.equal(fixture.runs[0].profile_id, fixture.profileId);
+  assert.equal(fixture.runs[0].expected_plan_revision, "1".repeat(64));
+  assert.equal(fixture.runs[0].use_project_photos, true);
+  assert.equal(fixture.runs[0].preview_only, true);
+  assert.equal(fixture.runs[0].topic, "");
+  assert.equal(await page.$eval("#apply-review-audio", node => node.disabled), true);
+  await fixture.finish("Fixture audio mix failed");
+  await page.waitForFunction(() => !reviewRender && document.querySelector("#review-render-status").textContent.includes("Apply music & effects to current draft"));
+  assert.equal(await page.$eval("#edit-title", node => node.value), "Unsaved title during audio mix");
+  await page.click("#apply-review-audio");
+  await page.waitForFunction(() => reviewRender && !reviewRender.starting);
+  await fixture.finish("Fixture audio mix failed again");
+  await page.waitForFunction(() => !reviewRender && document.querySelector("#review-render-status").classList.contains("error"));
+  await page.click('#tabs a[data-view="home"]');
+  await page.click("#run-error button");
+  await page.waitForFunction(() => reviewRender && !reviewRender.starting);
+  await page.click('#tabs a[data-view="review"]');
+  await page.waitForSelector("#view-review.active");
+  fixture.audioCredits = [{kind: "music", title: "Applied fixture soundtrack", creator: "Local test fixture", source_url: "https://example.com/audio/music", content_id: "registered", volume: .08}];
+  await fixture.finish();
+  await page.waitForFunction(() => !reviewRender && document.querySelector("#review-render-status").textContent.startsWith("Updated draft ready"));
+  assert.equal(fixture.runs.length, 3);
+  assert.ok(fixture.runs.every(run => JSON.stringify(run.steps) === JSON.stringify(["music", "video"]) && run.use_project_photos === true && run.expected_plan_revision === "1".repeat(64)));
+  assert.equal(await page.$eval("#edit-title", node => node.value), "Unsaved title during audio mix");
+  assert.equal(await page.$eval("#edit-desc", node => node.value), "Unsaved description during audio mix");
+  assert.equal(await page.evaluate(() => selectedScene), "scene-two");
+  await page.waitForFunction(() => document.querySelector("#player video")?.readyState >= 1 && Math.abs(document.querySelector("#player video").currentTime - 7.35) < .1);
+  assert.match(await page.$eval("#review-audio-credits", node => node.textContent), /Applied fixture soundtrack/);
+  await page.waitForFunction(() => Number(getComputedStyle(document.querySelector("#rv-audio")).opacity) > .99);
+  await page.$eval("#rv-audio", node => window.scrollTo({top: window.scrollY + node.getBoundingClientRect().top - 80, behavior: "instant"}));
+  await page.screenshot({path: path.join(screenshots, "studio-review-audio.png")});
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+test("studio: Review renders preserve graphics-only and legacy photo policies", {skip: skipped}, async () => {
+  for (const options of [
+    {visualMode: "motion", useProjectPhotos: false},
+    {visualMode: "motion", legacyImage: true},
+    {visualMode: "motion", useProjectPhotos: true},
+  ]) {
+    const fixture = await openSceneReview(options), {page, errors} = fixture;
+    const photos = options.useProjectPhotos ?? true;
+    assert.equal(await page.$eval("#replace-scene-image", node => node.closest("label").hidden), !photos);
+    assert.equal(await page.$eval("#replace-scene-image", node => node.disabled), !photos);
+    assert.equal(await page.$eval("#legacy-motion-card", node => node.hidden), !photos);
+    await page.select("#visual-mode", photos ? "motion" : "hybrid");
+    await page.click("#render-draft");
+    await page.waitForFunction(() => reviewRender && !reviewRender.starting);
+    assert.equal(fixture.runs.length, 1);
+    assert.deepEqual(fixture.runs[0].steps, ["video"]);
+    assert.equal(fixture.runs[0].visual_mode, "motion", "Home's next-video style must not replace the open storyboard's style");
+    assert.equal(fixture.runs[0].use_project_photos, photos);
+    assert.equal(fixture.runs[0].expected_plan_revision, "1".repeat(64));
+    assert.deepEqual(errors, []);
+    await page.close();
+  }
+});
+
 test("studio: scene regeneration refreshes the preview and automatically renders and seeks the draft", {skip: skipped, timeout: 60000}, async () => {
   const fixture = await openSceneReview(), {page, errors} = fixture;
   const before = await page.$eval("#player video", video => video.getAttribute("src"));
@@ -470,6 +741,7 @@ test("studio: scene regeneration refreshes the preview and automatically renders
   assert.deepEqual(fixture.regenerations[0], {instructions: "Compare the two ideas side by side.", replace_image: true, expected_plan_revision: "1".repeat(64)});
   assert.equal(fixture.runs.length, 1);
   assert.deepEqual(fixture.runs[0].steps, ["video"]);
+  assert.equal(fixture.runs[0].use_project_photos, true);
   assert.equal(fixture.runs[0].profile_id, fixture.profileId);
   assert.equal(fixture.runs[0].visual_mode, "hybrid");
   assert.equal(fixture.runs[0].video_type, "shorts");
@@ -571,7 +843,7 @@ test("studio: scene and render failures stay actionable on Review without losing
   await page.waitForFunction(() => document.querySelector("#review-render-status").textContent.startsWith("Updated draft ready"));
   assert.equal(fixture.regenerations.length, 2, "Retry rendering must reuse the updated scene without another regeneration");
   assert.equal(fixture.runs.length, 3);
-  assert.ok(fixture.runs.every(run => run.steps.length === 1 && run.steps[0] === "video" && run.expected_plan_revision === "2".repeat(64)));
+  assert.ok(fixture.runs.every(run => run.steps.length === 1 && run.steps[0] === "video" && run.use_project_photos === true && run.expected_plan_revision === "2".repeat(64)));
   assert.equal(new URL(page.url()).hash, "#review");
   assert.equal(await page.$eval("#edit-title", node => node.value), "Keep this unsaved title");
   assert.equal(await page.$eval("#edit-desc", node => node.value), "Keep this unsaved description");

@@ -5,11 +5,14 @@ const STEPS = [
   ["script",    "Writing the script",      "Hook, story and a strong ending"],
   ["images",    "Finding visual assets",   "Local assets or licensed footage for this visual style"],
   ["narration", "Recording the voiceover", "Natural AI voice with synced captions"],
+  ["music",     "Mixing music and effects", "Applying this channel's saved audio choices beneath the voice"],
   ["visuals",   "Building the storyboard", "Choosing scenes and timing their motion to the voiceover"],
   ["video",     "Rendering the video",     "The slow part, usually 2–10 minutes"],
 ];
 let status = {}, es = null, heroMode = "form", runSteps = [], videoType = "normal", lastRunError = "", lastRequest = null, statusRequestSerial = 0;
 let restoredWorkspaceShown = false;
+const homeVisualChoices = new Map();
+let pendingHomeVisualChoice = null;
 
 function setHero(mode) {
   heroMode = mode;
@@ -23,8 +26,28 @@ function setHero(mode) {
 
 function showNewVideoForm() {
   restoredWorkspaceShown = true;
+  $("#topic-input").value = "";
+  resetRunSteps();
   setHero("form");
   $("#topic-input").focus();
+}
+
+function resetRunSteps() {
+  $$("#steps input").forEach(input => {
+    input.checked = true;
+    input.closest(".chip").classList.add("on");
+  });
+  updateVisualMode();
+}
+
+function updateRunIntent() {
+  const reuse = !$('#steps input[value="research"]').checked;
+  $('#ask-form button[type="submit"]').textContent = reuse ? "Redo selected steps →" : "Make video →";
+  $("#surprise-btn").disabled = reuse;
+  $("#run-intent-note").hidden = !reuse;
+  $("#run-intent-note").textContent = reuse
+    ? "Research is off. These steps reuse the open project's research and any unchecked outputs. Clear the topic to continue, or enable Research for a new topic."
+    : "";
 }
 
 function showDraftCompletion(d) {
@@ -211,11 +234,17 @@ async function startRun(topic, surprise, options = {}) {
   const profileId = options.profile_id || (typeof activeChannelProfile === "function" ? activeChannelProfile()?.id : null);
   const format = options.video_type || videoType;
   const mode = options.visual_mode || $("#visual-mode").value;
+  const useProjectPhotos = options.use_project_photos ?? (mode !== "motion");
   const preview = mode !== "classic" && (options.preview_only ?? $("#draft-preview").checked);
-  const steps = (options.steps || $$("#steps input:checked").map(i => i.value)).filter(step => mode !== "classic" || step !== "visuals");
+  const steps = (options.steps || $$("#steps input:checked").map(i => i.value)).filter(step =>
+    (mode !== "classic" || step !== "visuals") && (mode !== "motion" || useProjectPhotos || step !== "images"));
   if (!steps.length) return toast("Turn on at least one step under More options", "err");
-  if (!surprise && !topic && (steps.includes("research") || steps.includes("script"))) { $("#topic-input").focus(); return toast("Type a topic first, or let AI pick one"); }
-  lastRequest = [topic, surprise, steps, mode, preview, profileId, format, options.expected_plan_revision];
+  if ((surprise || topic) && !steps.includes("research")) {
+    $("#topic-input").focus();
+    return toast("Enable Research to generate a new topic, or clear the topic to redo the current project.", "err");
+  }
+  if (!surprise && !topic && steps.includes("research")) { $("#topic-input").focus(); return toast("Type a topic first, or let AI pick one"); }
+  lastRequest = [topic, surprise, steps, mode, preview, profileId, format, options.expected_plan_revision, useProjectPhotos];
   runSteps = ["preparation", ...steps];
   lastRunError = "";
   $("#console").innerHTML = "";
@@ -226,7 +255,7 @@ async function startRun(topic, surprise, options = {}) {
   renderRun({ stages: {}, running: true });
   const r = await api("/api/run", {
     steps, topic: surprise ? "" : topic, video_type: format,
-    visual_mode: mode, preview_only: preview, profile_id: profileId,
+    visual_mode: mode, use_project_photos: useProjectPhotos, preview_only: preview, profile_id: profileId,
     ...(options.expected_plan_revision ? { expected_plan_revision: options.expected_plan_revision } : {}),
     focus_angle: surprise ? $("#focus-angle").value : "",
     use_trends: surprise && $("#quick-trends").checked,
@@ -243,10 +272,10 @@ async function startRun(topic, surprise, options = {}) {
 }
 function retry() {
   if (!lastRequest) return setHero("form");
-  if (lastRequest[7]) return renderStoryboard(lastRequest[4], {
-    visualMode: lastRequest[3], profileId: lastRequest[5], videoType: lastRequest[6], planRevision: lastRequest[7],
+  if (lastRequest[7] && lastRequest[2].includes("video") && lastRequest[2].every(step => ["music", "video"].includes(step))) return renderStoryboard(lastRequest[4], {
+    steps: lastRequest[2], visualMode: lastRequest[3], profileId: lastRequest[5], videoType: lastRequest[6], planRevision: lastRequest[7], useProjectPhotos: lastRequest[8],
   });
-  return startRun(lastRequest[0], lastRequest[1], { steps: lastRequest[2], visual_mode: lastRequest[3], preview_only: lastRequest[4], profile_id: lastRequest[5], video_type: lastRequest[6] });
+  return startRun(lastRequest[0], lastRequest[1], { steps: lastRequest[2], visual_mode: lastRequest[3], preview_only: lastRequest[4], profile_id: lastRequest[5], video_type: lastRequest[6], expected_plan_revision: lastRequest[7], use_project_photos: lastRequest[8] });
 }
 $("#ask-form").onsubmit = e => { e.preventDefault(); startRun($("#topic-input").value.trim(), false); };
 $("#surprise-btn").onclick = () => startRun("", true);
@@ -258,7 +287,7 @@ $$("#format-seg button").forEach(b => b.onclick = () => {
 $$("#steps .chip, #img-sources .chip").forEach(c => {
   const input = $("input", c);
   c.classList.toggle("on", input.checked);
-  input.addEventListener("change", () => c.classList.toggle("on", input.checked));
+  input.addEventListener("change", () => { c.classList.toggle("on", input.checked); if (c.closest("#steps")) updateRunIntent(); });
 });
 async function saveQuickPreference(key, value, element, message = "") {
   const profile = activeChannelProfile(), profileId = profile?.id;
@@ -291,23 +320,41 @@ function updateVisualMode() {
   $("#draft-preview").disabled = classic;
   if (classic) $("#draft-preview").checked = false;
   $("#visual-mode-note").textContent = {
-    motion: "Animated scenes reuse the pipeline's photos and move with the narration.",
-    hybrid: "Your pipeline's photos, animated explanations and licensed video footage.",
+    motion: "Animated diagrams, comparisons, timelines and text. No downloaded photos or footage.",
+    hybrid: "Animated explanations with photos and licensed video footage.",
     classic: "The original photo, zoom and transition renderer.",
   }[mode];
   const storyboard = $('#steps input[value="visuals"]');
   storyboard.disabled = classic;
   storyboard.closest(".chip").classList.toggle("disabled", classic);
+  const images = $('#steps input[value="images"]');
+  images.disabled = mode === "motion";
+  images.closest(".chip").classList.toggle("disabled", images.disabled);
+  images.closest(".chip").title = images.disabled ? "Motion uses animated graphics. Choose Hybrid or Classic to include photos." : "";
+  updateRunIntent();
   if (typeof renderChecklist === "function") renderChecklist();
 }
-$("#visual-mode").onchange = updateVisualMode;
+function applyHomeVisualDefault(mode, profileId) {
+  if (pendingHomeVisualChoice) {
+    homeVisualChoices.set(profileId, pendingHomeVisualChoice);
+    pendingHomeVisualChoice = null;
+  }
+  $("#visual-mode").value = homeVisualChoices.get(profileId) || mode || "motion";
+  updateVisualMode();
+}
+$("#visual-mode").onchange = () => {
+  const profileId = typeof activeProfileId !== "undefined" ? activeProfileId : null;
+  if (profileId) homeVisualChoices.set(profileId, $("#visual-mode").value);
+  else pendingHomeVisualChoice = $("#visual-mode").value;
+  updateVisualMode();
+};
 function environmentHTML(result, failuresOnly = false) {
   return (result.checks || []).filter(check => !failuresOnly || !check.ok).map(check => `<div class="environment-check ${check.ok ? "ok" : "failed"}"><span>${check.ok ? "✓" : "!"}</span><div>${esc(check.message)}${check.fix ? `<pre><code>${esc(check.fix)}</code></pre>` : ""}</div></div>`).join("");
 }
 $("#check-environment").onclick = async () => {
   const button = $("#check-environment"); busy(button, true, "Checking…");
   try {
-    const steps = $$("#steps input:checked").map(input => input.value);
+    const steps = $$("#steps input:checked:not(:disabled)").map(input => input.value);
     const result = await api("/api/preflight", { steps, visual_mode: $("#visual-mode").value });
     $("#environment-results").innerHTML = environmentHTML(result);
   } catch (e) { $("#environment-results").textContent = e.message; }

@@ -26,6 +26,11 @@ _SETTINGS = {
     "youtube_channel":  ("YOUTUBE_CHANNEL_ID", "env_plain"),
     "music_enabled":    ("MUSIC_ENABLED",      bool),
     "music_volume":     ("MUSIC_VOLUME",       float),
+    "music_track":      ("MUSIC_TRACK",        str),
+    "sfx_enabled":      ("SFX_ENABLED",        bool),
+    "sfx_track":        ("SFX_TRACK",          str),
+    "sfx_volume":       ("SFX_VOLUME",         float),
+    "sfx_mode":         ("SFX_MODE",           str),
     "channel_name":     ("CHANNEL_NAME",       str),
     "show_brand":       ("SHOW_CHANNEL_BRAND", bool),
     "thumb_style":      ("THUMB_STYLE",        str),
@@ -131,6 +136,12 @@ def _save_settings():
     try:
         validate_defaults(profile_updates)
         combined = {**get_profile(profile_id)["defaults"], **profile_updates}
+        if combined.get("sfx_enabled") and not combined.get("sfx_track"):
+            raise ValueError("Choose an imported sound effect before enabling sound effects.")
+        for key, kind in (("music_track", "music"), ("sfx_track", "sfx")):
+            if profile_updates.get(key):
+                from studio.audio_library import resolve_audio_asset
+                resolve_audio_asset(profile_id, profile_updates[key], kind=kind)
         if combined.get("broll_xfade", 0) >= combined.get("broll_interval", 10):
             raise ValueError("The image crossfade must be shorter than the image interval.")
     except ValueError as exc:

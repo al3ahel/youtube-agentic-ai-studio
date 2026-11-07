@@ -199,6 +199,36 @@ def test_archive_preserves_the_selected_soundtrack_after_setting_changes(project
     assert json.loads((output / "render_audio.json").read_text())["path"] == "narration_mixed.mp3"
 
 
+def test_archive_restores_applied_effects_and_source_metadata_without_the_library(project, monkeypatch):
+    output, client = project
+    _motion_project(output)
+    source_hash = state["timeline"]["audio_sha256"]
+    mixed = output / "narration_effects.wav"
+    mixed.write_bytes(b"saved voice plus imported effects")
+    manifest = {"version": 1, "audio_sha256": source_hash, "path": mixed.name, "assets": [{
+        "id": "a" * 32, "kind": "sfx", "title": "Quiet transition", "filename": "quiet.wav",
+        "source_url": "https://pixabay.com/sound-effects/example/", "creator": "Example creator",
+        "license_note": "Source retained by the creator", "content_id": "unknown",
+        "volume": .08, "mode": "transitions",
+    }]}
+    (output / "audio_credits.json").write_text(json.dumps(manifest), encoding="utf-8")
+    (output / "render_audio.json").write_text(json.dumps({"path": mixed.name, "audio_sha256": source_hash}), encoding="utf-8")
+    state["render_audio_path"] = str(mixed)
+    pid = library.archive_project()
+    assert library.read_meta(pid)["files"]["audio_credits"] == "audio_credits.json"
+    mixed.unlink()
+    (output / "audio_credits.json").unlink()
+    monkeypatch.setattr(config, "SFX_ENABLED", False)
+    monkeypatch.setattr(config, "SFX_TRACK", "")
+    assert client.post(f"/api/library/{pid}/load", json={}).json["ok"]
+    assert Path(state["render_audio_path"]).read_bytes() == b"saved voice plus imported effects"
+    restored = json.loads((output / "audio_credits.json").read_text())
+    assert restored["assets"] == manifest["assets"]
+    assert restored["path"] == Path(state["render_audio_path"]).name
+    assert client.get("/api/output").json["audio_credits"][0]["source_url"] == manifest["assets"][0]["source_url"]
+    assert state["description"] == description.with_credit("A saved description.")
+
+
 @pytest.mark.parametrize("flag", ["running", "visual_editing", "uploading"])
 def test_mutation_routes_reject_busy_projects(project, flag):
     _, client = project

@@ -11,7 +11,7 @@ import time
 from flask import Blueprint, abort, jsonify, request
 
 import config
-from studio.description import build_description, load_credits, research_sources
+from studio.description import build_description, load_audio_credits, load_credits, research_sources
 from studio.files import send
 from studio.library import sync_library
 from studio.state import is_shorts, job_lock, state
@@ -65,6 +65,7 @@ def get_output():
         "thumbnail_concept": r.get("thumbnail_concept", ""),
         "sources":     research_sources(r),
         "credits":     load_credits(),
+        "audio_credits": load_audio_credits(state.get("timeline")),
         "video_type":  state.get("video_type", "normal"),
     })
 

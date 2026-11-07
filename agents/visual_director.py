@@ -30,6 +30,21 @@ _STOP_WORDS = frozenset(
 )
 
 
+def plan_uses_project_photos(plan: dict | None) -> bool:
+    """Read photo policy without changing existing, pre-policy storyboards."""
+    if not isinstance(plan, dict):
+        return False
+    if "use_project_photos" in plan:
+        value = plan["use_project_photos"]
+        if not isinstance(value, bool):
+            raise ValueError("The saved-photo option must be true or false.")
+        return value
+    scenes = plan.get("scenes")
+    return (plan.get("mode") in {"hybrid", "footage"}
+            or isinstance(scenes, list) and any(isinstance(scene, dict) and scene.get("image")
+                                                for scene in scenes))
+
+
 def _text(value: object, limit: int = 180) -> str:
     text = html.unescape(str(value or ""))
     text = re.sub(r"<[^>]*>", "", text)
@@ -653,6 +668,7 @@ def validate_plan(plan: dict) -> dict:
     duration = _finite(plan.get("duration"), "plan duration", 0.001)
     if duration > 7200 or plan.get("mode") not in {"motion", "hybrid", "footage"}:
         raise ValueError("The visual mode or duration is unsupported.")
+    photos_disabled = "use_project_photos" in plan and not plan_uses_project_photos(plan)
     if not isinstance(plan.get("title"), str) or len(plan["title"]) > 180:
         raise ValueError("The plan title is invalid.")
     sections = plan.get("sections")
@@ -685,6 +701,10 @@ def validate_plan(plan: dict) -> dict:
         if set(scene) - {"id", "section_id", "template", "start", "duration", "title",
                          "visual_goal", "items", "beats", "footage", "image", "beat_timing"}:
             raise ValueError("The scene contains unsupported fields.")
+        if photos_disabled and "image" in scene:
+            raise ValueError("This storyboard has saved photos disabled. Use Animate these photos to include them.")
+        if photos_disabled and plan["mode"] == "motion" and "footage" in scene:
+            raise ValueError("Graphics-only Motion cannot contain footage. Choose Hybrid to use video clips.")
         if scene["id"] in seen or not isinstance(scene.get("section_id"), str) or scene["section_id"] not in lookup:
             raise ValueError("Scene IDs must be unique and reference an existing section.")
         seen.add(scene["id"])
@@ -799,13 +819,18 @@ def _write_plan(plan: dict, output_dir) -> None:
 
 
 def plan_scenes(script: dict, timeline: dict, mode: str = "motion",
-                output_dir=None, use_ai: bool = True, image_map: dict | None = None) -> dict:
-    """Create a validated scene manifest, optionally refining it with free AI."""
+                output_dir=None, use_ai: bool = True, image_map: dict | None = None,
+                use_project_photos: bool | None = None) -> dict:
+    """Create a storyboard; Motion uses graphics unless saved photos are requested."""
     if mode not in {"motion", "hybrid", "footage"}:
         raise ValueError("Choose motion or hybrid visual planning.")
+    if use_project_photos is not None and not isinstance(use_project_photos, bool):
+        raise ValueError("The saved-photo option must be true or false.")
+    if use_project_photos is None:
+        use_project_photos = mode != "motion"
     normalised, warnings = _normalise_timeline(script, timeline)
     plan = {"version": 1, "title": _text(script.get("title") or "Untitled video", 180),
-            "mode": mode, **normalised, "warnings": warnings}
+            "mode": mode, "use_project_photos": use_project_photos, **normalised, "warnings": warnings}
     plan["scenes"], sources = _offline_scenes(script, plan)
     validate_plan(plan)
     wants_footage = set()
@@ -826,7 +851,10 @@ def plan_scenes(script: dict, timeline: dict, mode: str = "motion",
         except (openrouter.OpenRouterError, ValueError, KeyError, TypeError) as exc:
             plan["ai_status"] = {"status": "fallback", "reason": getattr(exc, "code", "invalid_design")}
             plan["warnings"].append("Visual AI was unavailable or returned an invalid design; local animated templates are ready.")
-    _attach_images(plan, image_map, output_dir)
+    if use_project_photos:
+        _attach_images(plan, image_map, output_dir)
+    else:
+        plan["image_status"] = {"available": False, "scenes": 0, "reason": "project_photos_disabled"}
     _attach_footage(plan, sources, output_dir, wants_footage)
     if "image_status" in plan:
         plan["image_status"]["scenes"] = sum(bool(scene.get("image")) for scene in plan["scenes"])
@@ -874,6 +902,14 @@ def regenerate_scene(plan: dict, scene_id: str, script: dict, instructions: str 
         raise ValueError("Scene instructions must be text.")
     if not isinstance(replace_image, bool):
         raise ValueError("The saved-photo replacement option must be true or false.")
+    graphics_only = bool(re.search(r"\bgraphics[\s-]+only\b", instructions, flags=re.IGNORECASE))
+    remove_photos = graphics_only or bool(re.search(
+        r"\b(?:no\s+|remove\s+(?:the\s+)?)(?:photos?|pictures?|images?)\b",
+        instructions, flags=re.IGNORECASE))
+    if replace_image and remove_photos:
+        raise ValueError("Removing photos conflicts with Use another saved photo. Uncheck that option and try again.")
+    if replace_image and not plan_uses_project_photos(plan):
+        raise ValueError("Saved photos are disabled for this storyboard. Use Animate these photos or create a Hybrid storyboard to replace a picture.")
     result = copy.deepcopy(plan)
     index = next((index for index, scene in enumerate(result["scenes"])
                   if scene["id"] == str(scene_id)), None)
@@ -917,6 +953,12 @@ def regenerate_scene(plan: dict, scene_id: str, script: dict, instructions: str 
             {**item, "label": _text(" ".join(item["label"].split()[:5]), 48)}
             for item in replacement["items"]
         ]
+    if remove_photos:
+        replacement.pop("image", None)
+    if graphics_only:
+        if replacement["template"] == "footage":
+            _set_scene_template(replacement, preference or "explain", source_section)
+        replacement.pop("footage", None)
     # These fields belong to the measured timeline and the trusted media adapter.
     for field in ("id", "section_id", "start", "duration"):
         replacement[field] = original[field]
@@ -925,10 +967,10 @@ def regenerate_scene(plan: dict, scene_id: str, script: dict, instructions: str 
             _set_scene_template(replacement, preference or "explain", source_section)
         replacement.pop("footage", None)
         replacement["image"] = new_image
-    elif original.get("footage") and not preference:
+    elif original.get("footage") and not preference and not graphics_only:
         replacement["footage"] = copy.deepcopy(original["footage"])
         replacement["template"] = "footage"
-    elif original.get("image") and replacement["template"] != "chart":
+    elif original.get("image") and replacement["template"] != "chart" and not remove_photos:
         replacement["image"] = copy.deepcopy(original["image"])
     if _visible_design(replacement) == _visible_design(original):
         if not preference and not original.get("footage") and original["template"] != "chart":

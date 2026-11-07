@@ -1,10 +1,11 @@
 # Motion Studio
 
-Motion Studio adds a narration-driven video path to YAAS while reusing the
-original stock-picture pipeline. The app researches a topic, writes a script,
-finds pictures and records narration. A visual director produces a constrained
-JSON storyboard. Fixed HTML/SVG templates animate pictures and explanatory
-graphics on a paused GSAP timeline, and HyperFrames captures it as an MP4.
+Motion Studio adds a narration-driven video path to YAAS. The app researches a
+topic, writes a script and records narration. A visual director produces a
+constrained JSON storyboard. Fixed HTML/SVG templates animate explanatory graphics
+on a paused GSAP timeline, and HyperFrames captures it as an MP4. Hybrid and
+Classic also use the original stock-picture pipeline; saved pictures can be
+animated through the explicit **Animate these photos** action.
 
 The storyboard in **Review** is part of that same pipeline. HyperFrames already
 runs during **Make video** in Motion and Hybrid modes; Review lets you inspect,
@@ -14,18 +15,25 @@ change and render the saved composition again.
 
 | Mode | Visuals | Requirements |
 | --- | --- | --- |
-| Motion | Pipeline pictures with gentle motion, flow diagrams, comparisons, timelines, supplied-data charts and explanatory text | Node 22+, FFmpeg/ffprobe, installed renderer/browser |
-| Hybrid | The Motion composition plus downloaded Pexels video clips with source credits | Same as Motion; optional Pexels key |
+| Motion | Animated flow diagrams, comparisons, timelines, supplied-data charts and explanatory text; no automatic photos or footage | Node 22+, FFmpeg/ffprobe, installed renderer/browser |
+| Hybrid | Animated explanations with pipeline pictures and optional downloaded Pexels video clips with source credits | Same as Motion; optional Pexels key |
 | Classic | The original MoviePy photo renderer, captions and transitions | Original MoviePy/NumPy dependencies |
 
-Every mode can use the existing picture sources. Hybrid falls back to the local
-photo/motion composition when suitable footage is unavailable. Photos remain
-available for thumbnails and project reopening. All three modes retain title,
-description, thumbnail and YouTube publishing tools.
+Motion skips photo fetching and does not attach cached photos to new scenes.
+Hybrid falls back to pictures and animated graphics when suitable footage is
+unavailable. Classic and Hybrid retain the existing picture sources. Saved photos
+remain available for explicit photo animation, thumbnails and project reopening.
+All three modes retain title, description, thumbnail and YouTube publishing tools.
 
 Visual, narrator and music defaults belong to the selected channel profile.
 The News preset starts with Hybrid; ASMR/calm starts with slower, gentler Classic
 photo motion. Both are editable. See [Channels and schedules](CHANNELS_AND_SCHEDULES.md).
+
+Changing the Home style applies to the next generation. An existing draft retains
+its saved composition when it is reopened or rendered again. To convert a photo
+or footage project without changing the script or recording, choose **Rebuild as
+Motion graphics** in Review. The project is replanned as graphics and a new draft
+MP4 is rendered. **Animate these photos** explicitly keeps the project's pictures.
 
 ## Make and review a new video
 
@@ -39,8 +47,9 @@ photo motion. Both are editable. See [Channels and schedules](CHANNELS_AND_SCHED
 5. Select a scene, enter a change such as “use a comparison” or “less text”, and
    regenerate it. The browser preview updates and a new draft MP4 renders
    automatically while you stay on Review. The recording, scene boundaries and
-   other scenes are preserved. To replace its picture, enable **Use another saved
-   photo**; this chooses a different downloaded photo from the same section.
+   other scenes are preserved. In a Hybrid or explicitly photo-based project,
+   enable **Use another saved photo** to choose a different downloaded picture
+   from the same section. Graphics-only Motion does not add photos during editing.
 6. Watch the refreshed draft at the edited scene, then choose **Render final video**
    when ready. If encoding fails, the updated browser preview remains available;
    **Render draft MP4** retries using the same storyboard and recording.
@@ -66,8 +75,11 @@ restarting the server, reload the page and open Review to continue with its exis
 recording, pictures and storyboard. A saved draft MP4 is offered only when it still
 matches the project; an old render left behind after a scene edit is not marked
 ready. If only the storyboard is recoverable, use **Render draft MP4** to finish it.
-To create something else, choose **Make another video** on Home. If there is no
-draft or storyboard, Home returns to the topic form automatically.
+To create something else, choose **Make another video** on Home. This clears the
+previous topic and restores the full generation steps. If there is no draft or
+storyboard, Home returns to the topic form automatically. For a new topic,
+**Research** must be enabled; a partial rerun with Research off reuses the current
+project and requires the topic field to be empty.
 
 This working copy is separate from **My videos** and is replaced when you start a
 new project. Review shows a loading error with a retry action if its data cannot be
@@ -82,7 +94,8 @@ mix old preview code with new Review code.
    a different picture, explanation or layout.
 4. Render a draft to inspect the result, then render the final video.
 
-This action runs only **Visuals** and **Video**. It does not research the topic,
+This action explicitly opts the project into photo animation and runs only
+**Visuals** and **Video**. It does not research the topic,
 replace the project's pictures or record its voice again. The active Review
 project keeps its saved channel even if the sidebar had been showing another one.
 
@@ -139,16 +152,39 @@ Use an appropriate original recording for that kind of content.
 editor's unsaved voice, rate and pitch. Saving the profile applies those choices
 to future narration; it does not alter an already recorded project.
 
-Background music is **off by default**. When enabled, its default level is
-`0.08` (8%). The FFmpeg mixer picks a readable local track, loops a stable bed
-with softened seams, fades it in and out, ducks it beneath speech, and limits
-peaks. Motion prepares the mixed soundtrack as lossless WAV before video encoding.
+Background music and sound effects are **off by default**, each with a starting
+level of `0.08` (8%). **Settings → Audio library** imports downloaded MP3, WAV,
+OGG, M4A and FLAC files (up to 20 MiB and two hours) into the selected channel's
+library. Preview a track, select it as music or an effect, enable that layer and
+save Settings. Imports alone do not change a soundtrack or generate a video.
+
+Music uses the selected imported track, or the existing local music folder when
+no imported music is selected. It loops a stable bed with softened seams and
+fades. Effects have two modes: **Transitions** plays a one-shot at each script
+section boundary after the first, capped at two seconds and shortened before
+the next boundary; **Ambience** loops the selected effect beneath the recording.
+The original narration controls speech ducking for both layers, followed by peak
+limiting. Motion prepares the soundtrack as lossless WAV before video encoding.
 No generated sound effects or test tones are added to normal videos.
 
-A render-only run preserves its prepared soundtrack even if profile settings have
-changed. Select the **Music** step to rebuild the bed with the current settings,
-or **Narration** when you want a different recorded voice. Missing or unreadable
-music preserves the original narration.
+Use **Review → Music & effects → Apply music & effects to current draft** to apply
+saved channel choices to a Motion or Hybrid preview. This reruns Music and Video,
+preserving the script, recorded voice, measured timeline, storyboard and edited
+publishing metadata. For Classic, leave the Home topic empty and select only
+Music and Render. Choose Narration only when you want a new recorded voice.
+Video-only renders and scene edits retain the prepared soundtrack even if profile
+settings have changed. Missing selected audio is reported without substituting a
+different imported track. The recording remains available.
+
+Pixabay's [public API](https://pixabay.com/api/docs/) documents image and video
+search, not music or sound-effect search. Download audio from its website and
+import it locally. Optional source URL, creator, license note and Content ID
+metadata are kept with the track. `audio_credits.json` records only assets applied
+to the current recording; Review shows those sources, generated descriptions
+include them, and archived projects retain both the soundtrack and credits.
+Keep any available download certificate: some Pixabay tracks are registered with
+YouTube Content ID and may receive claims, as explained in its
+[FAQ](https://pixabay.com/service/faq/).
 
 Photo movement and explanatory transitions are gentler than the earlier demo.
 The [verification videos](samples/README.md) each contain 168 frames: 14 seconds
@@ -163,6 +199,13 @@ The seven supported templates are `flow`, `comparison`, `timeline`, `chart`,
 `explain`, `text` and `footage`. Layouts support 16:9 and 9:16. Scene data includes
 an ID, section ID, start, duration, title, visual goal, short items, local-time
 motion beats and optional local picture/footage metadata.
+
+New plans record `use_project_photos`: it defaults to `false` for Motion and
+`true` for Hybrid. The explicit photo-animation action sets it to `true` while
+keeping the Motion renderer. A graphics-only plan cannot contain photo scenes;
+graphics-only Motion cannot contain footage either. Legacy plans without this
+field remain reviewable, and explicit rendering from Review preserves their
+existing media choices.
 
 The planner returns JSON, never executable HTML or JavaScript. The templates live
 in `renderers/hyperframes/templates`. Text is escaped, fonts/scripts are copied
@@ -200,6 +243,8 @@ Neither a visual review nor retrieved background sources verify live breaking ne
 | `video/narrator.py`, `video/timeline.py` | Fresh narration, legacy timing imports and shared audio clock |
 | `video/stock.py` | Original picture pipeline and photo reuse |
 | `video/music.py` | Optional music bed, speech ducking, fades and limiting |
+| `video/sound_effects.py` | Selected transition effects or ambience using the narration clock |
+| `studio/audio_library.py` | Per-channel local audio imports, metadata and previews |
 | `agents/visual_director.py` | Validated local/AI planning and scene regeneration |
 | `apis/openrouter.py`, `apis/stock_video.py` | Free-only model access and stock video |
 | `video/renderers/html.py` | Local project preparation, subprocess lifecycle and MP4 verification |

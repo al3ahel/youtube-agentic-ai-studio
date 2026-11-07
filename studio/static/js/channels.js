@@ -115,6 +115,7 @@ async function loadChannels({ syncWorkspace = false } = {}) {
       const draft = channelTopicDrafts.get(activeProfileId);
       $("#topic-input").value = draft?.topic || "";
       $("#focus-angle").value = draft?.focus || "";
+      resetRunSteps();
       clearChannelScopedViews();
     }
     renderChannelProfiles();
@@ -303,10 +304,13 @@ $("#channel-form").addEventListener("submit", async event => {
     const clientPath = $("#profile-client-secret").value.trim();
     if (clientPath) body.client_secret_path = clientPath;
   } else if (description) body.defaults = { channel_desc: description };
+  const visualChoice = homeVisualChoices.get(editingChannelId);
+  const visualDefaultChanged = editingChannelId && body.defaults.visual_mode !== channelProfiles.find(profile => profile.id === editingChannelId)?.defaults?.visual_mode;
   profileSavePending = channelMutation = true;
   busy($("#save-channel"), true, "Saving…"); showChannelFormError(""); updateChannelControls();
   try {
     await api(editingChannelId ? `/api/channels/${encodeURIComponent(editingChannelId)}` : "/api/channels", body, editingChannelId ? "PATCH" : "POST");
+    if (visualDefaultChanged && homeVisualChoices.get(editingChannelId) === visualChoice) homeVisualChoices.delete(editingChannelId);
     $("#channel-dialog").close();
     await loadChannels();
     await refreshChannelWorkspace();

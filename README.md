@@ -31,12 +31,13 @@ https://github.com/user-attachments/assets/e94dab2d-3110-440c-b82e-b9289c0e6b51
 This fork adds **animated HTML/SVG scenes**, **separate YouTube channel profiles**,
 and **recurring video generation**. These features are on this fork's **main** branch.
 
-All three visual modes use the original stock-picture pipeline. **Motion** combines
-your pictures with animated diagrams, timelines, comparisons and text; **Hybrid**
-can also use real Pexels video footage. **Classic** keeps the MoviePy photo renderer.
+**Motion** creates animated diagrams, timelines, comparisons and text, without
+fetching or automatically attaching stock pictures. **Hybrid** combines those
+graphics with the original pipeline's pictures and optional Pexels video footage.
+**Classic** keeps the MoviePy photo renderer.
 Review the storyboard, change one scene, then render a draft or final MP4 with the
 saved narration. Existing photo projects have an **Animate these photos** action:
-it reuses their recording and imports caption timing or labels a duration-based
+it explicitly reuses their pictures and recording, and imports caption timing or labels a duration-based
 estimate. A fresh voiceover is not mandatory. [Motion workflow](docs/MOTION_STUDIO.md).
 
 Use the channel sidebar, or the selector on a small screen, for a News channel,
@@ -72,6 +73,9 @@ The landscape is **640×360** and the portrait is **360×640**. Both contain
 illustrative chart values. They verify rendering, frame count and audio presence;
 the tones are not a voice-quality demonstration. See [sample details and
 reproduction commands](docs/samples/README.md).
+
+These samples exercise the renderer's photo and footage support as well as its
+graphics. New videos made with **Motion** use animated graphics by default.
 
 #### Storyboard editor
 
@@ -126,9 +130,9 @@ Open **Check local setup** on Home, choose or add a channel profile, then choose
 **Motion** and **Draft preview first**. Enter a topic and press **Make video**.
 Review → Storyboard lets you scrub the local HTML preview and regenerate one scene.
 Each scene edit updates the preview and automatically renders a fresh draft MP4
-on the same screen. Select **Use another saved photo** to swap that scene's picture
-for another image already downloaded for its section, then render the final video
-when ready. Try **Profile settings → Preview voice** before making
+on the same screen. In Hybrid or an explicitly photo-based project, **Use another
+saved photo** swaps that scene's picture for another image already downloaded for
+its section. Render the final video when ready. Try **Profile settings → Preview voice** before making
 a long recording; it auditions the currently selected voice, speed and pitch.
 
 YAAS restores the current local project when you restart it, including a valid
@@ -137,6 +141,8 @@ from a storyboard that still needs rendering. If saved files are incomplete or a
 preview cannot load, Review explains the problem and offers a retry instead of
 showing an empty screen. Choose **Make another video** on the completion card to
 return to the topic form; an empty workspace shows that form automatically.
+That action resets the pipeline steps for a fresh topic. Partial reruns reuse the
+current project; enable **Research** to work on a new topic.
 Starting a new project still replaces the working project;
 the separate **My videos** archive keeps saved final videos and scheduled drafts.
 
@@ -228,10 +234,39 @@ editable starting points. News uses retrieved background sources and trend ideas
 it does not independently verify live breaking news. The calm preset adjusts the
 script and voice; it does not synthesize binaural recordings or authentic ASMR triggers.
 
-Music starts **off**. The default pitch is unchanged, and the optional music bed
-starts at **8%**, with speech ducking, fades and peak limiting. Motion soundtracks
-are prepared as lossless WAV files before final video encoding. Preview the voice,
-then listen to a draft before making a long final video.
+Music and sound effects start **off**. The default pitch is unchanged. Both audio
+layers start at **8%**, with speech ducking, fades and peak limiting. Motion
+soundtracks are prepared as lossless WAV files before final video encoding.
+Preview the voice and imported audio, then listen to a draft before making a long
+final video.
+
+**Pixabay music and sound effects:** YAAS uses Pixabay's API for pictures.
+Pixabay's [public API documentation](https://pixabay.com/api/docs/) provides image
+and video endpoints, but no documented music or sound-effect endpoint. To use its
+audio, download a track from Pixabay and import the file into YAAS:
+
+1. Select the channel in the sidebar, then open **Settings → Audio library**.
+2. Choose **Music** or **Sound effect**, select the downloaded file, and click
+   **Import audio**. MP3, WAV, OGG, M4A and FLAC are supported, up to 20 MiB and two
+   hours per file. The optional source URL, creator, license note and Content ID
+   status stay with the imported track.
+3. Preview the track, choose it under **Music track** or **Effect track**, enable
+   that layer and save Settings. **Transitions** plays an effect briefly between
+   script sections; **Ambience** loops it beneath the narration for calm or ASMR
+   projects. Each channel keeps its own library and selections.
+4. New videos use the saved choices. For an existing Motion or Hybrid draft, open
+   **Review → Music & effects → Apply music & effects to current draft**. This
+   rebuilds the soundtrack and preview using the current script, recorded voice
+   and storyboard. For Classic, clear the topic on Home and select only **Music**
+   and **Render** under More options.
+
+The existing per-channel music-folder option still works. Selecting an imported
+music track uses that exact track. Audio sources actually applied to the project
+appear in Review and are retained with archived videos; generated descriptions
+include their source details. Applying audio preserves an edited description.
+Pixabay notes that some tracks are registered with YouTube Content ID and can
+receive claims; keep the download's source details and any available certificate.
+See [Pixabay's FAQ](https://pixabay.com/service/faq/) for its current guidance.
 
 Schedules use a persistent queue and run one generation job at a time. Automatic
 slots missed by more than 15 minutes, including expired queued slots, are skipped;
@@ -250,7 +285,7 @@ See [the schedule lifecycle and hosting instructions](docs/CHANNELS_AND_SCHEDULE
 | ✍️ **Never-stuck AI** | Gemini model chain → Groq → OpenRouter → Pollinations (keyless), so a quota error doesn't kill the run. Broken JSON from models is repaired automatically. |
 | 🖼️ **Visuals without a key** | Pexels → Pixabay → NASA (public domain, space topics) → Openverse (CC, credited) → AI-generated images. Credits are written into the description for you. |
 | 🎙️ **Voice audition** | Preview an Edge neural voice with your unsaved speed and pitch before recording. Fresh narration stores measured section timing and available word events; legacy recordings can reuse captions or clearly labelled timing estimates. |
-| 🎞️ **Motion / Hybrid / Classic** | Original pipeline photos, HTML/SVG explanations and optional real stock video in 16:9 or 9:16. Keep an old recording and use **Animate these photos** to build a motion draft. |
+| 🎞️ **Motion / Hybrid / Classic** | Motion creates animated graphics; Hybrid adds pipeline photos and optional stock footage; Classic makes photo videos. Explicitly reuse an old recording and its pictures with **Animate these photos**. All support 16:9 or 9:16. |
 | 🎛️ **Editable storyboard** | Scrub the local HTML preview, regenerate one scene and render a draft or final MP4 from the same plan. Full projects, narration, timing, media and credits are archived for reopening. |
 | 👁️ **Optional visual review** | An explicitly enabled free vision model checks a few rendered frames for visible layout problems. Review is advisory and does not certify factual accuracy. |
 | 🏷️ **Your brand** | Your channel name appears in the intro, on Shorts and on thumbnails. Change the text or switch it off in Settings. |
@@ -264,7 +299,7 @@ See [the schedule lifecycle and hosting instructions](docs/CHANNELS_AND_SCHEDULE
 | 📊 **Your stats** | Production history, plus live subscribers and views per upload with a free YouTube Data API key. |
 | 🗂️ **My videos** | Every render archived with its script, sources, photos and metadata. |
 | ©️ **Credits** | Every video carries a semi-transparent **raunakpatil.com** watermark, and descriptions end with *Made with YAAS by Raunak Patil · raunakpatil.com*. |
-| 🎵 **Optional background music** | Off by default. Pick a local music folder for each profile; a quiet bed loops with fades, ducks beneath speech and uses peak limiting. No synthetic sound effects are added. |
+| 🎵 **Music and sound effects** | Off by default. Import and preview audio separately for each channel, choose exact music/effect tracks, and apply them to an existing draft. Music and ambience loop; transition effects play between sections. Both duck beneath speech and use fades and peak limiting. The local music-folder option remains available. |
 
 ---
 
@@ -431,7 +466,7 @@ Yes. Download the MP4, thumbnail and captions from **Review & publish** and uplo
 <details>
 <summary><b>Can I turn off the raunakpatil.com watermark?</b></summary>
 
-No. The small semi-transparent watermark is part of every video YAAS renders, as credit for the free tool. The description credit line can be switched off in **Settings → Music & publishing**.
+No. The small semi-transparent watermark is part of every video YAAS renders, as credit for the free tool. The description credit line can be switched off in **Settings → Publishing**.
 </details>
 
 <details>
@@ -453,6 +488,16 @@ Select the video's profile on Home and use **Reconnect YouTube**. Make sure your
 Google account is a **Test user** on your OAuth consent screen. Choose the same
 channel already bound to that profile; use a new profile for another channel.
 The app checks the authenticated channel again before uploading.
+</details>
+
+<details>
+<summary><b>Why does an older Motion draft still contain photos?</b></summary>
+
+Earlier versions automatically attached saved pictures to Motion scenes. Opening
+that draft preserves its saved composition. Choose **Rebuild as Motion graphics**
+in Review to rebuild its visuals with the existing script and recording. New
+Motion videos use animated graphics by default; **Animate these photos** is the
+explicit option for keeping a photo-based composition.
 </details>
 
 <details>
@@ -495,7 +540,7 @@ command. The branch URL never represented a running cloud application.
 - [x] Stock video B-roll (Pexels in Hybrid mode)
 - [x] Multi-channel profiles and verified publishing identity
 - [x] Per-channel recurring generation with a persistent queue
-- [x] Reuse old photos and narration in Motion
+- [x] Explicitly animate saved photos and reuse their narration
 - [x] Voice preview and quieter optional music mixing
 - [ ] Custom intro/outro clips
 - [ ] Caption upload to YouTube

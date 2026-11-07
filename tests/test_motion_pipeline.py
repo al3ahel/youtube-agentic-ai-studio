@@ -1,6 +1,7 @@
 """Integration boundaries: preparation, cache identity, preview and final output."""
 import copy
 import json
+import shutil
 import wave
 from pathlib import Path
 
@@ -18,6 +19,9 @@ def job(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "OUTPUT_DIR", str(tmp_path))
     monkeypatch.setattr(config, "IMAGES_DIR", str(tmp_path / "images"))
     monkeypatch.setattr(config, "MUSIC_ENABLED", False)
+    monkeypatch.setattr(config, "MUSIC_TRACK", "")
+    monkeypatch.setattr(config, "SFX_ENABLED", False)
+    monkeypatch.setattr(config, "SFX_TRACK", "")
     monkeypatch.setattr(config, "VISUAL_AI_ENABLED", False)
     monkeypatch.setattr(config, "VISUAL_REVIEW_ENABLED", False)
     from studio import preflight
@@ -40,7 +44,7 @@ def job(tmp_path, monkeypatch):
     (tmp_path / "script.json").write_text(json.dumps(script))
     state.update(script=script, research={}, visual_plan=None, timeline=None, audio_path=None,
                  video_path=None, preview_path=None, image_map={}, error=None, visual_qa=None,
-                 running=False, library_id=None, visual_editing=False)
+                 running=False, library_id=None, visual_editing=False, description=None, thumb_path=None)
     stop_event.clear()
     yield tmp_path, script, archived
     state.clear()
@@ -206,8 +210,9 @@ def test_classic_render_and_thumbnail_reuse_cached_pictures_with_numeric_or_text
 
 
 @pytest.mark.parametrize("saved_description", ["My carefully edited publishing description.", ""])
+@pytest.mark.parametrize("legacy_photo_plan", [False, True])
 def test_scene_edit_then_video_only_draft_reuses_audio_plan_and_publishing_edits(
-        job, monkeypatch, saved_description):
+        job, monkeypatch, saved_description, legacy_photo_plan):
     """Review saves one scene, then the guarded render encodes that exact plan."""
     from PIL import Image
     from agents import visual_director
@@ -266,9 +271,13 @@ def test_scene_edit_then_video_only_draft_reuses_audio_plan_and_publishing_edits
     monkeypatch.setattr(html, "render_motion_video", render)
     monkeypatch.setattr(runner, "make_thumbnail", initial_thumbnail)
     monkeypatch.setattr(runner, "build_description", initial_description)
-    runner.run_pipeline_thread(["visuals", "video"], visual_mode="motion", preview_only=True)
+    runner.run_pipeline_thread(["visuals", "video"], visual_mode="motion", preview_only=True,
+                               use_project_photos=True)
     assert state["error"] is None
     assert initial_packaging == ["thumbnail", "description"]
+    if legacy_photo_plan:
+        state["visual_plan"].pop("use_project_photos")
+        runner._save_json(output / "scene_plan.json", state["visual_plan"])
     original_plan = copy.deepcopy(state["visual_plan"])
     assert len(original_plan["scenes"]) >= 2
     assert all(scene.get("image") for scene in original_plan["scenes"])
@@ -332,6 +341,7 @@ def test_scene_edit_then_video_only_draft_reuses_audio_plan_and_publishing_edits
     assert response.status_code == 200 and response.json["ok"]
     assert state["error"] is None and not state["running"]
     assert dispatched[0]["steps"] == ["video"] and dispatched[0]["preview_only"] is True
+    assert dispatched[0]["use_project_photos"] is True
     assert len(rendered) == 2
     assert rendered[-1]["plan"] == edited_plan
     assert prepared[-1] == edited_plan
@@ -349,3 +359,336 @@ def test_scene_edit_then_video_only_draft_reuses_audio_plan_and_publishing_edits
     assert status["plan_revision"] == edited.json["plan_revision"]
     assert status["preview_revision"] != previous_draft_revision
     assert status["has_preview"] and not status["has_video"]
+
+
+@pytest.mark.parametrize("steps", [["video"], ["script", "narration", "visuals", "video"]])
+def test_worker_rejects_new_topic_with_partial_steps_before_sources_change(job, monkeypatch, steps):
+    from agents import scriptwriter
+    from studio import preflight
+    from video.renderers import html
+    output, script, _ = job
+    previous_script = copy.deepcopy(script)
+    files = {path: path.read_bytes() for path in output.rglob("*") if path.is_file()}
+    def forbidden(*args, **kwargs):
+        pytest.fail("A new topic without Research must stop before provider or render work")
+    monkeypatch.setattr(preflight, "check_environment", forbidden)
+    monkeypatch.setattr(scriptwriter, "write_script", forbidden)
+    monkeypatch.setattr(html, "render_motion_video", forbidden)
+
+    runner.run_pipeline_thread(steps, "New ocean topic", visual_mode="motion", preview_only=True)
+
+    assert "Enable Research" in state["error"]
+    assert state["stages"]["preparation"] == "error" and not state["running"]
+    assert state["script"] == previous_script
+    assert all(path.read_bytes() == data for path, data in files.items())
+
+
+def test_motion_rebuild_omits_saved_photos_without_losing_explicit_reuse_or_narration(job, monkeypatch):
+    from PIL import Image
+    from studio import preflight
+    from video import narrator, stock
+    from video.renderers import html
+    output, script, _ = job
+    picture = output / "images" / "saved-project-photo.png"
+    picture.parent.mkdir()
+    Image.new("RGB", (64, 36), "#266ca0").save(picture)
+    state["image_map"] = {1: [str(picture)]}
+    runner._save_image_map(output, state["image_map"])
+    encoded = []
+    def render(script, audio, directory, plan, **kwargs):
+        encoded.append(copy.deepcopy(plan))
+        target = Path(directory) / "motion_preview.mp4"
+        target.write_bytes(json.dumps(plan, sort_keys=True).encode("utf-8"))
+        return str(target)
+    monkeypatch.setattr(html, "render_motion_video", render)
+    runner.run_pipeline_thread(["visuals", "video"], visual_mode="motion", preview_only=True,
+                               use_project_photos=True)
+    assert state["error"] is None and state["visual_plan"]["scenes"][0].get("image")
+    photo_plan = copy.deepcopy(state["visual_plan"])
+    retained = {path: path.read_bytes() for path in (
+        output / "script.json", output / "narration.wav", output / "narration.timings.json",
+        output / "image_map.json", picture,
+    )}
+    def forbidden(*args, **kwargs):
+        pytest.fail("Switching visual style must preserve existing speech and saved photos")
+    monkeypatch.setattr(stock, "download_images", forbidden)
+    monkeypatch.setattr(stock, "section_images", forbidden)
+    monkeypatch.setattr(runner, "_load_image_map", forbidden)
+    monkeypatch.setattr(narrator, "generate_narration", forbidden)
+    checked = []
+    monkeypatch.setattr(preflight, "check_environment", lambda steps, mode: checked.append(steps) or {
+        "ok": True, "checks": []})
+
+    # Home's graphics default cannot quietly reuse a photo storyboard, even
+    # when the script, narration and dimensions all still match.
+    runner.run_pipeline_thread(["video"], visual_mode="motion", preview_only=True)
+    assert "different photo option" in state["error"] and len(encoded) == 1
+    assert state["visual_plan"] == photo_plan
+
+    runner.run_pipeline_thread(["images", "visuals", "video"], visual_mode="motion", preview_only=True,
+                               use_project_photos=False)
+    assert state["error"] is None and len(encoded) == 2
+    graphics = encoded[-1]
+    assert graphics["use_project_photos"] is False
+    assert not any(scene.get("image") or scene.get("footage") for scene in graphics["scenes"])
+    assert state["stages"]["images"] == "skipped" and all("images" not in steps for steps in checked)
+    assert state["image_map"] == {1: [str(picture)]}
+    assert all(path.read_bytes() == data for path, data in retained.items())
+
+    # The separate Animate these photos action still uses those same files.
+    runner.run_pipeline_thread(["visuals"], visual_mode="motion", use_project_photos=True)
+    assert state["error"] is None
+    assert state["visual_plan"]["use_project_photos"] is True
+    assert state["visual_plan"]["scenes"][0]["image"]["path"] == str(picture)
+    assert all(path.read_bytes() == data for path, data in retained.items())
+
+
+@pytest.mark.parametrize("saved_photo_opt_in", [False, True])
+def test_fresh_topic_does_not_inherit_previous_plan_or_images(job, monkeypatch, saved_photo_opt_in):
+    from PIL import Image
+    from agents import researcher, scriptwriter
+    from video import narrator, stock
+    from video.renderers import html
+    output, old_script, _ = job
+    images = output / "images"
+    if saved_photo_opt_in:
+        # An unmanaged linked image folder is deliberately not deleted during
+        # invalidation. Old filenames in it still must not enter a fresh script.
+        source = output / "saved-source-images"
+        source.mkdir()
+        try:
+            images.symlink_to(source, target_is_directory=True)
+        except (OSError, NotImplementedError):
+            pytest.skip("Symlinks unavailable on this platform")
+    else:
+        images.mkdir()
+    old_picture = images / "section_01_img01.png"
+    Image.new("RGB", (64, 36), "#b83020").save(old_picture)
+    state["image_map"] = {1: [str(old_picture)]}
+    runner._save_image_map(output, state["image_map"])
+    runner.run_pipeline_thread(["visuals"], visual_mode="motion", use_project_photos=True)
+    old_plan = copy.deepcopy(state["visual_plan"])
+    assert old_plan["scenes"][0].get("image")
+    new_script = {"title": "New ocean video", "sections": [
+        {"id": 1, "title": "Ocean currents", "narration": "Water moves through the ocean. Currents carry heat."}]}
+    requested_topics = []
+    monkeypatch.setattr(researcher, "research_topic", lambda *args, **kwargs:
+                        requested_topics.append(kwargs["topic_override"]) or {"video_title": new_script["title"]})
+    monkeypatch.setattr(scriptwriter, "write_script", lambda *args, **kwargs: copy.deepcopy(new_script))
+    def narrate(script, directory, **kwargs):
+        path = Path(directory) / "narration.wav"
+        with wave.open(str(path), "wb") as audio:
+            audio.setnchannels(1)
+            audio.setsampwidth(2)
+            audio.setframerate(48000)
+            audio.writeframes(b"\x01\x00" * 48000 * 6)
+        runner._save_json(Path(directory) / "narration.timings.json", {
+            "version": 1, "script_signature": script_signature(script), "duration": 6,
+            "sections": [{"id": 1, "start": 0, "duration": 6, "caption_timing": "estimated"}], "words": [],
+        })
+        return str(path)
+    monkeypatch.setattr(narrator, "generate_narration", narrate)
+    def forbidden(*args, **kwargs):
+        pytest.fail("New source material must not rediscover or fetch photos in this run")
+    monkeypatch.setattr(stock, "download_images", forbidden)
+    monkeypatch.setattr(stock, "section_images", forbidden)
+    rendered = []
+    def render(script, audio, directory, plan, **kwargs):
+        rendered.append(copy.deepcopy(plan))
+        target = Path(directory) / "motion_preview.mp4"
+        target.write_bytes(b"new ocean draft")
+        return str(target)
+    monkeypatch.setattr(html, "render_motion_video", render)
+    steps = ["research", "script", "narration", "visuals", "video"]
+    if not saved_photo_opt_in:
+        steps.insert(2, "images")
+
+    runner.run_pipeline_thread(steps, "New ocean topic", visual_mode="motion", preview_only=True,
+                               use_project_photos=saved_photo_opt_in)
+
+    assert state["error"] is None and requested_topics == ["New ocean topic"]
+    assert state["script"] == new_script and len(rendered) == 1
+    assert rendered[0]["script_signature"] != old_plan["script_signature"]
+    assert rendered[0]["title"] == "New ocean video"
+    assert not any(scene.get("image") for scene in rendered[0]["scenes"])
+    assert state["image_map"] == {} and not (output / "image_map.json").exists()
+    assert old_picture.exists() is saved_photo_opt_in
+
+
+def _import_audio_fixture(profile_id, directory, kind, frequency):
+    import base64
+    import numpy as np
+    from studio.audio_library import import_audio_asset
+    path = directory / (kind + ".wav")
+    with wave.open(str(path), "wb") as audio:
+        audio.setnchannels(1)
+        audio.setsampwidth(2)
+        audio.setframerate(48000)
+        times = np.arange(48000) / 48000
+        audio.writeframes((np.sin(2 * np.pi * frequency * times) * 12000).astype("<i2").tobytes())
+    return import_audio_asset(profile_id, {
+        "filename": path.name, "kind": kind, "title": f"Imported {kind}", "creator": "Offline fixture",
+        "source_url": "https://pixabay.com/", "license_note": "Locally generated test recording",
+        "content_id": "unknown", "data_base64": base64.b64encode(path.read_bytes()).decode("ascii"),
+    })
+
+
+@pytest.mark.skipif(not shutil.which("ffmpeg") or not shutil.which("ffprobe"), reason="FFmpeg tools required for imported audio")
+def test_apply_audio_uses_project_profile_and_retains_edits_and_prepared_mix(job, monkeypatch):
+    import hashlib
+    from studio import audio_library, channels, create_app, pipeline
+    from studio.project_identity import write_project_identity
+    from video import music, narrator, sound_effects
+    from video.renderers import html
+    output, script, _ = job
+    monkeypatch.setattr(config, "SETTINGS_PATH", str(output / "settings.json"))
+    owner = channels.create_profile("News project owner", defaults={"visual_ai_enabled": False})
+    selected_music = _import_audio_fixture(owner["id"], output, "music", 700)
+    selected_effect = _import_audio_fixture(owner["id"], output, "sfx", 1200)
+    channels.update_profile_defaults(owner["id"], {
+        "music_enabled": True, "music_track": selected_music["id"], "music_volume": .08,
+        "sfx_enabled": True, "sfx_track": selected_effect["id"], "sfx_mode": "ambience", "sfx_volume": .12,
+    })
+    other = channels.create_profile("Different active channel", "asmr")
+    assert channels.active_profile_id() == other["id"]
+    state.update(profile_id=owner["id"], profile_name=owner["name"])
+    write_project_identity(output, owner["id"], owner["name"])
+    runner.run_pipeline_thread(["visuals"], visual_mode="motion", profile_id=owner["id"])
+    assert state["error"] is None
+    plan = copy.deepcopy(state["visual_plan"])
+    state["description"] = ""  # A deliberately empty publishing description is an edit too.
+    thumbnail = output / "chosen-thumbnail.jpg"
+    thumbnail.write_bytes(b"user-selected thumbnail")
+    state["thumb_path"] = str(thumbnail)
+    retained = {path: path.read_bytes() for path in (
+        output / "script.json", output / "scene_plan.json", output / "narration.wav",
+        output / "narration.timings.json", thumbnail,
+    )}
+    seen_profiles = []
+    original_resolver = audio_library.resolve_audio_asset
+    def resolve(profile_id, asset_id, kind=None):
+        seen_profiles.append((profile_id, asset_id, kind))
+        return original_resolver(profile_id, asset_id, kind)
+    monkeypatch.setattr(audio_library, "resolve_audio_asset", resolve)
+    rendered_audio = []
+    def render(script, audio, directory, current_plan, **kwargs):
+        assert current_plan == state["visual_plan"]
+        rendered_audio.append(audio)
+        target = Path(directory) / "motion_preview.mp4"
+        target.write_bytes(b"draft with prepared soundtrack")
+        return str(target)
+    monkeypatch.setattr(html, "render_motion_video", render)
+    def forbidden(*args, **kwargs):
+        pytest.fail("Audio/visual rerenders must preserve voice and publishing edits")
+    monkeypatch.setattr(narrator, "generate_narration", forbidden)
+    monkeypatch.setattr(runner, "make_thumbnail", forbidden)
+    monkeypatch.setattr(runner, "build_description", forbidden)
+    class InlineThread:
+        def __init__(self, *, target, args, kwargs, daemon):
+            self.target, self.args, self.kwargs = target, args, kwargs
+        def start(self):
+            self.target(*self.args, **self.kwargs)
+    monkeypatch.setattr(pipeline.threading, "Thread", InlineThread)
+    app = create_app()
+    app.testing = True
+    client = app.test_client()
+    from studio.revisions import plan_revision
+    revision = plan_revision(plan)
+    response = client.post("/api/run", json={
+        "steps": ["music", "video"], "visual_mode": "motion", "preview_only": True,
+        "profile_id": owner["id"], "expected_plan_revision": revision,
+    })
+    assert response.status_code == 200 and state["error"] is None
+    assert state["stages"]["music"] == "done" and not state["running"]
+    assert seen_profiles == [(owner["id"], selected_music["id"], "music"),
+                             (owner["id"], selected_effect["id"], "sfx")]
+    assert channels.active_profile_id() == other["id"]
+    assert rendered_audio == [str(output / "narration_effects.wav")]
+    assert state["visual_plan"] == plan and plan_revision(state["visual_plan"]) == revision
+    original_hash = hashlib.sha256(retained[output / "narration.wav"]).hexdigest()
+    credits_path = output / "audio_credits.json"
+    credits = json.loads(credits_path.read_text(encoding="utf-8"))
+    assert credits["audio_sha256"] == original_hash and credits["path"] == "narration_effects.wav"
+    assert [(asset["id"], asset["mode"]) for asset in credits["assets"]] == [
+        (selected_music["id"], "bed"), (selected_effect["id"], "ambience")]
+    assert all(asset["creator"] == "Offline fixture" and asset["source_url"] == "https://pixabay.com/"
+               for asset in credits["assets"])
+    soundtrack_manifest = json.loads((output / "render_audio.json").read_text(encoding="utf-8"))
+    assert soundtrack_manifest == {"path": "narration_effects.wav", "audio_sha256": original_hash}
+    with wave.open(rendered_audio[0], "rb") as recording:
+        assert recording.getnframes() == 6 * 48000
+    retained.update({path: path.read_bytes() for path in (
+        credits_path, output / "render_audio.json", output / "narration_effects.wav",
+    )})
+
+    monkeypatch.setattr(audio_library, "resolve_audio_asset", forbidden)
+    monkeypatch.setattr(music, "mix_music_with_narration", forbidden)
+    monkeypatch.setattr(sound_effects, "mix_sound_effects", forbidden)
+    # Both exact render-only and a rebuilt graphic storyboard retain the mixed
+    # soundtrack instead of rereading the active channel's audio selections.
+    for steps in (["video"], ["visuals", "video"]):
+        runner.run_pipeline_thread(steps, visual_mode="motion", preview_only=True,
+                                   profile_id=owner["id"], use_project_photos=False)
+        assert state["error"] is None
+    assert rendered_audio == [str(output / "narration_effects.wav")] * 3
+    assert state["description"] == "" and state["thumb_path"] == str(thumbnail)
+    assert all(path.read_bytes() == data for path, data in retained.items())
+
+
+@pytest.mark.skipif(not shutil.which("ffmpeg") or not shutil.which("ffprobe"), reason="FFmpeg tools required for imported audio")
+def test_unavailable_or_other_profile_audio_preserves_voice_without_random_fallback(job, monkeypatch):
+    from studio import channels
+    from video import music, sound_effects
+    from video.timeline import audio_signature
+    output, _, _ = job
+    owner = channels.create_profile("Current project")
+    other = channels.create_profile("Other audio library")
+    foreign_music = _import_audio_fixture(other["id"], output, "music", 700)
+    foreign_effect = _import_audio_fixture(other["id"], output, "sfx", 1200)
+    voice = output / "narration.wav"
+    original = voice.read_bytes()
+    warnings = []
+    monkeypatch.setattr(runner, "log", lambda message, level="info": warnings.append((level, message)))
+    def forbidden(*args, **kwargs):
+        pytest.fail("Missing selected audio must never choose a random or foreign replacement")
+    monkeypatch.setattr(music, "mix_music_with_narration", forbidden)
+    monkeypatch.setattr(sound_effects, "mix_sound_effects", forbidden)
+    for music_id, effect_id in ((foreign_music["id"], foreign_effect["id"]), ("a" * 32, "b" * 32)):
+        credits = output / "audio_credits.json"
+        credits.write_text('{"assets": ["stale attribution"]}', encoding="utf-8")
+        with config.profile_context({"MUSIC_ENABLED": True, "MUSIC_TRACK": music_id,
+                                     "SFX_ENABLED": True, "SFX_TRACK": effect_id}):
+            result = runner._mix_project_audio(str(voice), {"audio_sha256": audio_signature(voice)}, output, owner["id"])
+        assert result == str(voice) and not credits.exists()
+        assert voice.read_bytes() == original
+    assert len(warnings) == 4
+    assert all(level == "warn" and "unavailable" in message for level, message in warnings)
+
+
+@pytest.mark.parametrize("steps", [["script"], ["narration"]])
+def test_changed_sources_discard_previous_effects_and_credits(job, monkeypatch, steps):
+    from video import narrator
+    output, _, _ = job
+    credits = output / "audio_credits.json"
+    effect_mix = output / "narration_effects.wav"
+    credits.write_text('{"assets": ["previous recording"]}', encoding="utf-8")
+    effect_mix.write_bytes(b"previous recording with effects")
+    if steps == ["script"]:
+        runner._invalidate(output, script=True, audio=True)
+    else:
+        monkeypatch.setattr(narrator, "generate_narration", lambda *args, **kwargs: str(output / "narration.wav"))
+        runner.run_pipeline_thread(steps, visual_mode="motion")
+        assert state["error"] is None
+    assert not credits.exists() and not effect_mix.exists()
+
+
+@pytest.mark.parametrize("music_enabled,sfx_enabled", [(True, False), (False, True)])
+def test_audio_preflight_uses_ffmpeg_without_moviepy_or_renderer_dependencies(monkeypatch, music_enabled, sfx_enabled):
+    from studio import preflight
+    monkeypatch.setattr(config, "MUSIC_ENABLED", music_enabled)
+    monkeypatch.setattr(config, "SFX_ENABLED", sfx_enabled)
+    monkeypatch.setattr(preflight, "_available", lambda module: pytest.fail("FFmpeg audio mixing needs no optional Python SDK"))
+    monkeypatch.setattr(preflight, "_node_version", lambda: pytest.fail("Audio mixing does not use the renderer"))
+    monkeypatch.setattr(preflight.shutil, "which", lambda name: None)
+    result = preflight.check_environment(["music"], "motion")
+    assert {check["name"] for check in result["checks"] if not check["ok"]} == {"ffmpeg", "ffprobe"}

@@ -79,6 +79,8 @@ async function loadReview({ preserveEdits = false, expectedPlanRevision = null, 
     reviewVideoType = st.video_type || "normal";
     $("#legacy-motion-card").hidden = st.visual_mode !== "classic" || !st.has_audio || !st.has_script;
     updateReviewMedia(st);
+    $("#rv-audio").hidden = !st.has_audio || !st.has_script;
+    if (typeof renderReviewAudio === "function") renderReviewAudio(d.audio_credits, st);
     $("#thumb-wrap").innerHTML = st.has_thumb ? `<img src="/thumbnail/${Date.now()}" alt="Thumbnail">` : `<div class="empty">No thumbnail yet</div>`;
     if (st.has_thumb) loadThumb();
     $("#rv-thumb").hidden = !st.has_thumb;
@@ -107,6 +109,7 @@ async function loadReview({ preserveEdits = false, expectedPlanRevision = null, 
     const loaded = await loadStoryboard(st, { preserveEditor: preserveEdits, expectedPlanRevision, isCurrent: () => serial === reviewLoadSerial });
     if (serial !== reviewLoadSerial) return false;
     if (loaded === false) throw new Error("The storyboard could not be loaded. Try again.");
+    $("#legacy-motion-card").hidden = !st.has_audio || !st.has_script || (st.visual_mode !== "classic" && !storyboardUsesProjectPhotos());
     setReviewFeedback(warning ? "notice" : "", warning);
     return true;
   } catch (error) {
@@ -321,10 +324,14 @@ $("#upload-btn").onclick = async () => {
   tick();
 };
 
-$("#animate-legacy").onclick = async () => {
+async function rebuildReviewVisuals(useProjectPhotos) {
   const started = await startRun("", false, {
     steps: ["visuals", "video"], visual_mode: "motion", preview_only: true,
+    use_project_photos: useProjectPhotos,
     video_type: reviewVideoType, profile_id: reviewProfileId || status.profile_id,
+    expected_plan_revision: storyboardData?.plan_revision,
   });
   if (started) location.hash = "#home";
-};
+}
+$("#animate-legacy").onclick = () => rebuildReviewVisuals(true);
+$("#rebuild-motion-graphics").onclick = () => rebuildReviewVisuals(false);

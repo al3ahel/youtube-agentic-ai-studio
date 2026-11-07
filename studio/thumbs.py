@@ -7,10 +7,15 @@ from studio.state import is_shorts, log, state
 def thumb_backgrounds(image_map):
     """Every usable background photo from the video, in scene order."""
     paths = []
-    for k in sorted((image_map or {}), key=lambda k: int(k)):
+    keys = list(image_map or {})
+    # Preserve the familiar numeric chapter order, while named/mixed section
+    # IDs follow the script's insertion order instead of failing int(...).
+    if all(str(key).isdigit() for key in keys):
+        keys.sort(key=lambda key: int(key))
+    for k in keys:
         v = image_map[k]
         for p in (v if isinstance(v, list) else [v]):
-            if p and os.path.exists(p) and p not in paths:
+            if p and os.path.isfile(p) and p not in paths:
                 paths.append(p)
     return paths
 

@@ -8,15 +8,17 @@ For Shorts        : 1 image per query, up to 4 per section (fast slideshow)
 Images saved to output/images/section_NN_imgMM.jpg
 Credits saved to output/credits.json (used for the description's attribution).
 """
-import glob
 import json
 import os
 import random
+import re
+from pathlib import Path
 import requests
 import config
 from apis import images as image_apis
 
 PEXELS_SEARCH = "https://api.pexels.com/v1/search"
+IMAGE_EXTENSIONS = frozenset({".jpg", ".jpeg", ".png", ".webp"})
 
 FALLBACK_QUERIES = [
     "space universe stars galaxy",
@@ -30,6 +32,16 @@ FALLBACK_QUERIES = [
 # Every image downloaded this run → credits.json
 _credits: list = []
 _used_urls: set = set()
+
+
+def section_key(section_id: int | str) -> str:
+    """Return a safe cache filename component, preserving numeric YAAS names."""
+    if isinstance(section_id, bool) or not isinstance(section_id, (int, str)):
+        raise ValueError("Section IDs must be non-negative integers or safe text IDs.")
+    value = str(section_id)
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,79}", value):
+        raise ValueError("Section IDs must start with a letter or number and contain only letters, numbers, underscores, or hyphens (maximum 80 characters).")
+    return f"{int(value):02d}" if value.isdigit() else value
 
 
 def _pexels_ready() -> bool:
@@ -79,7 +91,7 @@ def _candidates(query: str, orientation: str, count: int) -> list:
     return image_apis.search(query, orientation, count, exclude_urls=_used_urls)
 
 
-def _fetch_images(query: str, section_index: int, images_dir: str,
+def _fetch_images(query: str, section_index: int | str, images_dir: str,
                   count: int = 1, orientation: str = "landscape",
                   img_num_start: int = 0, topic_hint: str = "") -> list:
     """
@@ -88,6 +100,7 @@ def _fetch_images(query: str, section_index: int, images_dir: str,
     topic_hint: prepended to the query to boost topical relevance.
     Returns a list of local file paths.
     """
+    key = section_key(section_index)
     # Prepend topic hint to improve relevance (e.g. "black holes dramatic wide")
     if topic_hint and topic_hint.lower() not in query.lower():
         search_query = f"{topic_hint} {query}"
@@ -97,7 +110,7 @@ def _fetch_images(query: str, section_index: int, images_dir: str,
     saved = []
     for attempt_query in [search_query, query] + FALLBACK_QUERIES:
         for cand in _candidates(attempt_query, orientation, count - len(saved)):
-            fname = f"section_{section_index:02d}_img{img_num_start + len(saved) + 1:02d}.jpg"
+            fname = f"section_{key}_img{img_num_start + len(saved) + 1:02d}.jpg"
             path = os.path.join(images_dir, fname)
             if image_apis.fetch(cand, path):
                 saved.append(path)
@@ -112,9 +125,11 @@ def _fetch_images(query: str, section_index: int, images_dir: str,
     return saved
 
 
-def section_images(images_dir: str, section_id: int) -> list:
+def section_images(images_dir: str, section_id: int | str) -> list:
     """Images already on disk for a section (used when the Images step is skipped)."""
-    return sorted(glob.glob(os.path.join(images_dir, f"section_{section_id:02d}_img*.jpg")))
+    key = section_key(section_id)
+    return sorted(str(path) for path in Path(images_dir).glob(f"section_{key}_img*")
+                  if path.is_file() and path.suffix.lower() in IMAGE_EXTENSIONS)
 
 
 def download_images(script: dict, output_dir: str) -> dict:
@@ -123,12 +138,17 @@ def download_images(script: dict, output_dir: str) -> dict:
     Shorts: returns list of paths per section_id (for slideshow).
     Normal: returns list of paths (or None) per section_id.
     """
+    keys = [section_key(section["id"]) for section in script.get("sections", [])]
+    if len({key.casefold() for key in keys}) != len(keys):
+        raise ValueError("Section IDs must produce unique image filenames, including on Windows.")
     images_dir = os.path.join(output_dir, "images")
     os.makedirs(images_dir, exist_ok=True)
     # Clear the previous run's images so stale B-roll never leaks into this video
-    for old in glob.glob(os.path.join(images_dir, "section_*.jpg")):
+    for old in Path(images_dir).glob("section_*"):
+        if not old.is_file() or old.suffix.lower() not in IMAGE_EXTENSIONS:
+            continue
         try:
-            os.remove(old)
+            old.unlink()
         except OSError:
             pass
     _credits.clear()

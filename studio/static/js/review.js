@@ -1,11 +1,15 @@
 /* ═══════════════════════════ review ═══════════════════════════ */
-let tags = [], saved = null, thumbMode = "stock", uploadMode = "now";
+let tags = [], saved = null, thumbMode = "stock", uploadMode = "now", reviewProfileId = null, reviewVideoType = "normal";
 async function loadReview() {
   const [st, d] = await Promise.all([api("/api/status"), api("/api/output")]);
   const has = st.has_video || st.has_preview || st.has_storyboard;
+  reviewProfileId = st.profile_id || null;
+  reviewVideoType = st.video_type || "normal";
+  if (typeof updateChannelControls === "function") updateChannelControls(st);
   $("#review-empty").hidden = has;
   $$(".review-part").forEach(el => el.hidden = !has);
   if (!has) return;
+  $("#legacy-motion-card").hidden = st.visual_mode !== "classic" || !st.has_audio || !st.has_script;
   const final = !!st.has_video, hasPlayable = final || st.has_preview;
   $("#review-heading").textContent = final ? "Review & publish" : "Review your draft";
   $("#review-intro").textContent = final ? "Watch the final video, polish its details, then publish when you are ready." : "Review the storyboard and adjust individual scenes. Render a final video when the explanation looks right.";
@@ -199,15 +203,22 @@ $$("#upload-seg button").forEach(b => b.onclick = () => {
   $("#upload-btn").textContent = uploadMode === "now" ? "Upload to YouTube" : "Schedule on YouTube";
 });
 async function checkYt() {
-  const d = await api("/api/yt-status").catch(() => null);
-  if (!d) return;
-  $("#upload-btn").disabled = !d.secret;
-  $("#yt-setup").innerHTML = !d.secret
-    ? `<span class="tag amber">one-time setup</span> To upload from here, connect your YouTube account once (about 10 minutes, free). <a href="${SETUP_URL}" target="_blank" rel="noopener">Follow the guide</a>, or download the MP4 above and upload it yourself.`
-    : d.token ? `<span style="color:var(--green)">●</span> Your YouTube account is connected.` : `The first upload opens a Google sign-in window so you can pick your channel.`;
+  const profileId = reviewProfileId || status.profile_id;
+  const d = await api("/api/yt-status" + (profileId ? `?profile_id=${encodeURIComponent(profileId)}` : "")).catch(() => null);
+  if (!d || profileId !== (reviewProfileId || status.profile_id)) return;
+  const ready = !!(d.secret && d.connected && d.channel);
+  $("#upload-btn").disabled = !ready || !!status.uploading || !!status.running;
+  $("#yt-setup").innerHTML = ready
+    ? `<span class="channel-verified">● Publishing to ${esc(d.channel.title || d.profile_name || "your verified channel")}</span><br><span class="hint">This video stays linked to its own channel profile.</span>`
+    : `<span class="tag amber">${d.secret ? "connect channel" : "one-time setup"}</span> ${d.secret ? "Connect and verify this video's YouTube channel before publishing." : `Add your Google OAuth client JSON file to connect YouTube. <a href="${SETUP_URL}" target="_blank" rel="noopener">Setup guide</a>.`} <button type="button" class="link" id="review-profile-home">Open ${esc(d.profile_name || (typeof profileName === "function" ? profileName(profileId) : "channel"))} on Home</button>`;
+  if ($("#review-profile-home")) $("#review-profile-home").onclick = async () => {
+    if (profileId && profileId !== activeProfileId) await activateChannel(profileId);
+    else location.hash = "#home";
+  };
 }
 $("#upload-btn").onclick = async () => {
-  if (metaDirty()) await saveMeta();
+  try { if (metaDirty()) await saveMeta(); }
+  catch (error) { return toast(error.message, "err"); }
   let publish_at = "";
   if (uploadMode === "schedule") {
     const v = $("#schedule-dt").value;
@@ -216,7 +227,7 @@ $("#upload-btn").onclick = async () => {
     if (dt < new Date(Date.now() + 15 * 60000)) return toast("Pick a time at least 15 minutes from now", "err");
     publish_at = dt.toISOString();
   }
-  const r = await api("/api/upload", { privacy: $("#upload-privacy").value, publish_at });
+  const r = await api("/api/upload", { privacy: $("#upload-privacy").value, publish_at, profile_id: reviewProfileId || status.profile_id }).catch(error => ({ ok: false, error: error.message }));
   if (!r.ok) return toast(r.error, "err");
   $("#upload-progress").hidden = false;
   $("#upload-btn").disabled = true;
@@ -233,4 +244,12 @@ $("#upload-btn").onclick = async () => {
     } else { $("#upload-status").textContent = "Upload failed: " + (s.error || "unknown error"); toast("Upload failed", "err"); }
   };
   tick();
+};
+
+$("#animate-legacy").onclick = async () => {
+  const started = await startRun("", false, {
+    steps: ["visuals", "video"], visual_mode: "motion", preview_only: true,
+    video_type: reviewVideoType, profile_id: reviewProfileId || status.profile_id,
+  });
+  if (started) location.hash = "#home";
 };

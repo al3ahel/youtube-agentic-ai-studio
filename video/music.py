@@ -1,192 +1,123 @@
+"""Optional music bed with gentle fades, speech ducking and peak limiting.
+
+Missing music preserves the original narration, never WAV bytes under an MP3
+filename. Motion uses a lossless WAV soundtrack. No generated sound effects.
 """
-Music Manager — Local Library
-==============================
-Picks tracks from the  music library/  folder, concatenates them (looping
-from the start of the playlist if the video is longer than all tracks
-combined), trims to EXACTLY the video duration, then mixes with narration.
-
-  • No network calls, no procedural synthesis, no API keys.
-  • Drop any MP3/WAV/OGG into  music library/  and it will be used.
-  • Tracks are shuffled randomly each run for variety.
-  • If the library is empty the pipeline continues narration-only.
-
-Public API
-----------
-  mix_music_with_narration(narration_path, output_path, music_volume) -> str
-"""
-
-import os
 import math
+import os
+from pathlib import Path
 import random
+import shutil
+import subprocess
+import tempfile
+import time
 
 SUPPORTED_EXTENSIONS = (".mp3", ".wav", ".ogg", ".m4a", ".flac")
 
 
-# ══════════════════════════════════════════════════════════════
-#  LIBRARY SCANNER
-# ══════════════════════════════════════════════════════════════
-
-def _get_library_tracks(library_dir: str) -> list[str]:
-    """
-    Return a shuffled list of absolute paths to every supported audio file
-    in library_dir.  Returns [] if the folder doesn't exist or is empty.
-    """
-    if not library_dir or not os.path.isdir(library_dir):
-        print(f"   ⚠ Music library not found: {library_dir!r}")
+def _get_library_tracks(library_dir):
+    root = Path(library_dir) if library_dir else None
+    if root is None or not root.is_dir():
         return []
-
-    tracks = [
-        os.path.join(library_dir, f)
-        for f in os.listdir(library_dir)
-        if os.path.splitext(f)[1].lower() in SUPPORTED_EXTENSIONS
-    ]
-
-    if not tracks:
-        print(f"   ⚠ Music library is empty — add MP3/WAV files to: {library_dir}")
-        return []
-
+    tracks = [str(item.resolve()) for item in root.iterdir()
+              if item.is_file() and item.suffix.lower() in SUPPORTED_EXTENSIONS]
     random.shuffle(tracks)
-    print(f"   → Music library: {len(tracks)} track(s) found, shuffled")
     return tracks
 
 
-# ══════════════════════════════════════════════════════════════
-#  TRACK ASSEMBLER  — loop tracks until we have enough duration
-# ══════════════════════════════════════════════════════════════
-
-def _build_music_clip(tracks: list[str], target_duration: float):
-    """
-    Load tracks one-by-one, concatenating until we have at least
-    target_duration seconds of audio.  If we exhaust the playlist we
-    restart from the beginning (loop), giving seamless infinite playback.
-
-    Returns a MoviePy AudioClip trimmed to exactly target_duration seconds.
-    Raises RuntimeError if no tracks can be loaded.
-    """
-    from moviepy.editor import AudioFileClip, concatenate_audioclips
-
-    segments   = []
-    total_so_far = 0.0
-    track_index  = 0
-    n_tracks     = len(tracks)
-    loops        = 0
-
-    while total_so_far < target_duration:
-        path = tracks[track_index % n_tracks]
-        if track_index > 0 and (track_index % n_tracks) == 0:
-            loops += 1
-
+def _run(command, stop_event=None):
+    with tempfile.TemporaryFile() as errors:
+        process = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=errors)
+        deadline = time.monotonic() + 600
         try:
-            clip = AudioFileClip(path)
-            needed = target_duration - total_so_far
-
-            if clip.duration <= needed:
-                segments.append(clip)
-                total_so_far += clip.duration
-                print(f"      + {os.path.basename(path)}  ({clip.duration:.1f}s)")
-            else:
-                # This track alone covers the remainder — trim it
-                segments.append(clip.subclip(0, needed))
-                total_so_far += needed
-                print(f"      + {os.path.basename(path)}  (trimmed to {needed:.1f}s)")
-                break
-
-        except Exception as e:
-            print(f"      ⚠ Could not load {os.path.basename(path)}: {e}")
-
-        track_index += 1
-
-        # Safety: if we've looped the whole library 10× something is wrong
-        if loops >= 10:
-            print("   ⚠ Looped library 10× — giving up")
-            break
-
-    if not segments:
-        raise RuntimeError("No music tracks could be loaded from the library.")
-
-    if loops > 0:
-        print(f"   → Playlist looped {loops}× to fill {target_duration:.1f}s")
-
-    music = concatenate_audioclips(segments)
-    # Guarantee exact length (floating-point rounding can drift by a few ms)
-    return music.subclip(0, min(music.duration, target_duration))
+            while process.poll() is None:
+                if stop_event is not None and stop_event.is_set():
+                    raise InterruptedError("Stopped while mixing audio")
+                if time.monotonic() > deadline:
+                    raise RuntimeError("Audio mixing took too long.")
+                try:
+                    process.wait(timeout=.2)
+                except subprocess.TimeoutExpired:
+                    pass
+            if process.returncode:
+                errors.seek(0)
+                raise RuntimeError(errors.read(2000).decode("utf-8", "replace"))
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.wait(timeout=10)
 
 
-# ══════════════════════════════════════════════════════════════
-#  PUBLIC API
-# ══════════════════════════════════════════════════════════════
-
-def mix_music_with_narration(narration_path: str,
-                              output_path: str,
-                              music_volume: float = 0.12,
-                              library_dir: str = "") -> str:
-    """
-    Mix background music from the local library under the narration audio.
-
-    Parameters
-    ----------
-    narration_path : path to the narration MP3 produced by narrator.py
-    output_path    : where to write the mixed MP3
-    music_volume   : 0.0–1.0  (0.12 = 12% — subtle; 0.25 = noticeable)
-    library_dir    : absolute path to the  music library/  folder
-
-    Returns
-    -------
-    output_path if mixing succeeded, narration_path if it failed (so the
-    pipeline always has a valid audio file to use).
-    """
-    import shutil
-    from moviepy.editor import AudioFileClip, CompositeAudioClip
-
-    # ── Load narration ───────────────────────────────────────
-    narr          = AudioFileClip(narration_path)
-    target_dur    = narr.duration
-
-    # ── Scan library ─────────────────────────────────────────
+def mix_music_with_narration(narration_path, output_path, music_volume=.08,
+                              library_dir="", stop_event=None):
+    """Return a mixed soundtrack, or the original speech if music is unavailable."""
+    if stop_event is not None and stop_event.is_set():
+        raise InterruptedError("Stopped before mixing audio")
+    if isinstance(music_volume, bool) or not isinstance(music_volume, (int, float)) or not math.isfinite(music_volume) or not 0 <= music_volume <= 1:
+        raise ValueError("Music volume must be between 0 and 1.")
+    narration = Path(narration_path).resolve()
+    output = Path(output_path).resolve()
+    if narration == output:
+        raise ValueError("Keep the original narration and mixed soundtrack in separate files.")
+    if output.suffix.lower() not in {".wav", ".mp3"}:
+        raise ValueError("Use a WAV or MP3 output for the soundtrack.")
     tracks = _get_library_tracks(library_dir)
-    if not tracks:
-        print("   → No music tracks available — using narration only")
-        narr.close()
-        shutil.copy2(narration_path, output_path)
-        return output_path
-
-    # ── Build music bed ──────────────────────────────────────
-    print(f"   → Building {target_dur:.1f}s music bed…")
-    try:
-        music = _build_music_clip(tracks, target_dur)
-    except RuntimeError as e:
-        print(f"   ⚠ Music build failed ({e}) — narration only")
-        narr.close()
-        shutil.copy2(narration_path, output_path)
-        return output_path
-
-    # ── Apply volume + fades ─────────────────────────────────
-    fade_in  = min(3.0, target_dur * 0.05)
-    fade_out = min(4.0, target_dur * 0.08)
-    music    = (music
-                .volumex(music_volume)
-                .audio_fadein(fade_in)
-                .audio_fadeout(fade_out))
-
-    # ── Composite and write ──────────────────────────────────
-    try:
-        CompositeAudioClip([narr, music]).write_audiofile(
-            output_path, fps=44100, verbose=False, logger=None,
+    if not tracks or music_volume == 0:
+        print("   → Music is unavailable or muted; preserving the original narration.")
+        return str(narration)
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        print("   → FFmpeg is unavailable for music mixing; preserving narration.")
+        return str(narration)
+    from video.timeline import probe_duration
+    output.parent.mkdir(parents=True, exist_ok=True)
+    duration = probe_duration(str(narration))
+    if duration <= 0:
+        raise ValueError("Narration has no measurable duration.")
+    with tempfile.TemporaryDirectory(prefix=".soundtrack-", dir=output.parent) as work:
+        bed = Path(work) / "bed.wav"
+        track = None
+        for candidate in tracks[:12]:
+            try:
+                length = min(probe_duration(candidate), duration)
+                if length <= .1:
+                    continue
+                fade = min(.3, length / 4)
+                # Soften loop seams. One stable track avoids abrupt music changes.
+                filters = f"atrim=duration={length:.9f},asetpts=PTS-STARTPTS,afade=t=in:d={fade:.6f},afade=t=out:st={length-fade:.6f}:d={fade:.6f}"
+                _run([ffmpeg, "-nostdin", "-y", "-v", "error", "-i", candidate,
+                      "-vn", "-af", filters, "-ar", "48000", "-ac", "2", "-c:a", "pcm_s16le", str(bed)], stop_event)
+                track = candidate
+                break
+            except InterruptedError:
+                raise
+            except (OSError, ValueError, RuntimeError, subprocess.SubprocessError):
+                continue
+        if track is None:
+            print("   → No readable music track; preserving original narration.")
+            return str(narration)
+        fade_in, fade_out = min(1.5, duration / 5), min(2.5, duration / 5)
+        graph = (
+            "[0:a]aresample=48000,asplit=2[voice][control];"
+            f"[1:a]aresample=48000,volume={music_volume:.6f},"
+            f"afade=t=in:d={fade_in:.6f},afade=t=out:st={duration-fade_out:.6f}:d={fade_out:.6f}[bed];"
+            "[bed][control]sidechaincompress=threshold=0.02:ratio=6:attack=30:release=450[ducked];"
+            "[voice][ducked]amix=inputs=2:duration=first:normalize=0,"
+            f"alimiter=limit=0.95:level=0:latency=1,apad,atrim=duration={duration:.9f},asetpts=PTS-STARTPTS[out]"
         )
-        narr.close()
-        music.close()
-        size_kb = os.path.getsize(output_path) // 1024
-        print(f"   → Mixed audio: {size_kb} KB  "
-              f"(narration + music @ {int(music_volume * 100)}% vol, "
-              f"{target_dur:.1f}s)")
-        return output_path
-
-    except Exception as e:
-        print(f"   ⚠ Mix write failed ({e}) — narration only")
+        temporary = Path(work) / ("mixed" + output.suffix.lower())
+        codec = ["-c:a", "pcm_s16le"] if output.suffix.lower() == ".wav" else ["-c:a", "libmp3lame", "-b:a", "192k"]
         try:
-            narr.close()
-            music.close()
-        except Exception:
-            pass
-        shutil.copy2(narration_path, output_path)
-        return output_path
+            _run([ffmpeg, "-nostdin", "-y", "-v", "error", "-i", str(narration),
+                  "-stream_loop", "-1", "-i", str(bed), "-filter_complex", graph,
+                  "-map", "[out]", "-ar", "48000", "-ac", "2", *codec, str(temporary)], stop_event)
+            if abs(probe_duration(str(temporary)) - duration) > .08:
+                raise RuntimeError("Soundtrack length changed during mixing.")
+            os.replace(temporary, output)
+        except InterruptedError:
+            raise
+        except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as exc:
+            print(f"   → Music mix unavailable ({type(exc).__name__}); preserving narration.")
+            return str(narration)
+    print(f"   → Quiet music bed from {Path(track).name}; speech ducking and peak limiting enabled.")
+    return str(output)

@@ -23,7 +23,7 @@ def _run_options(body):
     if not isinstance(steps, list) or not steps or len(steps) > len(ALLOWED_STEPS) or any(not isinstance(s, str) or s not in ALLOWED_STEPS for s in steps):
         raise ValueError("Choose one or more valid pipeline steps.")
     mode = body.get("visual_mode") or config.VISUAL_MODE
-    if mode not in {"motion", "hybrid", "classic"}:
+    if not isinstance(mode, str) or mode not in {"motion", "hybrid", "classic"}:
         raise ValueError("Choose Motion, Hybrid or Classic.")
     return list(dict.fromkeys(steps)), mode
 
@@ -51,12 +51,19 @@ def stream():
 def start_run():
     body = request.get_json(force=True) or {}
     try:
-        steps, visual_mode = _run_options(body)
+        from studio.channels import get_profile, is_connecting
+        from studio.profile_context import capture_profile_settings
+        if not isinstance(body, dict):
+            raise ValueError("Expected a JSON object.")
+        profile = get_profile(body.get("profile_id"))
+        profile_values = capture_profile_settings(profile["id"])
+        with config.profile_context(profile_values):
+            steps, visual_mode = _run_options(body)
         topic, focus_angle = body.get("topic", ""), body.get("focus_angle", "")
         if not isinstance(topic, str) or not isinstance(focus_angle, str) or len(topic) > 2000 or len(focus_angle) > 2000:
             raise ValueError("Topic and focus angle must be text of at most 2,000 characters.")
         video_type = body.get("video_type", "normal")
-        if video_type not in {"normal", "shorts"}:
+        if not isinstance(video_type, str) or video_type not in {"normal", "shorts"}:
             raise ValueError("Choose a normal video or a Short.")
         preview_only = body.get("preview_only", False)
         use_trends = body.get("use_trends", False)
@@ -64,19 +71,37 @@ def start_run():
             raise ValueError("Preview and trends options must be true or false.")
         if preview_only and visual_mode == "classic":
             raise ValueError("Draft preview is available in Motion and Hybrid modes.")
-    except (TypeError, ValueError) as exc:
+    except (TypeError, ValueError, LookupError) as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
     with job_lock:
-        if state["running"] or state.get("visual_editing") or state.get("uploading"):
+        if state["running"] or state.get("visual_editing") or state.get("uploading") or is_connecting():
             return jsonify({"ok": False, "error": "A job is already running. Wait for it to finish."}), 409
+        try:
+            profile = get_profile(profile["id"])
+            profile_values = capture_profile_settings(profile["id"])
+            with config.profile_context(profile_values):
+                steps, visual_mode = _run_options(body)
+            if preview_only and visual_mode == "classic":
+                raise ValueError("Draft preview is available in Motion and Hybrid modes.")
+        except (ValueError, LookupError) as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+        from studio.project_identity import validate_cached_profile
+        try:
+            validate_cached_profile(profile["id"], steps, config.OUTPUT_DIR, state)
+        except ValueError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 409
         for name in state["stages"]:
             state["stages"][name] = "pending" if name in steps or name == "preparation" else "skipped"
         state.update(running=True, video_type=video_type, visual_mode=visual_mode,
-                     preview_only=preview_only, stop_requested=False, error=None, preflight=None)
+                     preview_only=preview_only, stop_requested=False, error=None, preflight=None,
+                     job_profile_id=profile["id"], job_profile_name=profile["name"], job_profile_values=profile_values)
+        if not state.get("profile_id") and (not state.get("script") or profile["id"] == "default"):
+            state.update(profile_id=profile["id"], profile_name=profile["name"])
         stop_event.clear()
         thread = threading.Thread(target=run_pipeline_thread,
                                   args=(steps, topic.strip(), video_type, focus_angle.strip(), use_trends),
-                                  kwargs={"visual_mode": visual_mode, "preview_only": preview_only}, daemon=True)
+                                  kwargs={"visual_mode": visual_mode, "preview_only": preview_only,
+                                          "profile_id": profile["id"], "profile_values": profile_values}, daemon=True)
         try:
             thread.start()
         except Exception:
@@ -109,6 +134,7 @@ def stop_pipeline():
 @bp.route("/api/status")
 def status_route():
     from agents import gemini_client
+    from studio.channels import active_profile_id
     return jsonify({
         "running":        state["running"],
         "stop_requested": state.get("stop_requested", False),
@@ -116,6 +142,11 @@ def status_route():
         "has_video":      bool(state.get("video_path") and os.path.exists(state["video_path"])),
         "has_thumb":      bool(state.get("thumb_path") and os.path.exists(state["thumb_path"])),
         "has_script":     bool(state.get("script")),
+        "has_audio": bool(state.get("audio_path") and os.path.isfile(state["audio_path"])),
+        "photo_count": sum(1 for paths in state.get("image_map", {}).values()
+                           for path in (paths if isinstance(paths, list) else [paths]) if path and os.path.isfile(path)),
+        "has_images": any(path and os.path.isfile(path) for paths in state.get("image_map", {}).values()
+                          for path in (paths if isinstance(paths, list) else [paths])),
         "has_preview":    bool(state.get("preview_path") and os.path.isfile(state["preview_path"])),
         "has_storyboard": bool(state.get("visual_plan")),
         "has_html_preview": bool(state.get("visual_plan") and os.path.isfile(os.path.join(config.OUTPUT_DIR, "motion", "index.html"))),
@@ -134,6 +165,13 @@ def status_route():
         "library_id":     state.get("library_id"),
         "llm":            gemini_client.last_provider,
         "started_at":     state.get("started_at"),
+        "profile_id": state.get("job_profile_id") if state["running"] else state.get("profile_id"),
+        "profile_name": state.get("job_profile_name") if state["running"] else state.get("profile_name"),
+        "active_profile_id": active_profile_id(),
+        "schedule_id": state.get("schedule_id"),
+        "timing_source": (state.get("timeline") or {}).get("timing_source"),
+        "timing_warnings": (state.get("timeline") or {}).get("warnings", []),
+        "image_reuse_note": state.get("image_reuse_note"),
         "channel_name":   config.CHANNEL_NAME,
         "model":          config.GEMINI_MODEL if gemini_client.gemini_configured() else "free fallback",
     })

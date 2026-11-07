@@ -12,7 +12,7 @@ $("#key-fields").innerHTML = KEYS.map(([id, name, why, link]) => `
   <div class="field">
     <div class="label">${name}${link ? ` <a class="link" style="font-weight:400;font-size:11.5px" href="${link}" target="_blank" rel="noopener">get a free key ↗</a>` : ""}</div>
     <input type="${id === "youtube_channel" ? "text" : "password"}" id="s-${id}" autocomplete="off" spellcheck="false">
-    <div class="hint">${why}</div>
+    <div class="hint"${id === "youtube_channel" ? ' id="settings-channel-id-note"' : ""}>${why}</div>
   </div>`).join("");
 
 const RANGES = {
@@ -27,10 +27,13 @@ const TEXT = ["channel_name", "channel_desc", "brand_text", "thumb_style", "gemi
 const BOOLS = ["fact_grounding", "keyless_llm", "music_enabled", "show_brand", "credit_yaas", "visual_ai_enabled", "visual_review_enabled", "openrouter_free_only"];
 Object.entries(RANGES).forEach(([k, r]) => { const el = $("#r-" + k); el.addEventListener("input", () => $("#v-" + k).textContent = r.label(+el.value)); });
 
-let settingsSnap = "";
+let settingsSnap = "", settingsProfileId = null, settingsLoadSerial = 0, settingsSavePending = false;
 function collectSettings() {
   const body = {};
-  KEYS.forEach(([id]) => body[id] = $("#s-" + id).value);
+  KEYS.forEach(([id]) => {
+    if (id === "youtube_channel" && settingsProfileId && settingsProfileId !== "default") return;
+    body[id] = $("#s-" + id).value;
+  });
   TEXT.forEach(k => body[k] = $("#s-" + k).value);
   BOOLS.forEach(k => body[k] = $("#s-" + k).checked);
   Object.entries(RANGES).forEach(([k, r]) => body[k] = r.from(+$("#r-" + k).value));
@@ -38,22 +41,49 @@ function collectSettings() {
   return body;
 }
 const settingsDirty = () => settingsSnap && JSON.stringify(collectSettings()) !== settingsSnap;
-async function loadSettings() {
-  const d = settings = await api("/api/settings");
-  KEYS.forEach(([id]) => { const el = $("#s-" + id); el.value = d[id] || ""; el.placeholder = id === "youtube_channel" ? "@yourhandle" : "not set (optional)"; });
-  TEXT.forEach(k => { const el = $("#s-" + k); if (el && d[k] !== undefined) el.value = d[k]; });
-  BOOLS.forEach(k => $("#s-" + k).checked = !!d[k]);
-  Object.entries(RANGES).forEach(([k, r]) => { const v = r.to(d[k]); $("#r-" + k).value = v; $("#v-" + k).textContent = r.label(v); });
-  $$("#img-sources input").forEach(i => { i.checked = (d.image_sources || []).includes(i.value); i.closest(".chip").classList.toggle("on", i.checked); });
-  $("#s-banned").value = (d.banned_topics || []).filter(t => !["The Boltzmann Brain", "Simulation Theory", "Quantum Immortality"].includes(t)).join("\n");
+function settingsProfileQuery(profileId) {
+  return profileId ? `?profile_id=${encodeURIComponent(profileId)}` : "";
+}
+function updateSettingsChannelNote() {
+  const profileId = settingsProfileId || activeProfileId;
+  const name = typeof profileName === "function" ? profileName(profileId) : "the selected channel";
+  const retained = settingsProfileId && activeProfileId && settingsProfileId !== activeProfileId && settingsDirty();
+  $("#settings-channel-note").textContent = retained
+    ? `Your unsaved settings belong to ${name}. Home is now showing ${profileName(activeProfileId)}. Save or undo these changes to load that channel's settings.`
+    : `Editing defaults for ${name}. Channel, voice, music and visual choices belong to this profile. Provider API keys are shared by this local studio.`;
+}
+async function loadSettings({ discardChanges = false } = {}) {
+  const profileId = typeof activeProfileId !== "undefined" ? activeProfileId : null;
+  const serial = ++settingsLoadSerial;
+  const d = await api("/api/settings" + settingsProfileQuery(profileId));
+  if (serial !== settingsLoadSerial || (typeof activeProfileId !== "undefined" && profileId !== activeProfileId)) return null;
+  settings = d;
+  // A second browser tab may change Home's active channel while this form has
+  // unsaved edits. Keep those edits bound to the profile they were loaded for.
+  if (discardChanges || !settingsDirty()) {
+    settingsProfileId = d.profile_id || profileId || "default";
+    KEYS.forEach(([id]) => { const el = $("#s-" + id); el.value = d[id] || ""; el.placeholder = id === "youtube_channel" ? "@yourhandle" : "not set (optional)"; });
+    const connectedIdentity = settingsProfileId !== "default";
+    $("#s-youtube_channel").disabled = connectedIdentity;
+    $("#settings-channel-id-note").textContent = connectedIdentity
+      ? "This profile uses its verified YouTube connection. Connect or refresh the channel on Home."
+      : "Optional channel ID or @handle for the original profile's public statistics. Connecting YouTube verifies the publishing identity separately.";
+    TEXT.forEach(k => { const el = $("#s-" + k); if (el && d[k] !== undefined) el.value = d[k]; });
+    BOOLS.forEach(k => $("#s-" + k).checked = !!d[k]);
+    Object.entries(RANGES).forEach(([k, r]) => { const v = r.to(d[k]); $("#r-" + k).value = v; $("#v-" + k).textContent = r.label(v); });
+    $$("#img-sources input").forEach(i => { i.checked = (d.image_sources || []).includes(i.value); i.closest(".chip").classList.toggle("on", i.checked); });
+    $("#s-banned").value = (d.banned_topics || []).filter(t => !["The Boltzmann Brain", "Simulation Theory", "Quantum Immortality"].includes(t)).join("\n");
+    brandPreview();
+    settingsSnap = JSON.stringify(collectSettings());
+  }
   $("#quick-voice").value = d.voice_id;
   $("#quick-grounding").checked = !!d.fact_grounding;
   if (!status.running) { $("#visual-mode").value = d.visual_mode || "motion"; updateVisualMode(); }
   $("#upload-privacy").value = d.privacy;
-  brandPreview();
-  settingsSnap = JSON.stringify(collectSettings());
+  updateSettingsChannelNote();
   settingsChanged();
   renderChecklist();
+  return d;
 }
 function settingsChanged() {
   if (location.hash === "#settings") $("#savebar").classList.toggle("show", !!settingsDirty());
@@ -68,9 +98,21 @@ function brandPreview() {
   brandPreview(); settingsChanged();
 }));
 async function saveSettings() {
-  const r = await api("/api/save-settings", collectSettings()).catch(e => ({ ok: false, error: e.message }));
-  if (r.ok) { toast("Settings saved", "ok"); await loadSettings(); loadHealth(); pollOnce(); }
-  else toast(r.error, "err");
+  if (settingsSavePending || !settingsProfileId) return;
+  const profileId = settingsProfileId, body = collectSettings(), snapshot = JSON.stringify(body);
+  settingsSavePending = true; busy($("#savebar-save"), true, "Saving…");
+  try {
+    const r = await api("/api/save-settings" + settingsProfileQuery(profileId), body);
+    if (!r.ok) throw new Error(r.error || "Couldn't save settings.");
+    // Edits made while the save was in flight remain unsaved rather than being
+    // silently replaced by the returned defaults.
+    if (settingsProfileId === profileId) settingsSnap = snapshot;
+    toast(`Settings saved for ${profileName(profileId)}`, "ok");
+    if (typeof loadChannels === "function") await loadChannels();
+    await loadSettings();
+    loadHealth(); pollOnce();
+  } catch (error) { toast(error.message, "err"); }
+  finally { settingsSavePending = false; busy($("#savebar-save"), false); settingsChanged(); }
 }
 $("#discover-models").onclick = async () => {
   const button = $("#discover-models"), note = $("#model-discovery-status");
@@ -88,12 +130,12 @@ $("#discover-models").onclick = async () => {
 };
 $("#save-banned").onclick = async () => {
   const topics = $("#s-banned").value.split("\n").map(s => s.trim()).filter(Boolean);
-  const r = await api("/api/save-banned-topics", { topics });
+  const r = await api("/api/save-banned-topics" + settingsProfileQuery(settingsProfileId), { topics });
   r.ok ? toast("List saved", "ok") : toast(r.error, "err");
 };
 
 // one floating save bar, shared by Review and Settings
 $("#savebar-save").onclick = () => location.hash === "#settings" ? saveSettings() : saveMeta();
 $("#savebar-undo").onclick = () => location.hash === "#settings"
-  ? loadSettings().then(() => toast("Changes undone"))
+  ? loadSettings({ discardChanges: true }).then(() => toast("Changes undone"))
   : (fillMeta(saved), toast("Changes undone"));

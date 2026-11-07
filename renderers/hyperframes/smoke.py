@@ -5,8 +5,8 @@ Run from the repository root:
     python renderers/hyperframes/smoke.py
     python renderers/hyperframes/smoke.py --portrait
 
-No API keys or TTS service are used. The soundtrack is an explicitly synthetic
-tone, and the chart is explicitly labelled synthetic fixture data.
+No API keys or TTS service are used. The soundtrack, raster picture, chart and
+video pattern are explicitly synthetic fixtures rather than stock media.
 """
 from __future__ import annotations
 
@@ -25,6 +25,8 @@ from video.renderers.html import prepare_motion_project, render_motion_video
 
 
 def fixture(output: Path, portrait=False, seconds=3.0) -> tuple[dict, Path]:
+    from PIL import Image, ImageDraw
+
     output.mkdir(parents=True, exist_ok=True)
     width, height = (360, 640) if portrait else (640, 360)
     descriptions = [
@@ -57,6 +59,17 @@ def fixture(output: Path, portrait=False, seconds=3.0) -> tuple[dict, Path]:
         "testsrc2=size=640x360:rate=12", "-t", str(seconds + .2), "-an", "-c:v", "libx264",
         "-threads", "1", "-preset", "ultrafast", "-pix_fmt", "yuv420p", str(footage),
     ], check=True, timeout=30)
+    # A reproducible local raster exercises the same photo import, cropping and
+    # narration-clock camera motion as downloaded pictures, without a network.
+    picture = output / "fixture-picture.jpg"
+    raster = Image.new("RGB", (1600, 1000), "#8daab3")
+    drawing = ImageDraw.Draw(raster)
+    drawing.ellipse((1040, 110, 1300, 370), fill="#e9d2a3")
+    drawing.polygon([(0, 700), (410, 290), (900, 850), (1600, 410), (1600, 1000), (0, 1000)], fill="#526e72")
+    drawing.polygon([(0, 850), (540, 660), (850, 900), (1310, 540), (1600, 750), (1600, 1000), (0, 1000)], fill="#243e46")
+    for x in range(80, 1550, 230):
+        drawing.line([(x, 1000), (x + 150, 800)], fill="#bed1c2", width=4)
+    raster.save(picture, quality=92)
     plan = {
         "version": 1, "title": "Ideas in motion", "mode": "hybrid", "fps": 12,
         "width": width, "height": height, "duration": duration,
@@ -81,6 +94,9 @@ def fixture(output: Path, portrait=False, seconds=3.0) -> tuple[dict, Path]:
         }
         if template == "footage":
             scene["footage"] = {"path": str(footage), "source_url": "", "credit": "Local FFmpeg test pattern · offline fixture", "in_point": 0}
+        elif template != "chart":
+            scene["image"] = {"path": str(picture), "source": "Offline fixture",
+                              "credit": "Synthetic picture · renderer test fixture", "source_url": "", "license": ""}
         if template == "flow":
             scene["beats"].extend({"time": .35 + item_index * min(.35, seconds / (len(items) + 2)),
                                    "target": f"item-{item_index}", "action": "connect"}

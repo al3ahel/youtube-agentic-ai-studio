@@ -34,6 +34,7 @@ HYPERFRAMES_VERSION = "0.9.19"
 TEMPLATES = {"flow", "comparison", "timeline", "chart", "explain", "text", "footage"}
 BEAT_ACTIONS = {"reveal", "highlight", "connect", "draw", "count", "emphasize"}
 VIDEO_EXTENSIONS = {".mp4", ".webm", ".mov", ".m4v"}
+IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 AUDIO_EXTENSIONS = {".mp3", ".wav", ".m4a", ".ogg", ".aac", ".flac", ".opus"}
 _ANSI = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 
@@ -93,6 +94,13 @@ def _validate_plan(scene_plan: dict) -> dict:
         plan["timeline_signature"] = _text(source["timeline_signature"], "timeline_signature", 256)
     if "audio_duration" in source:
         plan["audio_duration"] = _number(source["audio_duration"], "audio_duration", 0.05, 7200)
+    for key in ("timing_source", "timing_precision", "captions_source"):
+        if key in source:
+            plan[key] = _text(source[key], key, 100)
+    if "narration_reused" in source:
+        plan["narration_reused"] = source["narration_reused"] is True
+    if isinstance(source.get("warnings"), list):
+        plan["warnings"] = [_text(warning, "warning", 1000) for warning in source["warnings"][:80]]
     sections = source.get("sections", [])
     if not isinstance(sections, list) or len(sections) > 256:
         raise ValueError("sections must be a list of at most 256 sections")
@@ -171,6 +179,17 @@ def _validate_plan(scene_plan: dict) -> dict:
                 "action": action,
             })
         scene["beats"].sort(key=lambda beat: beat["time"])
+        if original.get("image") is not None:
+            asset = original["image"]
+            if not isinstance(asset, dict):
+                raise ValueError("image must be an object")
+            scene["image"] = {
+                "path": _text(asset.get("path", ""), "image.path", 4096),
+                "source_url": _text(asset.get("source_url", ""), "image.source_url", 2000),
+                "source": _text(asset.get("source", ""), "image.source", 80),
+                "credit": _text(asset.get("credit", ""), "image.credit", 200),
+                "license": _text(asset.get("license", ""), "image.license", 160),
+            }
         if original.get("footage") is not None:
             footage = original["footage"]
             if not isinstance(footage, dict):
@@ -286,11 +305,17 @@ def prepare_motion_project(scene_plan: dict, audio_path: str, output_dir: str) -
     output = Path(output_dir).expanduser().resolve()
     audio = _media_path(audio_path, output, AUDIO_EXTENSIONS) if audio_path else None
     footage_sources = {}
+    image_sources = {}
     for index, scene in enumerate(plan["scenes"]):
         if scene.get("footage"):
             footage_sources[index] = _media_path(
                 scene["footage"]["path"], output, VIDEO_EXTENSIONS, restrict=True,
             )
+        if scene.get("image"):
+            image_sources[index] = _media_path(
+                scene["image"]["path"], output, IMAGE_EXTENSIONS, restrict=True,
+            )
+            _validate_image(image_sources[index])
     project = output / "motion"
     if project.is_symlink():
         raise ValueError("The generated motion directory cannot be a symbolic link")
@@ -317,6 +342,13 @@ def prepare_motion_project(scene_plan: dict, audio_path: str, output_dir: str) -
             f'preload="auto" data-start="{scene["start"]}" data-duration="{scene["duration"]}" '
             f'data-media-start="{footage["in_point"]}" data-volume="0"></video>'
         )
+    for index, source in image_sources.items():
+        asset = plan["scenes"][index]["image"]
+        asset["path"] = _copy_image(source, project / "assets")
+        media_markup.append(
+            f'<img id="image-{index}" src="{asset["path"]}" alt="" '
+            'decoding="sync" loading="eager">'
+        )
     plan["renderer"] = {"name": "hyperframes", "version": HYPERFRAMES_VERSION}
     payload = json.dumps(plan, ensure_ascii=False, allow_nan=False, separators=(",", ":"))
     embedded = (payload.replace("&", "\\u0026").replace("<", "\\u003c")
@@ -335,6 +367,43 @@ def prepare_motion_project(scene_plan: dict, audio_path: str, output_dir: str) -
     _atomic_text(project / "project.json", json.dumps(plan, ensure_ascii=False, indent=2, allow_nan=False))
     _atomic_text(project / "index.html", template)
     return project / "index.html"
+
+
+def _validate_image(source: Path) -> None:
+    """Decode only bounded raster formats, never HTML/SVG with a picture suffix."""
+    from PIL import Image
+    try:
+        with Image.open(source) as picture:
+            if picture.format not in {"JPEG", "PNG", "WEBP"}:
+                raise ValueError("unsupported image format")
+            width, height = picture.size
+            if min(width, height) < 1 or max(width, height) > 16384 or width * height > 40_000_000:
+                raise ValueError("image dimensions exceed the rendering limit")
+            picture.verify()
+    except (OSError, ValueError, Image.DecompressionBombError) as exc:
+        raise ValueError("A saved scene picture is not a supported, readable JPEG, PNG, or WebP image.") from exc
+
+
+def _copy_image(source: Path, directory: Path) -> str:
+    """Make a deterministic still, honoring EXIF orientation and stripping metadata.
+
+    Animated WebP is intentionally imported as its first frame. Motion belongs
+    to the scene timeline so seeking and final export show the same picture.
+    """
+    from PIL import Image, ImageOps
+    fingerprint = f"{source}:{source.stat().st_size}:{source.stat().st_mtime_ns}"
+    with Image.open(source) as raw:
+        has_alpha = raw.mode in {"RGBA", "LA"} or "transparency" in raw.info
+        name = "picture-" + hashlib.sha256(fingerprint.encode()).hexdigest()[:16] + (".png" if has_alpha else ".jpg")
+        destination = directory / name
+        if not destination.is_file():
+            raw.seek(0)
+            picture = ImageOps.exif_transpose(raw)
+            picture.thumbnail((3840, 3840), Image.Resampling.LANCZOS)
+            picture = picture.convert("RGBA" if has_alpha else "RGB")
+            picture.info.clear()
+            picture.save(destination, format="PNG" if has_alpha else "JPEG", quality=92, optimize=False)
+    return f"assets/{name}"
 
 
 def _command(binary: str, label: str) -> str:

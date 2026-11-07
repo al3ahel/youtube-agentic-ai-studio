@@ -30,6 +30,7 @@ function updateVisualControls(st = status) {
     if (element) element.disabled = locked || !storyboardData?.plan;
   });
   $("#scene-instructions").disabled = locked;
+  $("#animate-legacy").disabled = locked;
 }
 
 function showScene(id) {
@@ -66,6 +67,12 @@ async function loadStoryboard(st = status) {
   } else frame.removeAttribute("src");
   resizeMotionPreview();
   $("#motion-preview-note").textContent = data.preview_url ? "Play or scrub the local HTML preview. Draft and final MP4s use the same storyboard." : "The storyboard is ready. Generate narration and render a draft to build its playable preview.";
+  const timingWarnings = Array.isArray(st.timing_warnings) ? st.timing_warnings.filter(warning => typeof warning === "string").slice(0, 2) : [];
+  const timingLabel = st.timing_source === "legacy_srt" ? "Timing from the saved captions." : st.timing_source === "estimated_duration" ? "Timing estimated from the existing audio." : "";
+  $("#timing-source-note").hidden = !timingLabel && !timingWarnings.length;
+  $("#timing-source-note").textContent = [timingLabel, ...timingWarnings].filter(Boolean).join(" ");
+  $("#image-reuse-note").hidden = !st.image_reuse_note;
+  $("#image-reuse-note").textContent = typeof st.image_reuse_note === "string" ? st.image_reuse_note : "";
   const qa = data.qa;
   const issues = qa && (qa.issues || qa.warnings || []);
   const notes = Array.isArray(issues) ? issues.map(issue => typeof issue === "string" ? issue : issue.message || issue.description || "").filter(Boolean).slice(0, 8) : [];
@@ -94,6 +101,7 @@ async function renderStoryboard(previewOnly) {
   const started = await startRun("", false, {
     steps: ["video"], visual_mode: storyboardData.visual_mode || "motion",
     preview_only: previewOnly, video_type: status.video_type || "normal",
+    profile_id: reviewProfileId || status.profile_id,
   });
   if (started) { location.hash = "home"; updateVisualControls(); }
 }

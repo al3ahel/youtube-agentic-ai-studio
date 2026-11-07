@@ -41,22 +41,41 @@ function renderRun(d) {
 
 function applyStatus(d) {
   const was = status.running;
+  const completedSchedule = was && !d.running && status.schedule_id ? status : null;
   status = d;
   const state = d.running ? "running" : d.error ? "error" : d.has_video || d.has_preview || d.has_storyboard ? "done" : "idle";
   $("#status-pill").className = "status-pill " + state;
   $("#status-text").textContent = d.uploading ? "Uploading…" : d.running ? (d.preview_only ? "Making a draft…" : "Making video…") : d.visual_editing ? "Updating project…" : d.error ? "Last run failed" : d.has_storyboard && !d.has_video ? "Draft ready" : "Ready";
   $("#tabs a[data-view=review]").textContent = d.has_storyboard && !d.has_video ? "Review draft" : "Review & publish";
   if (typeof updateVisualControls === "function") updateVisualControls(d);
+  if (typeof updateChannelControls === "function") updateChannelControls(d);
+  if (typeof channelProfilesLoaded !== "undefined" && channelProfilesLoaded && d.active_profile_id && d.active_profile_id !== activeProfileId && !channelMutation) {
+    loadChannels({ syncWorkspace: true });
+  }
   if (d.running) {
     if (heroMode !== "running") {
       setHero("running");
+      if (d.schedule_id) {
+        runSteps = [];
+        lastRunError = "";
+        $("#run-title").textContent = "Making a scheduled video…";
+      }
       // page opened mid-run: show the topic once research has picked it
       if ((d.stages || {}).research === "done") showTopic();
     }
     renderRun(d);
     if (!es) startSSE();
   }
-  if (was && !d.running) onFinished(d);
+  if (completedSchedule) {
+    // The scheduler restores the previously open project. Its final/error
+    // state belongs to that editor, not to the job which just finished.
+    if (es) { es.close(); es = null; }
+    runSteps = []; lastRunError = "";
+    setHero("form");
+    loadLibrary(); loadSchedules();
+    if (location.hash === "#review") loadReview();
+    toast(`Scheduled run finished for ${completedSchedule.profile_name || profileName(completedSchedule.profile_id)}. Check its schedule for the result.`);
+  } else if (was && !d.running) onFinished(d);
 }
 async function pollStatus() {
   try { applyStatus(await api("/api/status")); } catch (e) { }
@@ -145,12 +164,14 @@ function log(msg) {
 }
 
 async function startRun(topic, surprise, options = {}) {
+  const profileId = options.profile_id || (typeof activeChannelProfile === "function" ? activeChannelProfile()?.id : null);
+  const format = options.video_type || videoType;
   const mode = options.visual_mode || $("#visual-mode").value;
   const preview = mode !== "classic" && (options.preview_only ?? $("#draft-preview").checked);
   const steps = (options.steps || $$("#steps input:checked").map(i => i.value)).filter(step => mode !== "classic" || step !== "visuals");
   if (!steps.length) return toast("Turn on at least one step under More options", "err");
   if (!surprise && !topic && (steps.includes("research") || steps.includes("script"))) { $("#topic-input").focus(); return toast("Type a topic first, or let AI pick one"); }
-  lastRequest = [topic, surprise, steps, mode, preview];
+  lastRequest = [topic, surprise, steps, mode, preview, profileId, format];
   runSteps = ["preparation", ...steps];
   lastRunError = "";
   $("#console").innerHTML = "";
@@ -160,8 +181,8 @@ async function startRun(topic, surprise, options = {}) {
   setHero("running");
   renderRun({ stages: {}, running: true });
   const r = await api("/api/run", {
-    steps, topic: surprise ? "" : topic, video_type: options.video_type || videoType,
-    visual_mode: mode, preview_only: preview,
+    steps, topic: surprise ? "" : topic, video_type: format,
+    visual_mode: mode, preview_only: preview, profile_id: profileId,
     focus_angle: surprise ? $("#focus-angle").value : "",
     use_trends: surprise && $("#quick-trends").checked,
   }).catch(e => ({ ok: false, error: e.message }));
@@ -171,7 +192,7 @@ async function startRun(topic, surprise, options = {}) {
   window.scrollTo({ top: 0, behavior: "smooth" });
   return true;
 }
-function retry() { lastRequest ? startRun(lastRequest[0], lastRequest[1], { steps: lastRequest[2], visual_mode: lastRequest[3], preview_only: lastRequest[4] }) : setHero("form"); }
+function retry() { lastRequest ? startRun(lastRequest[0], lastRequest[1], { steps: lastRequest[2], visual_mode: lastRequest[3], preview_only: lastRequest[4], profile_id: lastRequest[5], video_type: lastRequest[6] }) : setHero("form"); }
 $("#ask-form").onsubmit = e => { e.preventDefault(); startRun($("#topic-input").value.trim(), false); };
 $("#surprise-btn").onclick = () => startRun("", true);
 $("#stop-btn").onclick = () => api("/api/stop", {}).then(() => { toast("Stopping after the current step…"); $("#run-title").textContent = "Stopping…"; });
@@ -184,16 +205,39 @@ $$("#steps .chip, #img-sources .chip").forEach(c => {
   c.classList.toggle("on", input.checked);
   input.addEventListener("change", () => c.classList.toggle("on", input.checked));
 });
-$("#quick-voice").onchange = e => api("/api/save-settings", { voice_id: e.target.value }).then(() => toast("Voice saved")).catch(e => toast(e.message, "err"));
-$("#quick-grounding").onchange = e => api("/api/save-settings", { fact_grounding: e.target.checked }).catch(e => toast(e.message, "err"));
+async function saveQuickPreference(key, value, element, message = "") {
+  const profile = activeChannelProfile(), profileId = profile?.id;
+  if (!profileId) return toast("Wait for the channel profile to load.", "err");
+  const previous = profile.defaults?.[key];
+  try {
+    const result = await api("/api/save-settings" + settingsProfileQuery(profileId), { [key]: value });
+    if (!result.ok) throw new Error(result.error || "Couldn't save this preference.");
+    const current = channelProfiles.find(item => item.id === profileId);
+    if (current) current.defaults[key] = value;
+    if (activeProfileId === profileId) settings[key] = value;
+    if (settingsProfileId === profileId && !settingsDirty()) {
+      const field = $("#s-" + key);
+      if (field) { if (typeof value === "boolean") field.checked = value; else field.value = value; }
+      settingsSnap = JSON.stringify(collectSettings());
+    }
+    if (message) toast(`${message} for ${profileName(profileId)}`);
+  } catch (error) {
+    if (activeProfileId === profileId && previous !== undefined) {
+      if (typeof previous === "boolean") element.checked = previous; else element.value = previous;
+    }
+    toast(error.message, "err");
+  }
+}
+$("#quick-voice").onchange = e => saveQuickPreference("voice_id", e.target.value, e.target, "Voice saved");
+$("#quick-grounding").onchange = e => saveQuickPreference("fact_grounding", e.target.checked, e.target);
 
 function updateVisualMode() {
   const mode = $("#visual-mode").value, classic = mode === "classic";
   $("#draft-preview").disabled = classic;
   if (classic) $("#draft-preview").checked = false;
   $("#visual-mode-note").textContent = {
-    motion: "Diagrams, comparisons, timelines and text move with the narration.",
-    hybrid: "Animated explanations with relevant licensed footage when available.",
+    motion: "Animated scenes reuse the pipeline's photos and move with the narration.",
+    hybrid: "Your pipeline's photos, animated explanations and licensed video footage.",
     classic: "The original photo, zoom and transition renderer.",
   }[mode];
   const storyboard = $('#steps input[value="visuals"]');

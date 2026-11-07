@@ -2,7 +2,7 @@
 import time
 from concurrent.futures import ThreadPoolExecutor
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, g, jsonify, request
 
 import config
 from studio.upload import secret_ok
@@ -19,11 +19,26 @@ def trends():
 @bp.route("/api/channel-stats")
 def channel_stats():
     from apis import youtube_stats
+    from studio.channels import get_profile
+    channel = get_profile(g.profile_id).get("channel")
+    snapshot = None
+    if channel:
+        # Connect/Refresh already retrieves these totals using this profile's
+        # OAuth identity. Show that dated snapshot without requiring an extra
+        # API key or silently starting another OAuth/network request.
+        snapshot = {"ok": True, "source": "saved_channel", "title": channel.get("title", "YouTube channel"),
+                    "fetched_at": channel.get("fetched_at"), "recent": []}
+        for key in ("subscribers", "views", "videos"):
+            value = channel.get(key)
+            snapshot[key] = value if type(value) is int and value >= 0 else None
     if not youtube_stats.configured():
-        return jsonify({"ok": False, "configured": False})
+        return jsonify({"configured": False, **(snapshot or {"ok": False})})
     try:
-        return jsonify({"ok": True, "configured": True, **youtube_stats.channel_stats()})
+        return jsonify({"ok": True, "configured": True, "source": "live", **youtube_stats.channel_stats()})
     except Exception as e:
+        if snapshot:
+            return jsonify({"configured": True, **snapshot,
+                            "warning": "Live statistics are unavailable; showing the saved channel totals."})
         return jsonify({"ok": False, "configured": True, "error": str(e)[:300]})
 
 def _providers():

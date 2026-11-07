@@ -1,62 +1,87 @@
-# 🛠️ Setup Guide
+# Setup guide
 
-Complete step-by-step instructions to get YAAS (youtube-agentic-ai-studio) running from scratch.
+Use this guide to install YAAS, configure channel profiles, and keep scheduled
+generation running. The [README quick start](README.md#-quick-start) contains the
+shortest installation path.
 
-> **Time required:** ~10 minutes
-
-For this fork, start with the [Motion Studio quick start](README.md#-quick-start).
-Install into a fresh Python 3.12 virtual environment; do not reuse the Python 3.13
-environment that contains unrelated AutoGen, scientific, or background-removal packages.
-The full requirements include the original MoviePy/NumPy pins for Classic mode.
-
----
+Use a **fresh Python 3.12 virtual environment** for this project. An existing
+Python 3.13 environment with unrelated AutoGen, scientific or background-removal
+packages is not compatible with the pinned Classic renderer dependencies.
 
 ## Prerequisites
 
-- Python **3.10, 3.11 or 3.12** — [python.org/downloads](https://www.python.org/downloads/)
-  (3.13+ is not supported yet: the pinned `numpy<2` has no prebuilt wheels for it, so `pip install` tries to compile numpy and usually fails)
-- `ffmpeg` **and `ffprobe`** installed and on your PATH (see [Step 1b](#1b-install-ffmpeg))
-- **Node.js 22 or later** for Motion and Hybrid rendering
-- Optional provider accounts for Gemini, OpenRouter and Pexels
-- A Google account only if you want Gemini or direct YouTube publishing
-
----
+- **Python 3.10, 3.11 or 3.12** — [Python downloads](https://www.python.org/downloads/).
+  Python 3.13+ is not supported by the pinned MoviePy 1.x / NumPy <2 stack.
+- **FFmpeg and ffprobe** on `PATH`.
+- **Node.js 22 or later** for Motion and Hybrid.
+- Optional Gemini, OpenRouter or Pexels keys.
+- A Google account and OAuth client only for direct YouTube connection/publishing.
 
 ## Step 1 — Clone and install
 
 ### 1a. Clone the repository
 
-Copy this repository's HTTPS clone URL from **Code → HTTPS**, then replace
-`REPOSITORY_URL` below. The repository must contain the `feat/motion-studio` branch.
+Copy this fork's HTTPS URL from **Code → HTTPS** and replace `REPOSITORY_URL`.
+These enhancements are on the fork's default **main** branch.
 
 ```bash
-git clone --branch feat/motion-studio REPOSITORY_URL yaas-motion
+git clone REPOSITORY_URL yaas-motion
 cd yaas-motion
 ```
 
-### 1b. Install ffmpeg
+No feature-branch argument or personal username is embedded in the command.
+The original upstream repository has its own feature set.
 
-FFmpeg decodes measured narration and renders/muxes video. ffprobe verifies media durations and streams.
+### 1b. Install FFmpeg
 
-| OS | Command |
-|---|---|
-| **Windows** | Download from [ffmpeg.org](https://ffmpeg.org/download.html) → extract → add `bin/` folder to PATH |
-| **Mac** | `brew install ffmpeg` |
-| **Ubuntu/Debian** | `sudo apt install ffmpeg` |
+| OS | Installation |
+| --- | --- |
+| Windows | Download from [ffmpeg.org](https://ffmpeg.org/download.html), extract it, and add its `bin` directory to `PATH` |
+| macOS | `brew install ffmpeg` |
+| Ubuntu / Debian | `sudo apt install ffmpeg` |
 
-Verify both `ffmpeg -version` and `ffprobe -version` print version information.
-
-### 1c. Install Python dependencies
+Open a new terminal if you changed `PATH`, then verify:
 
 ```bash
-python -m pip install -r requirements.txt
+ffmpeg -version
+ffprobe -version
 ```
 
-> ⚠️ **Do not upgrade** `moviepy` or `numpy` — they are pinned intentionally. See [FAQ in README](README.md#-faq).
+FFmpeg decodes recordings, mixes the optional music bed and handles encoded media.
+ffprobe measures duration and verifies streams.
 
-On Windows, use the exact virtual-environment interpreter shown in the README:
-`.\.venv\Scripts\python.exe -m pip install -r requirements.txt`. Activating the
-environment is optional; using its interpreter avoids PowerShell execution-policy problems.
+### 1c. Create an isolated Python environment
+
+**Windows PowerShell**, from the repository directory:
+
+```powershell
+py -3.12 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install --upgrade pip
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m pip check
+```
+
+**macOS / Linux:**
+
+```bash
+python3.12 -m venv .venv
+.venv/bin/python -m pip install --upgrade pip
+.venv/bin/python -m pip install -r requirements.txt
+.venv/bin/python -m pip check
+```
+
+Use that same interpreter to start the app. Activation is optional; explicit
+interpreter paths avoid PowerShell execution-policy issues and installing into the
+wrong environment. The shorter `python` commands later in this guide assume that
+`python` resolves to this environment.
+
+Keep the MoviePy and NumPy pins in `requirements.txt`. Installing individual missing
+packages into a shared environment can leave incompatible packages behind even
+when pip reports “Successfully installed”. Recreate the project environment with
+a supported interpreter instead of changing unrelated applications' dependencies.
+
+The normal requirements also install **`croniter==6.2.4`** and **`tzdata>=2025.2`**
+for cron scheduling and IANA time zones, including on Windows.
 
 ### 1d. Install the motion renderer
 
@@ -66,195 +91,256 @@ npm ci --prefix renderers/hyperframes
 node renderers/hyperframes/node_modules/hyperframes/bin/hyperframes.mjs browser ensure
 ```
 
-This installs the pinned HyperFrames/GSAP/font packages and a browser. The first
-installation needs network access; generated motion projects use local assets.
-Click **Check setup** in YAAS before a run. A missing package is reported in the
-Preparation stage with the command for the Python interpreter that is actually running.
+This installs the pinned renderer, animation/font packages and a browser. The
+first installation needs network access; generated motion projects use local
+assets. A missing dependency is reported during Preparation with a command for
+the Python interpreter actually running the app.
 
----
+## Step 2 — Start the studio
 
-## Step 2 — Get your API keys
+**Windows PowerShell:**
 
-### 2a. Google Gemini API Key (optional)
-
-1. Go to [aistudio.google.com/apikey](https://aistudio.google.com/apikey)
-2. Sign in with your Google account
-3. Click **Create API Key**
-4. Copy the key
-
-### 2b. Pexels API Key (optional, for Hybrid footage)
-
-1. Go to [pexels.com/api](https://www.pexels.com/api/)
-2. Create a free account and click **Your API Key**
-3. Copy the key
-
-### 2c. OpenRouter key (optional, for visual planning)
-
-Create a key at [openrouter.ai/keys](https://openrouter.ai/keys), then save it in
-Settings. Keep the planner set to `openrouter/free`, or choose an eligible free
-model from the live selector. Free access has quotas and availability can change.
-The renderer itself runs locally. Vision models interpret images and return
-review text; they do not create a finished video. Frame review is off by default
-and uploads selected rendered frames only when you enable it.
-
----
-
-## Step 3 — Add your keys
-
-All keys are optional. YAAS runs without any, but a Gemini key makes scripts much better.
-
-### Option A — In the app (easiest)
-
-Run `python gui.py`, click **Settings** (top right), paste your keys, and press **Save**.
-They're written to a local `.env` file that git ignores.
-
-### Option B — Edit `.env` yourself
-
-```bash
-cp .env.example .env
-# open .env and fill in the keys you have
+```powershell
+$env:STUDIO_PORT = "8765"
+.\.venv\Scripts\python.exe gui.py
 ```
 
-Real environment variables (`export GEMINI_API_KEY=...`) also work and take priority over `.env`.
+Open **http://localhost:8765**. Port 8765 is an example alternate port for systems
+where Windows forbids binding the default 7070.
 
-> Never put keys in `config.py`. It's tracked by git, so they'd end up in your commits.
-
----
-
-## Step 4 — Set up YouTube upload (optional)
-
-Skip this step if you just want to generate videos locally without uploading.
-
-### 4a. Create a Google Cloud project
-
-1. Go to [console.cloud.google.com](https://console.cloud.google.com)
-2. Click **Select a project → New Project**
-3. Name it (e.g. "YAAS") and click **Create**
-
-### 4b. Enable the YouTube Data API
-
-1. In your new project, go to **APIs & Services → Library**
-2. Search for **YouTube Data API v3**
-3. Click **Enable**
-
-### 4c. Create OAuth credentials
-
-1. Go to **APIs & Services → Credentials**
-2. Click **Create Credentials → OAuth client ID**
-3. If prompted, configure the consent screen first:
-   - User Type: **External**
-   - Fill in app name, support email, and developer email
-   - Scopes: click **Add or remove scopes** → search "youtube" → select `youtube.upload`
-   - Test users: add your own Gmail address
-4. Back in Credentials → **Create Credentials → OAuth client ID**
-   - Application type: **Desktop app**
-   - Name: anything (e.g. "YT Agent Desktop")
-5. Click **Download JSON**
-6. Rename the downloaded file to `client_secret.json`
-7. Put it in the root of the project, next to `client_secret.example.json`
-
-> `client_secret.json` is git-ignored, so your real credentials are never committed. Don't paste them into `client_secret.example.json`, which is tracked.
-
-### 4d. First-time authentication
-
-On your first run, a browser window will open asking you to sign in with Google and grant permission. This only happens once — the token is saved locally as `youtube_token.json` (git-ignored). If you used an older version, you'll sign in once more and can delete the old `youtube_token.pickle`.
-
-> If you see a "Google hasn't verified this app" warning, click **Advanced → Go to (app name) (unsafe)**. This is expected for personal OAuth apps in testing mode.
-
----
-
-## Step 5 — Customise your channel
-
-In the app, open **Settings → Your channel** and set:
-
-- **Channel name**, which is shown in your videos and thumbnails (switch it off or use custom text with *Show channel name in videos*)
-- **What your channel is about**: the more specific, the better the AI's topics and scripts.
-  Example: *"Educational science channel for curious adults, style of Veritasium."*
-
-Everything you change in Settings is saved to `settings.json` in the project folder (git-ignored, next to `.env`). It only holds what differs from the defaults in `config.py`, and it wins over them. Delete it to go back to the defaults.
-
----
-
-## Step 6 — Launch
+**macOS / Linux:**
 
 ```bash
-python gui.py
+.venv/bin/python gui.py
 ```
 
-Opens at **http://localhost:7070**. Type a topic on Home and press **Make video**.
+The default address is **http://localhost:7070**. Open **Check local setup** on Home
+before generating a video. On any platform, `STUDIO_PORT` can select another
+available, unreserved port.
 
----
+The app binds to localhost. The process running `gui.py` also starts its scheduler;
+the browser is just its interface.
 
-## Step 7 — Add background music (optional)
+## Step 3 — Add optional provider keys
 
-Drop any `.mp3` or `.wav` files into the `music library/` folder.  
-The pipeline will automatically shuffle and loop them to match the video duration.
+| Provider | Where to obtain a key | Purpose |
+| --- | --- | --- |
+| Gemini | [Google AI Studio](https://aistudio.google.com/apikey) | Research and script generation |
+| Pexels | [Pexels API](https://www.pexels.com/api/) | Stock pictures and Hybrid video footage |
+| OpenRouter | [OpenRouter keys](https://openrouter.ai/keys) | Optional free visual planning, text fallback and frame review |
 
-The repo includes a few dark cinematic tracks to get you started. Replace or add to them freely.
+Open **Settings**, paste keys and save. They are written to a git-ignored local
+`.env` file. Alternatively, copy `.env.example` to `.env` and fill in the keys.
+Real process environment variables take priority over `.env`.
 
----
+Provider API keys are **shared by all profiles in this local studio**. YouTube
+tokens are separate per profile. Never put credentials into tracked `config.py`
+or `client_secret.example.json`.
+
+OpenRouter planning defaults to `openrouter/free`; explicit choices are checked
+against the live free-model catalogue. Free providers can have quotas and changing
+availability. A vision model returns review text, not a finished generated video.
+Frame review is off until explicitly enabled, and sends selected rendered frames
+when enabled. Local motion templates can still run without an OpenRouter key.
+
+## Step 4 — Connect YouTube (optional)
+
+You can create and schedule local videos without connecting YouTube. Direct
+publishing needs a verified profile connection.
+
+### 4a. Create Google OAuth credentials
+
+1. Create or select a project in [Google Cloud Console](https://console.cloud.google.com).
+2. Enable **YouTube Data API v3**.
+3. Configure the OAuth consent screen for your app. For a personal app in testing,
+   add the Google account you will use as a test user.
+4. Include the YouTube upload and read-only scopes:
+   `https://www.googleapis.com/auth/youtube.upload` and
+   `https://www.googleapis.com/auth/youtube.readonly`.
+5. Create an OAuth client with application type **Desktop app**.
+6. Download its JSON file and save it as `client_secret.json` in the repository
+   root, beside `client_secret.example.json`.
+
+The real JSON file is git-ignored. A profile may use another local OAuth client
+JSON path through **Profile settings → More channel settings**. Leaving that
+field empty preserves the existing setting.
+
+### 4b. Connect each profile explicitly
+
+1. Select the intended profile in the sidebar or mobile channel selector.
+2. On Home, click **Connect YouTube**.
+3. Complete Google sign-in in the browser opened by YAAS. Choose the correct
+   YouTube channel/Brand Account.
+4. Return to Home and verify the **fetched channel title and avatar**.
+
+The connection runs asynchronously, so Home shows its progress and any failure.
+It requests read-only access to verify the authenticated channel as well as upload
+access. An older upload-only token may need explicit reconnection for those scopes.
+
+A token's presence alone does not mark a profile verified. **Refresh** uses the
+saved token to fetch identity without opening a new sign-in window. Opening the
+app, changing profiles or running scheduled generation does not start authentication.
+
+Once verified, a profile stays bound to that YouTube channel, even after
+disconnecting. Reconnecting it to another channel is blocked; add another profile
+for that channel. Publishing checks the authenticated identity again.
+
+The default profile can retain the legacy `youtube_token.json`. Other profiles
+store isolated tokens under `.yaas/channels/<profile-id>/`. Do not delete or copy
+another profile's token as a way to change its destination.
+
+## Step 5 — Create channel profiles and tune quality
+
+Use the sidebar **+**, or the **+** beside the mobile selector, to create a profile.
+Choose **General**, **News**, or **ASMR / calm**, then describe its topics, tone
+and audience.
+
+Open **Profile settings** to adjust the narrator, speed, visual mode, format,
+duration, music and publishing defaults. **Preview voice** uses the currently
+selected voice, speed and pitch without saving them; save after choosing a voice.
+The default pitch is natural (`+0Hz`), and music starts off.
+
+News starts with natural narration and Hybrid visuals. It uses retrieved background
+sources and trends; it does not verify live breaking news. ASMR/calm starts with
+slower narration, calmer writing and gentler photo movement. It does not synthesize
+binaural recordings or authentic ASMR triggers.
+
+The advanced **Settings** page edits the selected profile's channel defaults.
+Provider keys remain shared. The initial default profile preserves compatible
+`settings.json` behavior; additional profiles and fetched identity live in
+`.yaas/channels.json`.
+
+For more detail, see [Channels and schedules](docs/CHANNELS_AND_SCHEDULES.md).
+
+## Step 6 — Make or reopen a video
+
+For a new video, select a channel, enter a topic, choose Motion/Hybrid/Classic,
+and press **Make video**. Use **Draft preview first** with Motion or Hybrid.
+
+All modes can use the original stock-picture pipeline. Motion animates those
+pictures alongside explanatory graphics; Hybrid can add real footage. Review's
+storyboard is the same composition used by HyperFrames during generation.
+
+For an existing photo project, open **My videos → Open → Animate these photos**.
+This reuses its pictures and recording, imports saved SRT timing when available,
+or labels a duration-based estimate. If the separate recording is missing but
+an old MP4 exists, YAAS can recover its soundtrack, including music already mixed
+into it. It cannot separate that music from the speech.
+
+You do not have to regenerate unchanged old narration just to try Motion.
+Regenerate it if the spoken script changes or if you want fresh word events
+from the speech service, when available. See [the full Motion workflow](docs/MOTION_STUDIO.md).
+
+## Step 7 — Add optional music
+
+Place suitable local audio in `music library/`, or choose a different local
+directory in that profile's **More channel settings → Music folder**. Supported
+files include MP3, WAV, OGG, M4A and FLAC.
+
+Turn **Background music** on for the profile. Its default level is **8%**.
+The FFmpeg mixer loops one readable track, fades the bed, lowers it beneath speech
+and limits peaks. Motion keeps the prepared soundtrack as a lossless WAV before
+encoding the MP4. No synthetic sound effects are added.
+
+A render-only operation reuses its prepared audio. Select the Music step to
+rebuild the bed after changing music settings. Missing or unreadable music leaves
+the original narration intact.
+
+## Step 8 — Schedule recurring videos
+
+On the selected channel's Home page, open **Scheduled videos → Add schedule**.
+Choose a name, recurring brief, five-field cron expression, IANA time zone, format,
+visual mode and draft/final output.
+
+For example, `0 9 * * 1-5` with `Asia/Dubai` means weekdays at 09:00 Dubai time.
+Each schedule's automatic occurrences must be at least **15 minutes apart**. Motion and Hybrid
+default to drafts; Classic generates a local final MP4. Nothing is published
+automatically.
+
+The persistent queue runs one generation job at a time. A scheduled run uses
+separate working files, archives its result and restores the open editor.
+Automatic slots missed or queued for more than 15 minutes are skipped, and
+interrupted jobs are not retried automatically. Use **Run now** for a fresh attempt.
+
+Keep the normal app process running, or stop it and start:
+
+```bash
+python gui.py --scheduler-only
+```
+
+On Windows, use `.\.venv\Scripts\python.exe gui.py --scheduler-only`.
+Run one studio process per project data directory. A GitHub fork and its CI do
+not host your running app or personal scheduled jobs. Full lifecycle, storage and
+hosting details are in [Channels and schedules](docs/CHANNELS_AND_SCHEDULES.md).
 
 ## Troubleshooting
 
 | Problem | Fix |
-|---|---|
-| `No module named 'moviepy'` | Run `pip install -r requirements.txt` again |
-| `No module named 'edge_tts'` | Run `.\.venv\Scripts\python.exe -m pip install -r requirements.txt`, then start YAAS with that same interpreter |
-| Python 3.13 dependency conflicts | Install Python 3.12 side by side, create a fresh venv as in the README, and install only this project's requirements there |
-| Missing motion renderer / Node | Install Node 22+, reopen the terminal, run `npm ci --prefix renderers/hyperframes` and the browser ensure command above |
-| Windows socket access denied on 7070 | In PowerShell, set `$env:STUDIO_PORT = "8765"` before starting YAAS. If that port is also blocked, choose another available unreserved port |
-| Missing narration timings / script changed | Run Narration and Visuals again; the app will not invent timing for an old voiceover |
-| No matching storyboard | Select Visuals once after changing mode, dimensions or narration; subsequent draft/final renders can use Video alone |
-| Free visual AI unavailable | The storyboard falls back to local animated templates. Add/check a key or try again later; there is no paid fallback |
-| `ffmpeg not found` | Install ffmpeg and ensure it's on your PATH |
-| `RESOURCE_EXHAUSTED` / 429 | Gemini quota hit — wait until midnight Pacific or switch starting model |
-| YouTube sign-in / token error | Delete `youtube_token.json` and upload again to re-authenticate |
-| Tiny/ugly video text | Install DejaVu fonts: `sudo apt install fonts-dejavu` (Linux) |
-| Port 7070 already in use | Set the `STUDIO_PORT` environment variable, e.g. `STUDIO_PORT=7071 python gui.py` |
-| `client_secret.json` error | Download your OAuth JSON from Google Cloud and save it as `client_secret.json` in the project root (step 4c) |
-| Captions out of sync | Switch to a different voice in **Settings** (the voices with word timing are listed in `config.py`) |
-| A setting won't stick | Values in `settings.json` win over `config.py`. Change it in **Settings**, or remove it from `settings.json` |
+| --- | --- |
+| `No module named 'moviepy'` or `No module named 'edge_tts'` | Install `requirements.txt` using the same venv interpreter that starts the app; on Windows use `.\.venv\Scripts\python.exe -m pip install -r requirements.txt` |
+| Python 3.13 or unrelated dependency conflicts | Install Python 3.12, create a fresh project venv, install its requirements, then run `python -m pip check` there |
+| Missing motion renderer / Node | Install Node 22+, reopen the terminal, run `npm ci --prefix renderers/hyperframes` and the browser ensure command |
+| Windows socket access denied on 7070 | Set `$env:STUDIO_PORT = "8765"` before starting YAAS; choose another available unreserved port if that is blocked too |
+| Old recording has no timing manifest | Open the archive and choose **Animate these photos**; Review labels imported caption timing or estimated timing |
+| Spoken script no longer matches recording | Regenerate Narration and Visuals; old audio cannot speak newly edited text |
+| Old MP4 still contains loud music | Recovered audio includes the old mix; use clean original narration or record it again |
+| Old photos are available but their section map is missing | Inspect the image reuse note and check scene/photo matches in Review |
+| No matching storyboard | Select Visuals once after changing mode, dimensions or narration; later draft/final renders can use Video alone |
+| Free visual AI unavailable | Planning falls back to local templates; check the provider/key or try later |
+| Speech preview fails with a certificate error | Check system certificates and network/proxy trust, then retry; keep secure certificate verification enabled |
+| `ffmpeg` or `ffprobe` not found | Install both and reopen the terminal after updating `PATH` |
+| Provider quota / 429 | Wait for that provider's quota to recover or choose another supported provider; free-tier availability is external |
+| YouTube sign-in / token error | Select the correct profile and **Reconnect YouTube**; verify the test user, scopes and bound channel |
+| Wrong-channel connection blocked | Create a new profile for the other channel; existing projects keep their verified binding |
+| Scheduler unavailable or not running | Keep one app/scheduler-only process alive; check for another process owning its lock |
+| Job skipped or interrupted | Read the card's last-run details; use **Run now** when you want a new attempt |
+| Time zone rejected | Use an IANA name such as `Asia/Dubai`; install the current project requirements including `tzdata` |
+| Tiny/ugly Classic text | Install DejaVu fonts on Linux, for example `sudo apt install fonts-dejavu` |
+| A profile setting appears unchanged | Check the selected channel, save its settings, and regenerate the relevant stage; existing recordings are not changed by a preference edit |
 
----
+## Upgrading from an earlier checkout
 
-## Upgrading from an older version
+Back up local data before changing machines or replacing an environment. Keep
+`settings.json`, `.env`, `.yaas/`, the OAuth client/token files,
+`output/library/` and custom music together. Stop the app while backing up the
+schedule database. See [storage details](docs/CHANNELS_AND_SCHEDULES.md#local-storage-and-backups).
 
-Older versions saved the Settings page into `config.py` itself. If you changed settings there, `git pull` will refuse to overwrite your edited `config.py`. Move your settings across once:
+If an earlier checkout used the feature branch, preserve any local code edits
+before switching to this fork's main branch:
 
 ```bash
-git stash
+git fetch origin
+git switch main
+git pull --ff-only
 ```
 
-```bash
-git pull
-```
+Reinstall `requirements.txt` in the project environment and run `pip check`, then
+run `npm ci --prefix renderers/hyperframes` again. The supported Python range
+remains 3.10–3.12.
 
-```bash
-git show "stash@{0}:config.py" > old_config.py
-```
+Very old YAAS versions wrote settings into tracked `config.py`. Export that old
+file to `old_config.py`, then use the migration command:
 
 ```bash
 python gui.py --import-settings old_config.py
 ```
 
-The import only reads plain values from the file, it never runs it. Check **Settings**, then delete `old_config.py` and drop the stash with `git stash drop`.
+The importer reads plain values without executing the file. Check the imported
+default-profile Settings before removing your backup. An existing default token
+may need **Refresh** or **Connect YouTube** to fetch verified identity.
 
----
+## Optional: keep a configured scheduler in the background
 
-## Optional: Run as a background service
-
-To keep the studio running continuously (e.g. on a home server):
+For an already configured studio on an always-on Linux/macOS machine:
 
 ```bash
-# Using nohup (Linux/Mac)
-nohup python gui.py > studio.log 2>&1 &
-
-# Using screen
-screen -S yt-studio
-python gui.py
-# Detach: Ctrl+A then D
+nohup .venv/bin/python gui.py --scheduler-only > studio.log 2>&1 &
 ```
 
----
+Use your platform's service manager if you need process supervision after reboot.
+Do not start a second GUI process over the same project while scheduler-only mode
+is running. A host needs the installed renderer/browser, FFmpeg, local data and
+network access as well as the source checkout.
 
-If you get stuck, include the Preparation result and technical log with your error message and OS.
+If you get stuck, include the Preparation result, last schedule error or technical
+log, the Python version and your OS. Do not include API keys or OAuth tokens.

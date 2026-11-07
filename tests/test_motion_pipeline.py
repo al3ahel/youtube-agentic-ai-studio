@@ -151,3 +151,55 @@ def test_research_only_run_does_not_require_voice_or_video(job, monkeypatch):
     assert state["error"] is None
     assert state["research"]["video_title"] == "Fresh topic"
     assert state["script"] is None and state["audio_path"] is None
+
+
+@pytest.mark.parametrize("section_id", [1, "intro"])
+@pytest.mark.parametrize("video_type", ["normal", "shorts"])
+def test_classic_render_and_thumbnail_reuse_cached_pictures_with_numeric_or_text_ids(
+        job, monkeypatch, section_id, video_type):
+    """Exercise the worker, classic image lookup and thumbnail selection together."""
+    from moviepy.editor import AudioClip, ImageClip, VideoClip
+    from PIL import Image
+    from studio import thumbs
+    from video import creator, thumbnail
+
+    output, script, archived = job
+    script["sections"][0]["id"] = section_id
+    # Existing pre-Motion narration has no measured sidecar and must be reused.
+    (output / "narration.timings.json").unlink()
+    image_dir = output / "images"
+    image_dir.mkdir()
+    picture = image_dir / "cached.png"
+    Image.new("RGB", (64, 36), (35, 90, 140)).save(picture)
+    runner._save_json(output / "image_map.json", {str(section_id): ["images/cached.png"]})
+    monkeypatch.setattr(config, "VIDEO_WIDTH", 64)
+    monkeypatch.setattr(config, "VIDEO_HEIGHT", 36)
+    monkeypatch.setattr(config, "SHORTS_WIDTH", 36)
+    monkeypatch.setattr(config, "SHORTS_HEIGHT", 64)
+    # Keep actual clip composition/image loading; replace encoding and speech
+    # decoding so this regression remains small and independent of FFmpeg.
+    audio = AudioClip(lambda t: 0, duration=6, fps=48000)
+    monkeypatch.setattr(creator, "AudioFileClip", lambda path: audio)
+    loaded = []
+    def picture_clip(images, duration):
+        assert len(images) == 1, "The saved section photo must reach the classic renderer"
+        loaded.append(images[0][0, 0].tolist())
+        return ImageClip(images[0]).set_duration(duration)
+    monkeypatch.setattr(creator, "_make_clip", lambda section, duration, images, *a, **k: picture_clip(images, duration))
+    monkeypatch.setattr(creator, "_build_shorts_clip", lambda images, duration, captions: picture_clip(images, duration))
+    monkeypatch.setattr(creator, "_apply_watermark", lambda clip, *a: clip)
+    monkeypatch.setattr(VideoClip, "write_videofile", lambda clip, filename, **k: Path(filename).write_bytes(b"encoded test output"))
+    backgrounds = []
+    def render_thumb(style, path, text, background, *a, **k):
+        backgrounds.append(background)
+        Path(path).write_bytes(b"thumbnail fixture")
+        return path
+    monkeypatch.setattr(thumbnail, "render", render_thumb)
+    monkeypatch.setattr(runner, "make_thumbnail", thumbs.make_thumbnail)
+    runner.run_pipeline_thread(["video"], visual_mode="classic", video_type=video_type)
+    assert state["error"] is None
+    assert loaded == [[35, 90, 140]]
+    assert backgrounds == [str(picture)]
+    assert Path(state["video_path"]).is_file() and Path(state["thumb_path"]).is_file()
+    assert state["timeline"]["narration_reused"] is True
+    assert archived == [True]

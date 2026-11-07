@@ -81,20 +81,28 @@
   }
 
   function flow(context) {
-    const {scene, stage, height} = context;
+    const {scene, stage, height, width} = context;
     const count = scene.items.length;
     if (!count) return;
-    const lines = graph(stage, visualWidth, height);
-    const cardWidth = portrait ? 850 : Math.min(380, (visualWidth - 50 * (count - 1)) / count);
-    const cardHeight = portrait ? Math.min(180, (height - (count - 1) * 28) / count) : Math.min(260, height - 70);
-    const spacing = portrait ? (height - cardHeight) / Math.max(1, count - 1) : (visualWidth - cardWidth) / Math.max(1, count - 1);
+    const vertical = portrait || context.imageLayout;
+    const grid = context.imageLayout && count > 4;
+    const lines = graph(stage, width, height);
+    const rows = grid ? Math.ceil(count / 2) : count;
+    const cardWidth = grid ? (width - 46) / 2 : vertical ? width - 40 : Math.min(380, (width - 50 * (count - 1)) / count);
+    const cardHeight = vertical ? Math.min(180, (height - (rows - 1) * 22) / rows) : Math.min(260, height - 70);
+    const spacing = vertical ? (height - cardHeight) / Math.max(1, rows - 1) : (width - cardWidth) / Math.max(1, count - 1);
+    stage.classList.toggle("flow-grid", Boolean(grid));
     const positions = scene.items.map((item, index) => ({
-      x: portrait ? 28 : (count === 1 ? (visualWidth - cardWidth) / 2 : spacing * index),
-      y: portrait ? (count === 1 ? (height - cardHeight) / 2 : spacing * index) : (height - cardHeight) / 2,
+      x: grid ? 8 + (Math.floor(index / 2) % 2 ? 1 - index % 2 : index % 2) * (cardWidth + 30)
+        : vertical ? 20 : (count === 1 ? (width - cardWidth) / 2 : spacing * index),
+      y: vertical ? (count === 1 ? (height - cardHeight) / 2 : spacing * (grid ? Math.floor(index / 2) : index)) : (height - cardHeight) / 2,
     }));
     positions.slice(0, -1).forEach((point, index) => {
       const next = positions[index + 1];
-      const coordinates = portrait
+      const coordinates = grid && point.y === next.y
+        ? (next.x > point.x ? `M${point.x + cardWidth} ${point.y + cardHeight / 2} L${next.x} ${next.y + cardHeight / 2}`
+          : `M${point.x} ${point.y + cardHeight / 2} L${next.x + cardWidth} ${next.y + cardHeight / 2}`)
+        : vertical
         ? `M${point.x + cardWidth / 2} ${point.y + cardHeight} L${next.x + cardWidth / 2} ${next.y}`
         : `M${point.x + cardWidth} ${point.y + cardHeight / 2} L${next.x} ${next.y + cardHeight / 2}`;
       context.links.push(link(lines, coordinates));
@@ -110,7 +118,7 @@
     const {scene, stage} = context;
     const count = scene.items.length;
     stage.classList.add("comparison-stage");
-    const columns = portrait ? (count > 3 ? 2 : 1) : Math.min(count, count > 3 ? 3 : count);
+    const columns = context.imageLayout ? Math.min(2, count) : portrait ? (count > 3 ? 2 : 1) : Math.min(count, count > 3 ? 3 : count);
     stage.style.gridTemplateColumns = `repeat(${Math.max(1, columns)}, minmax(0, 1fr))`;
     stage.style.gridTemplateRows = `repeat(${Math.max(1, Math.ceil(count / Math.max(1, columns)))}, minmax(0, 1fr))`;
     scene.items.forEach((item, index) => {
@@ -124,13 +132,14 @@
   }
 
   function chronology(context) {
-    const {scene, stage, height} = context;
+    const {scene, stage, height, width} = context;
     const count = scene.items.length;
-    const inset = portrait ? 36 : 28;
-    const length = portrait ? height - 150 : visualWidth - 230;
+    const vertical = portrait || context.imageLayout;
+    const inset = vertical ? 36 : 28;
+    const length = vertical ? height - 120 : width - 230;
     const line = element("div", "timeline-line");
     const draw = element("div", "timeline-draw");
-    if (portrait) {
+    if (vertical) {
       Object.assign(line.style, {left: "36px", top: "35px", width: "2px", height: `${length}px`});
       Object.assign(draw.style, {left: "36px", top: "35px", width: "2px", height: `${length}px`, transformOrigin: "center top"});
     } else {
@@ -138,14 +147,15 @@
       Object.assign(draw.style, {left: `${inset}px`, top: `${height / 2}px`, width: `${length}px`, height: "2px"});
     }
     stage.append(line, draw);
-    context.draws.push({node: draw, property: portrait ? "scaleY" : "scaleX"});
+    context.draws.push({node: draw, property: vertical ? "scaleY" : "scaleX"});
     scene.items.forEach((item, index) => {
       const node = element("article", "timeline-node");
       const distance = count <= 1 ? 0 : index * length / (count - 1);
-      box(node, portrait ? 36 : inset + distance, portrait ? 35 + distance : height / 2, portrait ? 820 : 240);
+      box(node, vertical ? 36 : inset + distance, vertical ? 35 + distance : height / 2, vertical ? width - 80 : 240);
       const copy = element("div", "timeline-copy");
-      copy.append(element("p", "item-value", item.value !== undefined ? item.value : String(index + 1).padStart(2, "0")), label(item.label));
-      if (portrait) Object.assign(copy.style, {left: "60px", top: "-21px"});
+      if (!context.imageLayout || item.value !== undefined) copy.append(element("p", "item-value", item.value !== undefined ? item.value : String(index + 1).padStart(2, "0")));
+      copy.append(label(item.label));
+      if (vertical) Object.assign(copy.style, {left: "60px", top: "-21px"});
       else if (index % 2 === 0) node.classList.add("above");
       node.append(element("span", "timeline-dot"), copy);
       stage.append(registerItem(context, node, index));
@@ -156,9 +166,11 @@
     const {scene, stage, height} = context;
     stage.classList.add("chart-stage");
     const values = scene.items.map(item => Number(item.value));
+    const dense = values.length > 4;
+    stage.classList.toggle("dense-chart", dense);
     const low = Math.min(0, ...values), high = Math.max(0, ...values);
     const span = high - low || 1;
-    const leftInset = 14, plotWidth = portrait ? visualWidth - 155 : visualWidth - 540;
+    const leftInset = 14, plotWidth = portrait ? visualWidth - 155 : visualWidth - (dense ? 660 : 540);
     const zero = leftInset + (0 - low) / span * plotWidth;
     const step = Math.min(portrait ? 160 : 100, (height - 25) / Math.max(1, values.length));
     scene.items.forEach((item, index) => {
@@ -186,6 +198,16 @@
   function explanation(context) {
     const {scene, stage, height} = context;
     if (!scene.items.length) return;
+    if (context.imageLayout) {
+      stage.classList.add("photo-facts");
+      stage.style.gridTemplateColumns = scene.items.length > 4 ? "repeat(2, minmax(0, 1fr))" : "minmax(0, 1fr)";
+      scene.items.forEach((item, index) => {
+        const row = element("article", "photo-fact");
+        row.append(numberLabel(index), label(item.label));
+        stage.append(registerItem(context, row, index));
+      });
+      return;
+    }
     const lines = graph(stage, visualWidth, height);
     const size = portrait ? Math.min(330, height * .35) : Math.min(300, height - 50);
     const hubX = portrait ? (visualWidth - size) / 2 : (visualWidth - size) / 2;
@@ -223,6 +245,7 @@
     stage.classList.add("text-stage");
     const headline = element("h2", "kinetic-title", scene.title);
     titleClass(headline, scene.title);
+    if (scene.title.length > 52) headline.classList.add("long-title");
     context.title = headline;
     const underline = element("div", "text-underline");
     context.draws.push({node: underline, property: "scaleX"});
@@ -242,7 +265,52 @@
     scene.items.forEach((item, itemIndex) => stage.append(registerItem(context, element("div", "keyword", item.label), itemIndex)));
     if (scene.footage.credit) node.append(element("div", "footage-credit", scene.footage.credit));
     // Transform the wrapper only. The HyperFrames runtime owns video playback.
-    timeline.fromTo(wrapper, {scale: 1.025}, {scale: 1.07, duration: scene.duration, ease: "none", immediateRender: false}, scene.start);
+    timeline.fromTo(wrapper, {scale: 1.02}, {scale: 1.045, duration: scene.duration, ease: "none", immediateRender: false}, scene.start);
+  }
+
+  function picture(context) {
+    const {scene, node, stage, index} = context;
+    const image = document.getElementById(`image-${index}`);
+    if (!image) throw new Error("Picture asset missing from the local composition");
+    const figure = element("figure", "scene-photo");
+    const viewport = element("div", "photo-viewport");
+    viewport.append(image);
+    figure.append(viewport);
+    if (scene.image.credit) figure.append(element("figcaption", "photo-credit", scene.image.credit));
+    node.prepend(figure);
+    const hero = scene.template === "text";
+    node.classList.add("image-scene");
+    node.classList.toggle("photo-hero", hero);
+    node.classList.toggle("dense-items", scene.items.length > 4);
+    if (hero) {
+      node.prepend(element("div", "photo-shade"));
+      // Keep the picture behind the shade and all semantic text.
+      node.prepend(figure);
+    } else {
+      context.imageLayout = true;
+      const top = Math.max(portrait ? 510 : 355, context.header.offsetTop + context.header.offsetHeight + 34);
+      const bottom = portrait ? 1530 : 818;
+      if (portrait) {
+        const photoHeight = Math.min(420, Math.max(300, (bottom - top - 36) * .43));
+        box(figure, 72, top, visualWidth, photoHeight);
+        box(stage, 72, top + photoHeight + 38, visualWidth, bottom - top - photoHeight - 38);
+        context.width = visualWidth;
+        context.height = bottom - top - photoHeight - 38;
+      } else {
+        box(figure, 100, top, 794, bottom - top);
+        box(stage, 958, top, 862, bottom - top);
+        context.width = 862;
+        context.height = bottom - top;
+      }
+    }
+    // A restrained camera move runs on the same seekable narration clock.
+    // No GIF/WebP playback, CSS animation, or wall-clock randomness is involved.
+    const direction = index % 2 ? 1 : -1;
+    gsap.set(image, {scale: 1.035, xPercent: direction * .5});
+    timeline.fromTo(image, {scale: 1.035, xPercent: direction * .5}, {
+      scale: 1.07, xPercent: -direction * .5, duration: scene.duration,
+      ease: "none", immediateRender: false,
+    }, scene.start);
   }
 
   const builders = {flow, comparison, timeline: chronology, chart: numericChart, explain: explanation, text: kineticText, footage};
@@ -287,24 +355,29 @@
     const {scene, node, title, items} = context;
     const start = scene.start, end = start + scene.duration;
     const revealLength = Math.min(.6, scene.duration * .16);
+    // A word/cue near the section boundary may leave only part of a frame.
+    // Shorten its effect, never extend the narration clock or the next scene.
+    const remaining = at => Math.max(0, end - at);
     gsap.set(node, {opacity: 0});
     timeline.fromTo(node, {opacity: 0}, {opacity: 1, duration: .00001, immediateRender: false}, start);
     timeline.fromTo(node, {opacity: 1}, {opacity: 0, duration: .00001, immediateRender: false}, end - .00001);
-    gsap.set(title, {y: 22, opacity: 0});
+    gsap.set(title, {y: 14, opacity: 0});
     const titleBeat = scene.beats.find(beat => beat.target === "title" && beat.action === "reveal");
-    timeline.fromTo(title, {y: 22, opacity: 0}, {y: 0, opacity: 1, duration: revealLength, ease: "power3.out", immediateRender: false}, start + (titleBeat ? titleBeat.time : .04));
+    const titleAt = Math.min(end, start + (titleBeat ? titleBeat.time : .04));
+    timeline.fromTo(title, {y: 14, opacity: 0}, {y: 0, opacity: 1, duration: Math.min(revealLength, remaining(titleAt)), ease: "power2.out", immediateRender: false}, titleAt);
     items.forEach((item, index) => {
-      gsap.set(item.node, {opacity: 0, y: 22, scale: .97});
+      gsap.set(item.node, {opacity: 0, y: 12, scale: 1});
       const at = start + beatTime(context, index);
-      timeline.fromTo(item.node, {opacity: 0, y: 22, scale: .97}, {
-        opacity: 1, y: 0, scale: 1, duration: revealLength, ease: "power3.out", immediateRender: false,
+      timeline.fromTo(item.node, {opacity: 0, y: 12, scale: 1}, {
+        opacity: 1, y: 0, scale: 1, duration: Math.min(revealLength, remaining(at)), ease: "power2.out", immediateRender: false,
       }, at);
       if (item.bar) {
         gsap.set(item.bar, {scaleX: 0});
         item.number.textContent = "0";
-        timeline.fromTo(item.bar, {scaleX: 0}, {scaleX: 1, duration: Math.min(.9, scene.duration / 3), ease: "power3.out", immediateRender: false}, at);
+        const barDuration = Math.min(.9, scene.duration / 3, remaining(at));
+        timeline.fromTo(item.bar, {scaleX: 0}, {scaleX: 1, duration: barDuration, ease: "power3.out", immediateRender: false}, at);
         if (!scene.beats.some(beat => beat.action === "count" && targetItems(context, beat.target).includes(item))) {
-          chartCount(item, at, Math.min(.9, scene.duration / 3));
+          chartCount(item, at, barDuration);
         }
       }
     });
@@ -316,14 +389,15 @@
     context.draws.forEach(entry => {
       gsap.set(entry.node, {[entry.property]: 0});
       if (!scene.beats.some(beat => ["draw", "connect"].includes(beat.action))) {
+        const at = start + Math.min(.3, scene.duration * .15);
         timeline.fromTo(entry.node, {[entry.property]: 0}, {
-          [entry.property]: 1, duration: Math.min(1.6, scene.duration * .55), ease: "power2.inOut", immediateRender: false,
-        }, start + .3);
+          [entry.property]: 1, duration: Math.min(1.6, scene.duration * .55, remaining(at)), ease: "power2.inOut", immediateRender: false,
+        }, at);
       }
     });
     for (const beat of scene.beats) {
       const at = start + beat.time;
-      const length = Math.min(.75, Math.max(.05, end - at));
+      const length = Math.min(.75, remaining(at));
       const targets = beat.target === "title" ? [{node: title}] : targetItems(context, beat.target);
       if (["highlight", "emphasize"].includes(beat.action)) {
         targets.forEach(item => {
@@ -333,7 +407,10 @@
       } else if (beat.action === "count") {
         targets.forEach(item => chartCount(item, at, length));
       } else if (beat.action === "connect" || beat.action === "draw") {
-        targetLinks(context, beat).forEach((entry, index) => drawLink(entry, at + index * .04, Math.max(.05, length - index * .04)));
+        targetLinks(context, beat).forEach((entry, index) => {
+          const linkAt = Math.min(end, at + index * .04);
+          drawLink(entry, linkAt, Math.min(Math.max(0, length - index * .04), remaining(linkAt)));
+        });
         context.draws.forEach(entry => timeline.fromTo(entry.node, {[entry.property]: 0}, {[entry.property]: 1, duration: length, ease: "power2.out", immediateRender: false}, at));
         targets.forEach(item => {
           if (item.bar) timeline.fromTo(item.bar, {scaleX: 0}, {scaleX: 1, duration: length, ease: "power2.out", immediateRender: false}, at);
@@ -344,6 +421,7 @@
 
   function makeScene(scene, index) {
     const node = element("section", `scene ${scene.template}-scene`);
+    node.classList.toggle("dense-items", scene.items.length > 4);
     node.id = `scene-${index}`;
     // These are animation groups, not HyperFrames media clips. Their visibility
     // belongs to the registered timeline; media alone uses data-start/duration.
@@ -357,7 +435,7 @@
     const stage = element("div", "scene-visual");
     node.append(header, element("div", "scene-number", `${String(index + 1).padStart(2, "0")} / ${String(plan.scenes.length).padStart(2, "0")}`), stage);
     mount.append(node);
-    return {scene, index, node, header, title, stage, items: [], links: [], draws: [], height: portrait ? 970 : 400};
+    return {scene, index, node, header, title, stage, items: [], links: [], draws: [], width: visualWidth, height: portrait ? 970 : 400};
   }
 
   function buildCaptions() {
@@ -376,6 +454,7 @@
     const allText = plan.scenes.map(scene => `${scene.title} ${scene.items.map(item => item.label).join(" ")}`).join(" ");
     await document.fonts.load('600 72px "Inter Variable"', allText);
     await document.fonts.ready;
+    await Promise.all([...document.querySelectorAll("#media-bank img")].map(image => image.decode()));
     for (const context of scenes) {
       if (!["text", "footage"].includes(context.scene.template)) {
         const top = Math.max(portrait ? 560 : 390, context.header.offsetTop + context.header.offsetHeight + 38);
@@ -384,12 +463,12 @@
         context.height = Math.max(portrait ? 500 : 220, bottom - top);
         context.stage.style.height = `${context.height}px`;
       }
+      if (context.scene.image && !["chart", "footage"].includes(context.scene.template)) picture(context);
       builders[context.scene.template](context);
       animate(context);
     }
     buildCaptions();
     timeline.fromTo(document.getElementById("film-progress-fill"), {scaleX: 0}, {scaleX: 1, duration: plan.duration, ease: "none", immediateRender: false}, 0);
-    timeline.fromTo(document.querySelector(".orbit-one"), {x: 0, y: 0}, {x: -65, y: 45, duration: plan.duration, ease: "none", immediateRender: false}, 0);
     // Keep the playhead exactly as long as narration, even when the final visual is still.
     timeline.to({time: 0}, {time: plan.duration, duration: plan.duration, ease: "none"}, 0);
     document.getElementById("chapter-count").textContent = `${String(plan.scenes.length).padStart(2, "0")} SCENES`;

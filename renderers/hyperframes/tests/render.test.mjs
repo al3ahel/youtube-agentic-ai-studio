@@ -12,7 +12,7 @@ const browserPath = process.env.YAAS_TEST_BROWSER || process.env.HYPERFRAMES_BRO
 const skipped = browserPath ? false : "Set YAAS_TEST_BROWSER to an installed Chrome/Chromium for browser tests";
 let browser, server, origin;
 const errors = [];
-const mime = {".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".json": "application/json", ".woff2": "font/woff2", ".wav": "audio/wav", ".mp4": "video/mp4"};
+const mime = {".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".json": "application/json", ".woff2": "font/woff2", ".wav": "audio/wav", ".mp4": "video/mp4", ".jpg": "image/jpeg", ".png": "image/png"};
 
 before(async () => {
   if (skipped) return;
@@ -83,13 +83,67 @@ async function seekForCapture(page, time) {
   }, time);
 }
 
-async function openFixture(orientation, preview = false, viewport) {
+async function openFixture(orientation, preview = false, viewport, transformPlan) {
   const page = await browser.newPage();
   page.on("pageerror", error => errors.push(error.message));
   await page.setViewport(viewport || (orientation === "portrait" ? {width: 360, height: 640} : {width: 640, height: 360}));
+  if (transformPlan) {
+    const source = await readFile(path.join(fixtureRoot, orientation, "motion", "index.html"), "utf8");
+    const modified = source.replace(/(<script type="application\/json" id="scene-plan">)([\s\S]*?)(<\/script>)/,
+      (match, start, data, end) => `${start}${JSON.stringify(transformPlan(JSON.parse(data)))}${end}`);
+    await page.setRequestInterception(true);
+    page.on("request", request => {
+      if (request.isNavigationRequest() && request.frame() === page.mainFrame()) {
+        return request.respond({status: 200, contentType: "text/html", body: modified});
+      }
+      return request.continue();
+    });
+  }
   await page.goto(`${origin}/${orientation}/motion/index.html${preview ? "?preview=1" : ""}`, {waitUntil: "domcontentloaded", timeout: 20000});
   await page.evaluate(() => window.YAASMotionReady);
   return page;
+}
+
+for (const timing of ["late beats", "short scenes without beats"]) {
+  test(`${timing}: visual effects cannot extend past their scene or narration`, {skip: skipped}, async () => {
+    const page = await openFixture("landscape", false, undefined, plan => {
+      for (const [index, scene] of plan.scenes.entries()) {
+        if (timing === "late beats") {
+          scene.beats = scene.beats.map(beat => ({...beat, time: scene.duration - .01}));
+          scene.beats.push(...["highlight", "draw", "count"].map(action => ({
+            time: scene.duration - .01, target: "scene", action,
+          })));
+        } else {
+          scene.start = index * .1;
+          scene.duration = .1;
+          scene.beats = [];
+        }
+      }
+      plan.duration = plan.scenes.at(-1).start + plan.scenes.at(-1).duration;
+      plan.captions = [];
+      return plan;
+    });
+    const result = await page.evaluate(() => {
+      const timeline = window.__timelines["yaas-motion"];
+      const overruns = [];
+      for (const tween of timeline.getChildren(false, true, false)) {
+        for (const target of tween.targets()) {
+          if (!(target instanceof Element)) continue;
+          const scene = target.closest(".scene");
+          if (!scene) continue;
+          const boundary = Number(scene.dataset.visualStart) + Number(scene.dataset.visualDuration);
+          if (tween.endTime() > boundary + .000001) {
+            overruns.push({scene: scene.dataset.sceneId, target: target.className.baseVal || target.className,
+              end: tween.endTime(), boundary});
+          }
+        }
+      }
+      return {overruns, duration: timeline.duration(), narration: window.YAASMotion.duration};
+    });
+    assert.deepEqual(result.overruns, []);
+    assert.ok(Math.abs(result.duration - result.narration) < .000001);
+    await page.close();
+  });
 }
 
 for (const orientation of ["landscape", "portrait"]) {
@@ -147,16 +201,44 @@ for (const orientation of ["landscape", "portrait"]) {
       }
       return {
         bounds,
-        external: [...document.querySelectorAll("script[src],link[href],audio[src],video[src]")].map(node => node.src || node.href).filter(url => new URL(url).origin !== location.origin),
+        external: [...document.querySelectorAll("script[src],link[href],audio[src],video[src],img[src]")].map(node => node.src || node.href).filter(url => new URL(url).origin !== location.origin),
+        pictures: [...document.querySelectorAll(".scene-photo img")].map(image => ({loaded: image.complete && image.naturalWidth > 0, local: image.getAttribute("src").startsWith("assets/picture-")})),
+        photoOverlaps: [...document.querySelectorAll(".image-scene:not(.photo-hero)")].filter(scene => {
+          const photo = scene.querySelector(".scene-photo").getBoundingClientRect();
+          const diagram = scene.querySelector(".scene-visual").getBoundingClientRect();
+          return Math.min(photo.right, diagram.right) - Math.max(photo.left, diagram.left) > 1 &&
+            Math.min(photo.bottom, diagram.bottom) - Math.max(photo.top, diagram.top) > 1;
+        }).map(scene => scene.dataset.sceneId),
         duration: window.__timelines["yaas-motion"].duration(),
       };
     });
     assert.deepEqual(result.bounds, []);
     assert.deepEqual(result.external, []);
+    assert.equal(result.pictures.length, 5);
+    assert.ok(result.pictures.every(image => image.loaded && image.local));
+    assert.deepEqual(result.photoOverlaps, []);
     assert.equal(result.duration, 14);
     await page.close();
   });
 }
+
+test("picture camera motion follows deterministic seeks without playing narration", {skip: skipped}, async () => {
+  const page = await openFixture("landscape");
+  const pictureState = () => page.evaluate(() => ({
+    transform: getComputedStyle(document.querySelector("#scene-1 .scene-photo img")).transform,
+    paused: document.getElementById("narration").paused,
+  }));
+  await seekForCapture(page, 2.2);
+  const first = await pictureState();
+  await seekForCapture(page, 3.8);
+  const later = await pictureState();
+  assert.notEqual(later.transform, first.transform);
+  assert.equal(later.paused, true);
+  await seekForCapture(page, 9.1);
+  await seekForCapture(page, 2.2);
+  assert.deepEqual(await pictureState(), first);
+  await page.close();
+});
 
 test("preview stays paused, fits a narrow iframe, and exposes seek controls", {skip: skipped}, async () => {
   const page = await openFixture("portrait", true, {width: 320, height: 600});

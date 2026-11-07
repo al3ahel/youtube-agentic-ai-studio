@@ -46,3 +46,13 @@ def test_unknown_style_falls_back(tmp_path):
     out = T.render("nope", str(tmp_path / "x.jpg"), "Hi")
     with Image.open(out) as im:
         assert im.size == (1280, 720)
+
+
+def test_thumbnail_backgrounds_preserve_numeric_and_named_scene_order(tmp_path):
+    from studio.thumbs import thumb_backgrounds
+    first, second, last = [str(tmp_path / name) for name in ("first.png", "second.png", "last.png")]
+    for filename in (first, second, last):
+        Image.new("RGB", (8, 8)).save(filename)
+    assert thumb_backgrounds({"10": [last], 2: [second], "1": [first]}) == [first, second, last]
+    assert thumb_backgrounds({"opening": [first], "2": [second], "ending": [last, first],
+                              "missing": None, "directory": str(tmp_path)}) == [first, second, last]

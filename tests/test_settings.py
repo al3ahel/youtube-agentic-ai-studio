@@ -96,7 +96,7 @@ def test_settings_page_writes_settings_json_not_config_py(settings_file, monkeyp
         "image_sources": "nasa, openverse",
         "channel_desc": '\n  Space videos with """quotes""" and a # hash\n',
     })
-    assert r.get_json() == {"ok": True}
+    assert r.get_json() == {"ok": True, "profile_id": "default"}
     assert open(cfg, encoding="utf-8").read() == before
     saved = json.loads(settings_file.read_text())
     assert saved == {
@@ -115,9 +115,42 @@ def test_api_keys_still_go_to_env_only(settings_file, monkeypatch, restore_confi
     monkeypatch.setattr(config, "GEMINI_API_KEY", "", raising=False)
     r = gui.app.test_client().post("/api/save-settings", headers=LOCAL,
                                    json={"gemini_key": "AIza-test"})
-    assert r.get_json() == {"ok": True}
+    assert r.get_json() == {"ok": True, "profile_id": "default"}
     assert env == {"GEMINI_API_KEY": "AIza-test"}
     assert not settings_file.exists()
+
+
+def test_settings_save_keeps_the_profile_loaded_before_another_tab_switches(settings_file, monkeypatch):
+    from copy import deepcopy
+    from studio import channels
+    from studio.state import state
+
+    for key in ("running", "uploading", "visual_editing"):
+        monkeypatch.setitem(state, key, False)
+    monkeypatch.setattr(config, "YOUTUBE_CHANNEL_ID", "@legacy-channel")
+    written_env = {}
+    monkeypatch.setattr(config, "save_env", written_env.update)
+    news = channels.create_profile("Morning news", "news")
+    calm = channels.create_profile("Calm evenings", "asmr")
+    client = gui.app.test_client()
+    loaded = client.get(f"/api/settings?profile_id={news['id']}", headers=LOCAL)
+    assert loaded.status_code == 200 and loaded.json["profile_id"] == news["id"]
+    calm_before = deepcopy(channels.get_profile(calm["id"])["defaults"])
+    assert channels.active_profile_id() == calm["id"]
+
+    response = client.post(f"/api/save-settings?profile_id={loaded.json['profile_id']}", headers=LOCAL, json={
+        "voice_rate": "+5%", "channel_name": "Updated news branding",
+        "youtube_channel": "@unverified-news-channel",
+    })
+    assert response.status_code == 200
+    assert response.json == {"ok": True, "profile_id": news["id"]}
+    saved_news = channels.get_profile(news["id"])["defaults"]
+    assert saved_news["voice_rate"] == "+5%"
+    assert saved_news["channel_name"] == "Updated news branding"
+    assert channels.get_profile(calm["id"])["defaults"] == calm_before
+    assert channels.active_profile_id() == calm["id"]
+    assert config.YOUTUBE_CHANNEL_ID == "@legacy-channel"
+    assert not written_env and not settings_file.exists()
 
 
 # ── importing an old config.py ────────────────────────────────────────────────

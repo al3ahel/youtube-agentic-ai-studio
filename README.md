@@ -4,7 +4,7 @@
 
 # YAAS: Youtube Agentic Ai Studio
 
-**Type an idea. Get a finished, fact-checked YouTube video. Free.**
+**Type an idea. Make a video you can review, edit and publish.**
 
 YAAS researches a topic, checks the facts, writes the script, records a voiceover, finds visuals, renders the video, and helps you title, tag and publish it, all from one simple local app.
 
@@ -12,10 +12,9 @@ YAAS researches a topic, checks the facts, writes the script, records a voiceove
 [![License: MIT](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
 [![Cost](https://img.shields.io/badge/Cost-$0%20per%20video-brightgreen?style=flat-square)](SETUP.md)
 [![Free APIs](https://img.shields.io/badge/Free%20APIs-19-ff70f3?style=flat-square)](#-the-free-api-stack)
-[![Tests](https://github.com/raunakpatil/youtube-agentic-ai-studio/actions/workflows/tests.yml/badge.svg)](https://github.com/raunakpatil/youtube-agentic-ai-studio/actions/workflows/tests.yml)
 [![Stars](https://img.shields.io/github/stars/raunakpatil/youtube-agentic-ai-studio?style=flat-square)](https://github.com/raunakpatil/youtube-agentic-ai-studio/stargazers)
 
-[**Quick start**](#-quick-start) · [**How it works**](#-how-it-works) · [**Free APIs**](#-the-free-api-stack) · [**Setup guide**](SETUP.md) · [**FAQ**](#-faq)
+[**Quick start**](#-quick-start) · [**Channels & schedules**](docs/CHANNELS_AND_SCHEDULES.md) · [**Motion workflow**](docs/MOTION_STUDIO.md) · [**Setup guide**](SETUP.md) · [**FAQ**](#-faq)
 
 </div>
 
@@ -27,37 +26,52 @@ https://github.com/user-attachments/assets/e94dab2d-3110-440c-b82e-b9289c0e6b51
 
 ## ⚡ Quick start
 
-### Motion Studio fork
+### Motion Studio and channel profiles
 
-This fork adds **animated HTML/SVG scenes** synchronized to measured narration.
-Choose **Motion** for diagrams, timelines, comparisons, charts and kinetic text;
-**Hybrid** adds real Pexels video footage. **Classic** keeps the original photo renderer.
-Review the storyboard, change one scene, then render a draft or final MP4 without
-recording the voice again. [Motion workflow and architecture](docs/MOTION_STUDIO.md).
+This fork adds **animated HTML/SVG scenes**, **separate YouTube channel profiles**,
+and **recurring video generation**. These features are on this fork's **main** branch.
+
+All three visual modes use the original stock-picture pipeline. **Motion** combines
+your pictures with animated diagrams, timelines, comparisons and text; **Hybrid**
+can also use real Pexels video footage. **Classic** keeps the MoviePy photo renderer.
+Review the storyboard, change one scene, then render a draft or final MP4 with the
+saved narration. Existing photo projects have an **Animate these photos** action:
+it reuses their recording and imports caption timing or labels a duration-based
+estimate. A fresh voiceover is not mandatory. [Motion workflow](docs/MOTION_STUDIO.md).
+
+Use the channel sidebar, or the selector on a small screen, for a News channel,
+an ASMR/calm channel, and other profiles. Each keeps its own voice, music, visuals,
+YouTube connection and schedules. Home shows the channel identity fetched after
+you explicitly connect it. [Channels and schedules guide](docs/CHANNELS_AND_SCHEDULES.md).
+
+![Channel sidebar, selected profile and recurring video schedule](docs/screenshots/studio-channels.png)
+
+*Example screen with sample channel names and a simulated YouTube identity; no
+live account is shown. The schedule is paused in this demonstration.*
 
 #### Rendered video samples
 
-These are actual **14-second HyperFrames MP4s** from the renderer used by
-**Make video** and the storyboard's draft/final buttons. They show all seven
-templates: kinetic text, flow, comparison, timeline, chart, explainer and footage.
+These are the final HyperFrames verification renders: **168 frames each**, lasting
+**14 seconds at 12 fps**. Seven two-second scenes exercise text, flow, comparison,
+timeline, chart, explanation and footage templates using the same renderer as
+**Make video** and the storyboard's draft/final buttons.
+
+![A frame from the landscape renderer verification video](docs/screenshots/motion-photo-demo.png)
 
 **Landscape (16:9)** — [Watch or download the MP4](docs/samples/motion-landscape.mp4)
 
-https://github.com/user-attachments/assets/479bc47c-e349-461b-b3b6-97b20a55628c
-
 <details>
 <summary><b>Portrait sample (9:16)</b></summary>
-
-https://github.com/user-attachments/assets/1b71f0e6-3086-4726-a168-bb2bede6f185
 
 [Watch or download the portrait MP4](docs/samples/motion-portrait.mp4)
 
 </details>
 
-These small renderer demos use synthetic tone audio, labelled synthetic chart
-values and a moving test-pattern clip. They are draft-resolution samples
-(640×360 and 360×640 at 12 fps), not finished narrated videos. To reproduce them,
-see [the renderer verification commands](docs/MOTION_STUDIO.md#verification).
+The landscape is **640×360** and the portrait is **360×640**. Both contain
+**synthetic test-tone audio**, a generated picture, test-pattern footage and
+illustrative chart values. They verify rendering, frame count and audio presence;
+the tones are not a voice-quality demonstration. See [sample details and
+reproduction commands](docs/samples/README.md).
 
 #### Storyboard editor
 
@@ -74,14 +88,15 @@ upstream YAAS renderer remains available as **Classic**.
 Install **Python 3.12**, **Node.js 22 or later**, and **FFmpeg with ffprobe** first.
 Use a separate environment; the full app still contains the pinned legacy MoviePy stack.
 
-Copy this repository's HTTPS clone URL from **Code → HTTPS** and replace
-`REPOSITORY_URL` below with it. Use a repository containing the `feat/motion-studio`
-branch; the original upstream repository does not include these changes.
+Copy this fork's HTTPS clone URL from **Code → HTTPS** and replace
+`REPOSITORY_URL` below with it. Clone its default **main** branch; no feature-branch
+suffix or personal username is required in these instructions. The original
+upstream repository has its own feature set.
 
 **Windows PowerShell:**
 
 ```powershell
-git clone --branch feat/motion-studio REPOSITORY_URL yaas-motion
+git clone REPOSITORY_URL yaas-motion
 cd yaas-motion
 py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install --upgrade pip
@@ -96,18 +111,28 @@ $env:STUDIO_PORT = "8765"
 **macOS / Linux:**
 
 ```bash
-git clone --branch feat/motion-studio REPOSITORY_URL yaas-motion
+git clone REPOSITORY_URL yaas-motion
 cd yaas-motion
 python3.12 -m venv .venv
+.venv/bin/python -m pip install --upgrade pip
 .venv/bin/python -m pip install -r requirements.txt
+.venv/bin/python -m pip check
 npm ci --prefix renderers/hyperframes
 node renderers/hyperframes/node_modules/hyperframes/bin/hyperframes.mjs browser ensure
 .venv/bin/python gui.py
 ```
 
-Open **Check setup** on Home, choose **Motion** and **Draft preview**, enter a topic,
-then press **Make video**. Review → Storyboard lets you scrub the local HTML preview,
-regenerate an individual scene and render the final video.
+Open **Check local setup** on Home, choose or add a channel profile, then choose
+**Motion** and **Draft preview first**. Enter a topic and press **Make video**.
+Review → Storyboard lets you scrub the local HTML preview, regenerate one scene
+and render the final video. Try **Profile settings → Preview voice** before making
+a long recording; it auditions the currently selected voice, speed and pitch.
+
+For recurring videos, use **Home → Scheduled videos → Add schedule**. Choose a
+topic, five-field cron expression and time zone. Schedules generate drafts or local
+final MP4s; publishing still requires review and a separate action. Keep the app
+running, or run `python gui.py --scheduler-only` with the same project environment.
+Storing the source on GitHub does not run jobs by itself.
 
 An OpenRouter key is optional for visual planning. Without one, local animated
 templates still work with an existing script and narration. The free router is
@@ -127,11 +152,16 @@ The app has three screens, in the order you use them:
 
 | Screen | What you do there |
 |---|---|
-| **Home** | Type a topic, choose a long video or Short, then select Motion, Hybrid or Classic. **Make video** runs the generation pipeline, including HyperFrames rendering for Motion/Hybrid. Choose **Draft preview** to inspect an initial MP4 before the final render. |
-| **Review & publish** | Watch the MP4 or inspect the live storyboard. In Motion/Hybrid, edit one scene and render a draft or final video from the updated composition. Then polish the title, description, tags and thumbnail before uploading or scheduling. |
-| **My videos** | Every finished video is saved automatically, with **Long videos** and **Shorts** in separate sections. Re-open, re-edit, re-publish, download or delete. |
+| **Home** | Select a channel, see its fetched YouTube identity, set up recurring generation, or make a video now. Motion/Hybrid runs HyperFrames during generation. Choose **Draft preview first** to inspect a first MP4 before the final render. |
+| **Review & publish** | Watch the MP4 or inspect the storyboard. Edit a scene and render it again, or use **Animate these photos** on an older project. The saved project channel stays visible. Publish only after rendering a final video and verifying that channel's connection. |
+| **My videos** | Videos are filtered by channel, with separate Long and Short sections and a Draft badge for scheduled previews. Reopen a project with its saved profile, pictures, narration and metadata. |
 
-**Settings** (top right) holds your channel name, voice, optional keys and advanced options. Everything has a sensible default.
+**Profile settings** holds each channel's voice, music and visual defaults.
+**Settings** (top right) also exposes advanced options. Provider API keys are shared
+by this local studio; YouTube sign-in tokens are separate for each profile.
+
+The screenshots below show the original Classic workflow. The channel sidebar and
+Motion storyboard extend that workflow.
 
 <table>
 <tr>
@@ -152,12 +182,14 @@ The normal **Motion/Hybrid** pipeline is:
 
 ```mermaid
 flowchart TD
-    A["Research and fact grounding"] --> B["Script and measured narration"]
-    B --> C["Scene plan and HTML/SVG composition"]
-    C --> D["HyperFrames draft or final MP4"]
-    D --> E["Review and storyboard editor"]
-    E -->|Edit a scene| C
-    E -->|Final video ready| F["Publish"]
+    A["Research and script"] --> B["Narration and timing"]
+    A --> C["Original stock-picture pipeline"]
+    B --> D["Scene plan and HTML/SVG composition"]
+    C --> D
+    D --> E["HyperFrames draft or final MP4"]
+    E --> F["Review and storyboard editor"]
+    F -->|Edit a scene| D
+    F -->|Final video ready| G["Publish to the project's channel"]
 ```
 
 HyperFrames is the video-rendering stage. The Review screen previews the same
@@ -166,10 +198,31 @@ After a scene edit, **Render draft MP4** or **Render final video** runs HyperFra
 again with the saved narration and updated storyboard. Changing a scene invalidates
 the previous MP4 until it is rendered again.
 
-This fork adds the HyperFrames path. **Classic** continues to use the original
-upstream pipeline: stock photos, narration and MoviePy rendering. Optional
+This fork adds the HyperFrames path while keeping the original picture acquisition
+available in every mode. **Classic** renders those pictures and narration with
+MoviePy. Old captions or audio-duration estimates can supply an explicitly labelled
+timeline when a legacy project lacks measured timing metadata. Optional
 OpenRouter frame review runs after rendering; it is separate from both the
 renderer and the interactive Review screen.
+
+### Channels, schedules and sound
+
+Create a **News** profile for clear narration and Hybrid visuals, and an
+**ASMR / calm** profile for slower speech and gentler photo movement. Presets are
+editable starting points. News uses retrieved background sources and trend ideas;
+it does not independently verify live breaking news. The calm preset adjusts the
+script and voice; it does not synthesize binaural recordings or authentic ASMR triggers.
+
+Music starts **off**. The default pitch is unchanged, and the optional music bed
+starts at **8%**, with speech ducking, fades and peak limiting. Motion soundtracks
+are prepared as lossless WAV files before final video encoding. Preview the voice,
+then listen to a draft before making a long final video.
+
+Schedules use a persistent queue and run one generation job at a time. Automatic
+slots missed by more than 15 minutes, including expired queued slots, are skipped;
+an interrupted job is not retried automatically. A scheduled run uses separate
+working files, archives its draft or final result, and restores the open editor.
+See [the schedule lifecycle and hosting instructions](docs/CHANNELS_AND_SCHEDULES.md).
 
 ---
 
@@ -181,20 +234,22 @@ renderer and the interactive Review screen.
 | 📚 **Fact-checked scripts** | Before writing, YAAS pulls background from Wikipedia and arXiv, tells the AI not to contradict it, and lists the sources in your description. |
 | ✍️ **Never-stuck AI** | Gemini model chain → Groq → OpenRouter → Pollinations (keyless), so a quota error doesn't kill the run. Broken JSON from models is repaired automatically. |
 | 🖼️ **Visuals without a key** | Pexels → Pixabay → NASA (public domain, space topics) → Openverse (CC, credited) → AI-generated images. Credits are written into the description for you. |
-| 🎙️ **Free voice** | Microsoft Edge neural voices with word-synced captions. |
-| 🎞️ **Motion / Hybrid / Classic** | HTML/SVG motion templates and real stock video in 16:9 or 9:16, with the original photo renderer retained as Classic. Measured narration drives scene boundaries and chapters. |
+| 🎙️ **Voice audition** | Preview an Edge neural voice with your unsaved speed and pitch before recording. Fresh narration stores measured section timing and available word events; legacy recordings can reuse captions or clearly labelled timing estimates. |
+| 🎞️ **Motion / Hybrid / Classic** | Original pipeline photos, HTML/SVG explanations and optional real stock video in 16:9 or 9:16. Keep an old recording and use **Animate these photos** to build a motion draft. |
 | 🎛️ **Editable storyboard** | Scrub the local HTML preview, regenerate one scene and render a draft or final MP4 from the same plan. Full projects, narration, timing, media and credits are archived for reopening. |
 | 👁️ **Optional visual review** | An explicitly enabled free vision model checks a few rendered frames for visible layout problems. Review is advisory and does not certify factual accuracy. |
 | 🏷️ **Your brand** | Your channel name appears in the intro, on Shorts and on thumbnails. Change the text or switch it off in Settings. |
+| 📺 **Channel profiles** | Sidebar/mobile selector, fetched YouTube identity, separate sign-ins, channel-bound projects, and editable General, News and ASMR/calm defaults. |
 | ✦ **Title Lab** | 6 alternative titles written from what people actually search, each scored. |
 | 🔎 **Findability score** | 11 checks based on YouTube best practice (length, keyword placement, chapters, tags, hashtags, call to action), each with a tip. |
 | 🔤 **Keyword ideas** | Real YouTube autocomplete suggestions + related terms, one click to add as tags. |
 | 🖌️ **Thumbnail designer** | 4 styles (Impact, Cinematic, Split, Studio) with live previews, short punchy text with a highlighted word, AI text ideas, and any photo from the video or brand-new AI artwork as the background. 1280×720 for long videos, 1080×1920 for Shorts, always under YouTube's 2 MB limit. |
-| 📅 **Schedule uploads** | Upload now or pick a time. Downloads for MP4, thumbnail and captions (SRT). |
+| ⏱️ **Scheduled generation** | Per-channel cron and IANA time zone, at least 15 minutes between a schedule's automatic occurrences, persistent queue, draft archives and manual Run now. Keep YAAS running; generated videos wait for review. |
+| 📅 **Publish after review** | Upload a final video now or choose its YouTube publication time. This remains separate from recurring generation. Downloads for MP4, thumbnail and captions (SRT). |
 | 📊 **Your stats** | Production history, plus live subscribers and views per upload with a free YouTube Data API key. |
 | 🗂️ **My videos** | Every render archived with its script, sources, photos and metadata. |
 | ©️ **Credits** | Every video carries a semi-transparent **raunakpatil.com** watermark, and descriptions end with *Made with YAAS by Raunak Patil · raunakpatil.com*. |
-| 🎵 **Background music** | Drop MP3s in `music library/` and they're shuffled and looped to fit. |
+| 🎵 **Optional background music** | Off by default. Pick a local music folder for each profile; a quiet bed loops with fades, ducks beneath speech and uses peak limiting. No synthetic sound effects are added. |
 
 ---
 
@@ -232,13 +287,25 @@ Home → **Connected services → Test connections** pings every service and sho
 
 ## 🔑 Keys and settings
 
-Keys live in `.env` (git-ignored) and nothing else stores them. Either paste them in **Settings** or copy `.env.example`:
+Provider keys entered in **Settings** live in `.env` (git-ignored) and are shared by
+the local studio. Process environment variables also work. Either paste the keys
+in **Settings** or copy `.env.example`:
 
 ```bash
 cp .env.example .env
 ```
 
-Non-secret settings (voice, channel description, video style) are saved to `settings.json` (git-ignored), so `git pull` never clashes with them. The defaults live in `config.py`, documented line by line.
+The original default profile keeps its compatible settings in `settings.json`.
+Additional profiles and fetched channel metadata live in `.yaas/channels.json`;
+schedules and queued jobs live in `.yaas/schedules.sqlite3`. These files are
+git-ignored. The defaults live in `config.py`.
+
+YouTube tokens are separate: the default profile can keep the legacy
+`youtube_token.json`, while additional profiles use
+`.yaas/channels/<profile-id>/youtube_token.json`. A saved project keeps its profile
+ID. Reconnecting a verified profile to a different YouTube channel is blocked;
+create another profile for that channel. Back up the local data and `output/library/`
+if you move the studio to another machine. [Storage and migration details](docs/CHANNELS_AND_SCHEDULES.md#local-storage-and-backups).
 
 ---
 
@@ -276,6 +343,9 @@ Non-secret settings (voice, channel description, video style) are saved to `sett
 │   ├── pipeline.py         ← blueprint: run / stop, live progress, status
 │   ├── review.py           ← blueprint: description, thumbnail designer, Title Lab + SEO
 │   ├── library.py          ← blueprint: saved videos
+│   ├── channels.py         ← profiles, fetched channel identities, isolated tokens
+│   ├── schedules.py        ← persistent queue and recurring generation
+│   ├── audio.py            ← explicit voice-preview endpoint
 │   ├── upload.py           ← blueprint: YouTube publishing
 │   ├── settings.py         ← blueprint: keys + settings
 │   ├── dashboard.py        ← blueprint: trends, channel stats, API health
@@ -285,7 +355,8 @@ Non-secret settings (voice, channel description, video style) are saved to `sett
 │   ├── templates/index.html← the page
 │   └── static/             ← app.css + js/ (one file per screen)
 ├── tests/                  ← pytest suite (offline, no keys needed)
-├── docs/screenshots/       ← README images
+├── docs/                   ← motion/channel guides, samples and README images
+├── .yaas/                  ← local profiles, tokens and queue (git-ignored)
 └── output/                 ← generated files (git-ignored)
     └── library/            ← every finished video, archived
 ```
@@ -299,9 +370,12 @@ python -m pip install pytest
 python -m pytest -q
 ```
 
-The Python suite runs offline without API keys. It covers the original app plus
-measured audio, stale-cache rejection, free model selection, scene planning,
-preview isolation, project reopening and renderer cancellation. See
+The Python suite runs offline without API keys. It covers measured and imported
+legacy timing, profile/token isolation, verified publishing, schedule validation,
+queue recovery, audio mixing, scene planning, preview isolation and project reopening.
+Scheduling uses `croniter==6.2.4` and `tzdata>=2025.2` from `requirements.txt`.
+Browser checks cover channel switching, schedules, explicit voice preview, narrow
+layouts and legacy photo conversion as well as the renderer. See
 [Motion Studio verification](docs/MOTION_STUDIO.md#verification) for browser tests
 and real HyperFrames MP4 smoke renders in both orientations.
 
@@ -360,7 +434,39 @@ Your system is missing the fonts the renderer looks for. Install DejaVu (`sudo a
 <details>
 <summary><b>YouTube upload fails with "access denied"</b></summary>
 
-Delete `youtube_token.json` and upload again to redo sign-in. Make sure your Google account is a **Test user** on the OAuth consent screen.
+Select the video's profile on Home and use **Reconnect YouTube**. Make sure your
+Google account is a **Test user** on your OAuth consent screen. Choose the same
+channel already bound to that profile; use a new profile for another channel.
+The app checks the authenticated channel again before uploading.
+</details>
+
+<details>
+<summary><b>Do I have to record old narration again for Motion?</b></summary>
+
+No. Open the saved photo project and choose **Animate these photos**. YAAS reuses
+the recording, imports existing SRT cues when possible, or estimates section timing
+from the audio duration and labels it. If only the old MP4 remains, its soundtrack
+can be recovered, including any music already mixed into it. That music cannot be
+isolated from the recording. Fresh narration is useful when you change the spoken
+script or want the speech service's word timing events, when available.
+</details>
+
+<details>
+<summary><b>Do GitHub or cron expressions run videos while my computer is off?</b></summary>
+
+No. Keep `python gui.py` running, or use `python gui.py --scheduler-only` on an
+always-on machine with this project's dependencies, configuration and media.
+The GitHub repository stores source and CI; it is not a running studio. Automatic
+slots older than 15 minutes are skipped, and interrupted runs require a manual
+retry. Recurring generation does not publish to YouTube.
+</details>
+
+<details>
+<summary><b>Why did an earlier link contain /tree/feat/motion-studio?</b></summary>
+
+That URL opened a development branch on GitHub. These enhancements are now on
+this fork's **main** branch, so use the repository's normal root page and clone
+command. The branch URL never represented a running cloud application.
 </details>
 
 ---
@@ -371,8 +477,11 @@ Delete `youtube_token.json` and upload again to redo sign-in. Make sure your Goo
 - [x] Scheduled uploads
 - [x] Analytics (channel stats + production history)
 - [x] Trend-aware topics and fact-checked scripts
-- [ ] Stock video B-roll (Pexels / Pixabay video)
-- [ ] Multi-channel profiles
+- [x] Stock video B-roll (Pexels in Hybrid mode)
+- [x] Multi-channel profiles and verified publishing identity
+- [x] Per-channel recurring generation with a persistent queue
+- [x] Reuse old photos and narration in Motion
+- [x] Voice preview and quieter optional music mixing
 - [ ] Custom intro/outro clips
 - [ ] Caption upload to YouTube
 

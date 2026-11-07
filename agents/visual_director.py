@@ -14,12 +14,14 @@ import math
 import re
 import tempfile
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import config
 from apis import openrouter, stock_video
 
 TEMPLATES = frozenset({"flow", "comparison", "timeline", "chart", "explain", "text", "footage"})
 ACTIONS = frozenset({"reveal", "highlight", "connect", "draw", "count"})
+IMAGE_EXTENSIONS = frozenset({".jpg", ".jpeg", ".png", ".webp"})
 _STOP_WORDS = frozenset(
     "a an the and or of to is are was were in on for at this that these those "
     "with from it its as by we you your our but can will then than into "
@@ -88,7 +90,8 @@ def _normalise_timeline(script: dict, timeline: dict) -> tuple[dict, list[str]]:
     if width % 2 or height % 2:
         raise ValueError("Video dimensions must be even.")
     raw_sections = timeline.get("sections")
-    warnings = []
+    warnings = [_text(value, 500) for value in timeline.get("warnings", [])[:40]
+                if isinstance(value, str)] if isinstance(timeline.get("warnings", []), list) else []
     if not raw_sections:
         duration = timeline.get("duration", timeline.get("total_duration", timeline.get("duration_seconds")))
         duration = _finite(duration, "timeline duration", 0.01)
@@ -129,6 +132,9 @@ def _normalise_timeline(script: dict, timeline: dict) -> tuple[dict, list[str]]:
                 section[field] = _finite(raw[field], field)
         if raw.get("caption_timing") in {"word", "phrase", "estimated"}:
             section["caption_timing"] = raw["caption_timing"]
+        for field in ("timing_source", "start_boundary"):
+            if field in raw:
+                section[field] = _text(raw[field], 80)
         sections.append(section)
     sections.sort(key=lambda section: section["start"])
     final_end = sections[-1]["start"] + sections[-1]["duration"]
@@ -169,8 +175,16 @@ def _normalise_timeline(script: dict, timeline: dict) -> tuple[dict, list[str]]:
         if text and start < end <= duration + tolerance:
             words.append({"word": text, "start": start, "end": min(end, duration),
                           "section_id": str(raw.get("section_id", ""))})
-    return {"fps": fps, "width": width, "height": height, "duration": round(duration, 6),
-            "sections": sections, "captions": captions, "words": words}, warnings
+    result = {"fps": fps, "width": width, "height": height, "duration": round(duration, 6),
+              "sections": sections, "captions": captions, "words": words}
+    for field in ("timing_source", "timing_precision", "captions_source", "script_signature", "timeline_signature"):
+        if field in timeline:
+            result[field] = _text(timeline[field], 256)
+    if "audio_duration" in timeline:
+        result["audio_duration"] = _finite(timeline["audio_duration"], "audio duration", .001)
+    if "narration_reused" in timeline:
+        result["narration_reused"] = timeline["narration_reused"] is True
+    return result, warnings
 
 
 def _short_label(text: object) -> str:
@@ -187,10 +201,15 @@ def _semantic_items(narration: str, section: dict, index: int, count: int) -> li
     phrases = re.split(r"(?<=[.!?؟])\s+|[;\n]+", narration)
     if len(phrases) < 2:
         phrases = re.split(r",\s*|\s+(?:then|because|while|whereas|therefore|ثم|لأن|بينما)\s+", narration, flags=re.IGNORECASE)
-    for phrase in phrases:
-        label = _short_label(phrase)
-        if label and label.casefold() not in {value.casefold() for value in labels}:
-            labels.append(label)
+    # Existing script bullets already express the visual takeaways. Repeating
+    # each narrated sentence beside them creates crowded, redundant cards.
+    if len(labels) < 2:
+        for phrase in phrases:
+            label = _short_label(phrase)
+            if label and label.casefold() not in {value.casefold() for value in labels}:
+                labels.append(label)
+            if len(labels) >= 4:
+                break
     if len(labels) < 2:
         words = narration.split()
         if len(words) >= 4:
@@ -271,13 +290,18 @@ def _anchor(label: str, events: list[dict], used: set[int]) -> tuple[float, int]
     return None
 
 
-def _beats(scene: dict, words: list[dict], fps: int) -> tuple[list[dict], str]:
+def _beats(scene: dict, words: list[dict], fps: int, captions: list[dict] | None = None) -> tuple[list[dict], str]:
     duration = scene["duration"]
     ceiling = max(0, duration - 1 / fps)
     events = [event for event in words if scene["start"] <= event["start"] < scene["start"] + duration]
     used: set[int] = set()
+    phrases = [{"word": cue["text"], "start": max(scene["start"], cue["start"])}
+               for cue in (captions or [])
+               if cue["start"] < scene["start"] + duration and cue["end"] > scene["start"]]
+    used_phrases: set[int] = set()
     beats = [{"time": 0.0, "target": "title", "action": "reveal"}]
     matched = 0
+    phrase_matched = 0
     reveals = []
     for index, item in enumerate(scene["items"]):
         anchor = _anchor(item["label"], events, used)
@@ -287,7 +311,14 @@ def _beats(scene: dict, words: list[dict], fps: int) -> tuple[list[dict], str]:
             used.add(event_index)
             when = absolute - scene["start"] - 0.12
         else:
-            when = duration * (0.12 + 0.62 * index / max(1, len(scene["items"]) - 1))
+            phrase = _anchor(item["label"], phrases, used_phrases)
+            if phrase:
+                phrase_matched += 1
+                absolute, phrase_index = phrase
+                used_phrases.add(phrase_index)
+                when = absolute - scene["start"]
+            else:
+                when = duration * (0.12 + 0.62 * index / max(1, len(scene["items"]) - 1))
         when = round(min(ceiling, max(0, when)), 6)
         reveals.append(when)
         beats.append({"time": when, "target": f"item-{index}", "action": "reveal"})
@@ -303,7 +334,9 @@ def _beats(scene: dict, words: list[dict], fps: int) -> tuple[list[dict], str]:
         highlight = min(ceiling, max(when, min(next_reveal - 0.1, when + duration * 0.12)))
         beats.append({"time": round(highlight, 6), "target": f"item-{index}", "action": "highlight"})
     beats.sort(key=lambda beat: (beat["time"], beat["action"] != "reveal"))
-    quality = "word" if matched == len(scene["items"]) else "mixed" if matched else "distributed"
+    quality = ("word" if matched == len(scene["items"]) else
+               "phrase" if phrase_matched == len(scene["items"]) else
+               "mixed" if matched or phrase_matched else "distributed")
     return beats, quality
 
 
@@ -343,7 +376,7 @@ def _offline_scenes(script: dict, plan: dict) -> tuple[list[dict], dict[str, dic
                 "visual_goal": _text(f"Explain: {narration}", 180),
                 "items": items,
             }
-            scene["beats"], scene["beat_timing"] = _beats(scene, plan["words"], plan["fps"])
+            scene["beats"], scene["beat_timing"] = _beats(scene, plan["words"], plan["fps"], plan["captions"])
             sources[scene["id"]] = {"section": original, "narration": narration}
             scenes.append(scene)
     return scenes, sources
@@ -433,7 +466,7 @@ def _apply_design(plan: dict, design: dict, sources: dict) -> set[str]:
             scene["items"] = copy.deepcopy(chart_data)
         else:
             scene["items"] = [{"label": _text(item["label"], 64)} for item in update["items"]]
-        scene["beats"], scene["beat_timing"] = _beats(scene, plan.get("words", []), plan["fps"])
+        scene["beats"], scene["beat_timing"] = _beats(scene, plan.get("words", []), plan["fps"], plan.get("captions", []))
     return wanted_footage
 
 
@@ -466,14 +499,91 @@ def _attach_footage(plan: dict, sources: dict, output_dir, wanted: set[str]) -> 
         if footage is None:
             continue
         scene["footage"] = {key: footage[key] for key in ("path", "source_url", "credit", "in_point")}
+        scene.pop("image", None)
         scene["template"] = "footage"
-        scene["beats"], scene["beat_timing"] = _beats(scene, plan.get("words", []), plan["fps"])
+        scene["beats"], scene["beat_timing"] = _beats(scene, plan.get("words", []), plan["fps"], plan.get("captions", []))
         successful += 1
     reason = "downloaded" if successful else stock_video.get_status()["reason"] if attempts else "no_eligible_scenes"
     plan["stock_status"] = {"available": bool(successful), "reason": reason,
                             "provider": "pexels", "clips": successful}
     if attempts > successful:
         plan["warnings"].append("Some footage searches had no usable clip; animated scenes cover those sections.")
+
+
+def _source_url(value) -> str:
+    """Attribution is inert metadata; only ordinary public web URLs are retained."""
+    if not isinstance(value, str) or len(value) > 2000:
+        return ""
+    try:
+        parsed = urlsplit(value)
+        if parsed.scheme not in {"https", "http"} or not parsed.hostname or parsed.username or parsed.password:
+            return ""
+    except ValueError:
+        return ""
+    return value
+
+
+def _attach_images(plan: dict, image_map: dict | None, output_dir) -> None:
+    """Reuse the classic pipeline's downloaded pictures; never fetch model URLs."""
+    if image_map is None:
+        return
+    if not isinstance(image_map, dict):
+        raise ValueError("Image map must contain local image paths keyed by section ID.")
+    output = Path(output_dir).expanduser().resolve() if output_dir is not None else None
+    roots = [Path(config.OUTPUT_DIR).expanduser().resolve()]
+    if output is not None:
+        roots.append(output)
+    credits = {}
+    if output is not None:
+        try:
+            records = json.loads((output / "credits.json").read_text(encoding="utf-8"))
+            if isinstance(records, list):
+                credits = {Path(row["file"]).name: row for row in records[:1000]
+                           if isinstance(row, dict) and isinstance(row.get("file"), str)}
+        except (OSError, ValueError):
+            pass
+    images = {}
+    rejected = 0
+    for section_id, values in image_map.items():
+        values = [values] if isinstance(values, (str, Path)) else values
+        if not isinstance(values, (list, tuple)):
+            continue
+        valid = []
+        for value in values[:20]:
+            if not isinstance(value, (str, Path)) or "://" in str(value) or str(value).startswith(("//", "\\\\")):
+                rejected += 1
+                continue
+            path = Path(value).expanduser()
+            candidates = [path] if path.is_absolute() else ([output / path] if output else []) + [path]
+            path = next((candidate.resolve() for candidate in candidates if candidate.is_file()), None)
+            if (path is None or path.suffix.lower() not in IMAGE_EXTENSIONS
+                    or not any(path.is_relative_to(root) for root in roots)):
+                rejected += 1
+                continue
+            record = credits.get(path.name, {})
+            source = _text(record.get("source"), 80)
+            author = _text(record.get("author"), 100)
+            credit = _text(record.get("credit") or " · ".join(part for part in (author, source) if part), 200)
+            asset = {"path": str(path), "source": source, "credit": credit,
+                     "source_url": _source_url(record.get("link") or record.get("url") or record.get("source_url")),
+                     "license": _text(record.get("license"), 160)}
+            if asset not in valid:
+                valid.append(asset)
+        images[str(section_id)] = valid
+    used = {}
+    attached = 0
+    for scene in plan["scenes"]:
+        choices = images.get(scene["section_id"], [])
+        if not choices or scene["template"] in {"chart", "footage"}:
+            continue
+        index = used.get(scene["section_id"], 0)
+        scene["image"] = copy.deepcopy(choices[index % len(choices)])
+        used[scene["section_id"]] = index + 1
+        attached += 1
+    plan["image_status"] = {"available": bool(attached), "scenes": attached,
+                            "reason": "reused_local_images" if attached else "no_local_images"}
+    if rejected:
+        plan["warnings"].append("Some saved pictures were missing or outside the project image directory; those scenes use graphics.")
 
 
 def validate_plan(plan: dict) -> dict:
@@ -518,7 +628,7 @@ def validate_plan(plan: dict) -> dict:
         if not isinstance(scene, dict) or not isinstance(scene.get("id"), str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,80}", scene["id"]):
             raise ValueError("A scene needs a safe string ID.")
         if set(scene) - {"id", "section_id", "template", "start", "duration", "title",
-                         "visual_goal", "items", "beats", "footage", "beat_timing"}:
+                         "visual_goal", "items", "beats", "footage", "image", "beat_timing"}:
             raise ValueError("The scene contains unsupported fields.")
         if scene["id"] in seen or not isinstance(scene.get("section_id"), str) or scene["section_id"] not in lookup:
             raise ValueError("Scene IDs must be unique and reference an existing section.")
@@ -562,8 +672,21 @@ def validate_plan(plan: dict) -> dict:
                     or beat["target"] not in targets or not isinstance(beat.get("action"), str)
                     or beat["action"] not in ACTIONS):
                 raise ValueError("A motion beat is outside its scene or uses an unsupported action.")
-        if scene.get("beat_timing", "distributed") not in {"word", "mixed", "distributed"}:
+        if scene.get("beat_timing", "distributed") not in {"word", "phrase", "mixed", "distributed"}:
             raise ValueError("The beat timing quality is invalid.")
+        if "image" in scene:
+            asset = scene["image"]
+            if not isinstance(asset, dict) or set(asset) - {"path", "source", "source_url", "credit", "license"}:
+                raise ValueError("Image contains unsupported fields.")
+            path = asset.get("path")
+            if (not isinstance(path, str) or len(path) > 4096 or Path(path).suffix.lower() not in IMAGE_EXTENSIONS
+                    or "://" in path or path.startswith(("//", "\\\\"))):
+                raise ValueError("Scene images must be downloaded local JPEG, PNG, or WebP files.")
+            for field, limit in (("source", 80), ("source_url", 2000), ("credit", 200), ("license", 160)):
+                if not isinstance(asset.get(field, ""), str) or len(asset.get(field, "")) > limit:
+                    raise ValueError("Image attribution is invalid.")
+            if asset.get("source_url") and not _source_url(asset["source_url"]):
+                raise ValueError("Image source URL is invalid.")
         if "footage" in scene:
             footage = scene["footage"]
             if not isinstance(footage, dict) or set(footage) - {"path", "source_url", "credit", "in_point"}:
@@ -621,7 +744,7 @@ def _write_plan(plan: dict, output_dir) -> None:
 
 
 def plan_scenes(script: dict, timeline: dict, mode: str = "motion",
-                output_dir=None, use_ai: bool = True) -> dict:
+                output_dir=None, use_ai: bool = True, image_map: dict | None = None) -> dict:
     """Create a validated scene manifest, optionally refining it with free AI."""
     if mode not in {"motion", "hybrid", "footage"}:
         raise ValueError("Choose motion or hybrid visual planning.")
@@ -648,9 +771,13 @@ def plan_scenes(script: dict, timeline: dict, mode: str = "motion",
         except (openrouter.OpenRouterError, ValueError, KeyError, TypeError) as exc:
             plan["ai_status"] = {"status": "fallback", "reason": getattr(exc, "code", "invalid_design")}
             plan["warnings"].append("Visual AI was unavailable or returned an invalid design; local animated templates are ready.")
+    _attach_images(plan, image_map, output_dir)
     _attach_footage(plan, sources, output_dir, wants_footage)
+    if "image_status" in plan:
+        plan["image_status"]["scenes"] = sum(bool(scene.get("image")) for scene in plan["scenes"])
+        plan["image_status"]["available"] = bool(plan["image_status"]["scenes"])
     if any(scene["beat_timing"] != "word" for scene in plan["scenes"]):
-        plan["warnings"].append("Some motion beats use approximate timing within measured narration sections.")
+        plan["warnings"].append("Some motion beats follow subtitle cues or approximate positions within narration sections; they are not exact word timings.")
     plan["warnings"] = list(dict.fromkeys(plan["warnings"]))
     validate_plan(plan)
     if output_dir is not None:
@@ -708,7 +835,9 @@ def regenerate_scene(plan: dict, scene_id: str, script: dict, instructions: str 
     if original.get("footage"):
         replacement["footage"] = copy.deepcopy(original["footage"])
         replacement["template"] = "footage"
-    replacement["beats"], replacement["beat_timing"] = _beats(replacement, result.get("words", []), result["fps"])
+    if original.get("image"):
+        replacement["image"] = copy.deepcopy(original["image"])
+    replacement["beats"], replacement["beat_timing"] = _beats(replacement, result.get("words", []), result["fps"], result.get("captions", []))
     result["scenes"][index] = replacement
     result["warnings"] = list(dict.fromkeys(result.get("warnings", [])))
     return validate_plan(result)

@@ -12,10 +12,13 @@ def configured() -> bool:
     return bool(getattr(config, "YOUTUBE_API_KEY", "")) and bool(getattr(config, "YOUTUBE_CHANNEL_ID", ""))
 
 
-@ttl_cache(10 * 60)
 def channel_stats() -> dict:
-    key = config.YOUTUBE_API_KEY
-    ident = config.YOUTUBE_CHANNEL_ID.strip()
+    """Resolve context-local identity before looking up cached public data."""
+    return _channel_stats(config.YOUTUBE_API_KEY, config.YOUTUBE_CHANNEL_ID.strip())
+
+
+@ttl_cache(10 * 60)
+def _channel_stats(key: str, ident: str) -> dict:
     params = {"part": "snippet,statistics,contentDetails", "key": key}
     if ident.startswith("@"):
         params["forHandle"] = ident
@@ -52,3 +55,7 @@ def channel_stats() -> dict:
         "videos":      int(st.get("videoCount", 0)),
         "recent":      sorted(recent, key=lambda v: v["published"]),
     }
+
+
+# The Settings screen has always invalidated this public function's cache.
+channel_stats.cache_clear = _channel_stats.cache_clear

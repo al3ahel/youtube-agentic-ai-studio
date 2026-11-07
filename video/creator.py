@@ -814,6 +814,9 @@ def create_video(script: dict, audio_path: str, output_dir: str,
     video_type: "normal" | "shorts"
     """
     global W, H, FPS
+    # JSON caches stringify numeric IDs; authored scripts can also use text
+    # section IDs. Match either form without coercing valid IDs to integers.
+    image_map = {str(key): value for key, value in (image_map or {}).items()}
 
     # Clear font cache when dimensions change (Shorts vs Normal have different
     # optimal sizes, but the same font object can be shared across renders).
@@ -839,7 +842,7 @@ def create_video(script: dict, audio_path: str, output_dir: str,
         all_images = []
         for section in script["sections"]:
             sid   = section["id"]
-            paths = (image_map or {}).get(sid, [])
+            paths = image_map.get(str(sid)) or []
             if isinstance(paths, str):
                 paths = [paths]   # handle single-path fallback
             for p in paths:
@@ -904,12 +907,14 @@ def create_video(script: dict, audio_path: str, output_dir: str,
             if measured:
                 section_start_t = measured[i]["start"]
             s_type   = section.get("section_type", "content")
-            print(f"     [{section['id']:02d}] {section['title']:<42} {duration:5.1f}s  [{s_type}]")
+            sid = str(section["id"])
+            section_label = sid.zfill(2) if sid.isdigit() else sid
+            print(f"     [{section_label}] {section['title']:<42} {duration:5.1f}s  [{s_type}]")
 
             # Load all B-roll images for this section (list of np arrays)
             bg_images = []
             if image_map:
-                raw = image_map.get(section["id"])
+                raw = image_map.get(sid)
                 if raw is None:
                     raw = []
                 elif isinstance(raw, str):

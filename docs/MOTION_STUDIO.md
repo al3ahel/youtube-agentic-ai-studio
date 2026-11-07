@@ -1,73 +1,154 @@
 # Motion Studio
 
-This fork adds a narration-driven video path to YAAS. The Python app researches,
-writes and records a script. A visual director produces a constrained JSON
-storyboard. Fixed HTML/SVG templates animate that storyboard on a paused GSAP
-timeline, and the pinned HyperFrames CLI captures it to an MP4 with narration.
+Motion Studio adds a narration-driven video path to YAAS while reusing the
+original stock-picture pipeline. The app researches a topic, writes a script,
+finds pictures and records narration. A visual director produces a constrained
+JSON storyboard. Fixed HTML/SVG templates animate pictures and explanatory
+graphics on a paused GSAP timeline, and HyperFrames captures it as an MP4.
+
+The storyboard in **Review** is part of that same pipeline. HyperFrames already
+runs during **Make video** in Motion and Hybrid modes; Review lets you inspect,
+change and render the saved composition again.
 
 ## Choose a mode
 
 | Mode | Visuals | Requirements |
 | --- | --- | --- |
-| Motion (default) | Flow diagrams, comparisons, timelines, supplied-data charts, explainer cards and kinetic text | Node 22+, FFmpeg/ffprobe, installed renderer/browser |
-| Hybrid | Motion scenes plus downloaded Pexels video clips with source credits | Same as Motion; optional Pexels key |
-| Classic | Existing photo zooms, captions and transitions | Original MoviePy/NumPy dependencies |
+| Motion | Pipeline pictures with gentle motion, flow diagrams, comparisons, timelines, supplied-data charts and explanatory text | Node 22+, FFmpeg/ffprobe, installed renderer/browser |
+| Hybrid | The Motion composition plus downloaded Pexels video clips with source credits | Same as Motion; optional Pexels key |
+| Classic | The original MoviePy photo renderer, captions and transitions | Original MoviePy/NumPy dependencies |
 
-Hybrid falls back to animated scenes when footage is unavailable. Motion does not
-download a series of still photographs. All three modes retain the existing title,
+Every mode can use the existing picture sources. Hybrid falls back to the local
+photo/motion composition when suitable footage is unavailable. Photos remain
+available for thumbnails and project reopening. All three modes retain title,
 description, thumbnail and YouTube publishing tools.
 
-## Workflow
+Visual, narrator and music defaults belong to the selected channel profile.
+The News preset starts with Hybrid; ASMR/calm starts with slower, gentler Classic
+photo motion. Both are editable. See [Channels and schedules](CHANNELS_AND_SCHEDULES.md).
 
-1. Follow the [quick start](../README.md#-quick-start), then click **Check setup**.
-2. Choose Motion or Hybrid and **Draft preview**. Enter a topic and make a video.
-3. Open **Review → Storyboard**. Play or scrub the local HTML preview and inspect
-   the scenes alongside their visual goals.
-4. Select a scene, enter a change such as "use a comparison" or "less text", and
-   regenerate it. This preserves narration and the measured scene boundaries.
-5. Render a draft to check the MP4, or choose **Render final**. These actions reuse
-   the storyboard and voiceover; they do not repeat the research or planning calls.
-6. Final renders are archived. Reopening one restores its audio, timeline,
-   storyboard, local media, credits, preview and optional review result.
+## Make and review a new video
 
-Drafts are separate from final videos and cannot be uploaded as a final render.
-Changing a scene invalidates the previous final output. A render-only run preserves
-the prepared soundtrack, even if global music settings have since changed; select
-the Music step to apply new music settings. Changing spoken script text requires
-new narration and visual planning.
+1. Follow the [quick start](../README.md#-quick-start), then click **Check local setup**.
+2. Select the channel in the sidebar or mobile selector. In **Profile settings**,
+   choose a voice and use **Preview voice** to hear the current speed and pitch
+   before saving.
+3. Choose Motion or Hybrid and **Draft preview first**. Enter a topic and make a video.
+4. Open **Review → Storyboard**. Play or scrub the HTML preview and inspect the
+   scenes beside their visual goals.
+5. Select a scene, enter a change such as “use a comparison” or “less text”, and
+   regenerate it. The recording and existing scene boundaries are preserved.
+6. Choose **Render draft MP4** to check the encode, or **Render final video** when
+   ready. These actions reuse the storyboard and recording.
+7. Review the final video, metadata and channel identity, then publish separately.
+
+The HTML preview runs the same composition used for encoding. Scrubbing it does
+not create another MP4. Scene edits invalidate the previous final render, and a
+draft cannot be published as a final video. Changing the spoken script requires
+new narration and visual planning; merely changing a scene does not.
+
+Final renders are archived. Scheduled runs also archive their drafts, marked
+**Draft** in **My videos**. Opening an archive restores its saved channel profile,
+script, audio, timing, pictures, storyboard, local media and credits.
+
+## Animate an existing photo project
+
+1. Open the project from **My videos**.
+2. On **Review**, choose **Animate these photos**.
+3. Inspect the imported timing note and storyboard. Adjust any scene that needs
+   a different picture, explanation or layout.
+4. Render a draft to inspect the result, then render the final video.
+
+This action runs only **Visuals** and **Video**. It does not research the topic,
+replace the project's pictures or record its voice again. The active Review
+project keeps its saved channel even if the sidebar had been showing another one.
+
+YAAS uses the best available timing information:
+
+| Available material | What YAAS reuses | What the timing means |
+| --- | --- | --- |
+| Matching narration and measured timing manifest | The recording and saved section/word events | Section boundaries come from decoded audio; individual word alignment depends on events supplied by the speech service |
+| Old narration and SRT captions | The recording and caption cue times | Cue timing is imported; section placement or word positions inferred from those cues are explicitly identified |
+| Old narration without usable captions | The recording's measured total duration | Section timing is estimated and shown as an estimate in Review |
+| Old MP4 without a separate recording | Audio recovered from the MP4, plus saved captions when available | The soundtrack is reused under the same imported/estimated timing rules |
+
+Recovering an MP4's soundtrack preserves everything mixed into it, including old
+background music or effects. It does not separate those sounds from speech.
+Use a clean original recording, or regenerate narration, if you want to replace
+an already mixed soundtrack.
+
+Older archives sometimes contain pictures without their original section-to-photo
+map. YAAS reuses the available files and surfaces an **image reuse note** in
+Review; check that each scene's picture makes sense.
+
+A fresh narration run is optional for unchanged legacy speech. It is useful when
+you want the speech service's own word events rather than inferred timing, though
+the service may still omit those events. Estimated legacy timing is never presented
+as freshly measured word synchronization.
 
 ## How synchronization works
 
-Narration is recorded section by section and decoded to 48 kHz mono PCM. The app
-joins the actual samples and saves a WAV, SRT and `narration.timings.json` manifest.
-Returned word events are preserved. If the speech service omits them, captions
-use phrase events or an explicitly estimated fallback within each measured section.
+Fresh narration is recorded section by section and decoded to 48 kHz mono PCM.
+YAAS joins the actual samples and saves a WAV, SRT and
+`narration.timings.json` manifest. Available word events are preserved. If the
+speech service omits them, captions use phrase events or an explicitly estimated
+fallback within each measured section.
 
-`video/timeline.py` converts absolute audio positions to frame boundaries. It
-rounds cumulative positions rather than repeatedly rounding durations, and covers
-the final partial frame. A hash of the audio and timeline rejects stale combinations
-of speech, captions and storyboard. No transition shortens the measured clock.
-Chapters are emitted only from matching measured section timing.
+`video/timeline.py` converts audio positions to frame boundaries. It rounds
+cumulative positions instead of repeatedly rounding durations and covers the
+final partial frame. A hash of the audio and timeline rejects stale combinations
+of speech, captions and storyboard. Transitions do not shorten the narration
+clock. Legacy imports carry their timing source and warnings through the plan.
 
-Motion beats anchor to spoken labels when matching word events exist; otherwise
-the plan records distributed or mixed timing. Section synchronization does not
-imply every individual diagram reveal is perfectly aligned to a spoken word.
+Motion beats anchor to spoken labels when matching word events exist. Otherwise,
+the plan records distributed or mixed timing. An audio-length match does not imply
+that every diagram reveal lands exactly on an individual spoken word. Review the
+preview, particularly when importing older recordings.
 
-## Templates and data contract
+## Voice, music and visual pacing
+
+The default narration pace is natural (`+0%`) and pitch is unchanged (`+0Hz`).
+The ASMR/calm preset uses slower speech (`-15%`) and calmer script instructions.
+It is a calm spoken-video preset, not a binaural audio or ASMR-trigger generator.
+Use an appropriate original recording for that kind of content.
+
+**Preview voice** makes a short sample only after you click it. It uses the
+editor's unsaved voice, rate and pitch. Saving the profile applies those choices
+to future narration; it does not alter an already recorded project.
+
+Background music is **off by default**. When enabled, its default level is
+`0.08` (8%). The FFmpeg mixer picks a readable local track, loops a stable bed
+with softened seams, fades it in and out, ducks it beneath speech, and limits
+peaks. Motion prepares the mixed soundtrack as lossless WAV before video encoding.
+No generated sound effects or test tones are added to normal videos.
+
+A render-only run preserves its prepared soundtrack even if profile settings have
+changed. Select the **Music** step to rebuild the bed with the current settings,
+or **Narration** when you want a different recorded voice. Missing or unreadable
+music preserves the original narration.
+
+Photo movement and explanatory transitions are gentler than the earlier demo.
+The [verification videos](samples/README.md) each contain 168 frames: 14 seconds
+at 12 fps. They exercise all seven templates with a generated picture, test-pattern
+footage and synthetic test-tone audio. They verify rendering and audio presence;
+they do not demonstrate voice quality or synchronization to speech. The separate
+optional NASA photo demonstration remains available through `demo.py`.
+
+## Templates and media contract
 
 The seven supported templates are `flow`, `comparison`, `timeline`, `chart`,
-`explain`, `text` and `footage`. Layouts support 16:9 and 9:16. Scene data contains
-an ID, section ID, start, duration, title, visual goal, up to six short items,
-local-time motion beats and optional downloaded video metadata.
+`explain`, `text` and `footage`. Layouts support 16:9 and 9:16. Scene data includes
+an ID, section ID, start, duration, title, visual goal, short items, local-time
+motion beats and optional local picture/footage metadata.
 
-The planner returns JSON, never executable HTML or JavaScript. The code templates
-live in `renderers/hyperframes/templates`. Text is escaped, fonts/scripts are
-copied locally and the UI preview runs in an opaque-origin sandbox with network
+The planner returns JSON, never executable HTML or JavaScript. The templates live
+in `renderers/hyperframes/templates`. Text is escaped, fonts/scripts are copied
+locally, and Review's preview runs in an opaque-origin sandbox with network
 connections disabled. The preview cannot call the studio's settings or upload APIs.
 
-Charts require numeric values explicitly provided as a section's `chart_data` or
-`data_points`; the planner does not invent statistics to make an animation. Hybrid
-footage comes through the bounded download adapter, with an attribution manifest
+Charts require numeric values explicitly supplied as a section's `chart_data` or
+`data_points`; the planner does not invent statistics to fill a chart. Hybrid
+footage goes through the bounded download adapter, with an attribution manifest
 and no arbitrary remote URLs in generated scenes.
 
 ## Free OpenRouter use
@@ -78,80 +159,96 @@ requires schema support; reviewing frames also requires image input. Explicit pa
 models are rejected, including a paid sibling of a model whose free ID disappeared.
 OpenRouter text fallback uses the same free-only validation.
 
-Without a key, planning uses deterministic local templates. Provider errors,
-rate limits and invalid model output fall back to those templates. Attempts and
-local request budgets are bounded. No free generative image/video service is
-promised by this integration: the model chooses an animation plan, and local code
-renders it. Provider availability and quotas remain external constraints.
+Without a key, planning uses local templates. Provider errors, rate limits and
+invalid output fall back to those templates. Attempts and local request budgets
+are bounded. The model chooses an animation plan and local code renders it; this
+integration does not promise access to a free generative video service. Provider
+availability and quotas remain external constraints.
 
-Frame review is off by default. Enabling it sends up to four sampled rendered
-frames to the selected free vision model. Its layout findings are advisory; the
-local MP4 checks independently verify dimensions, duration and presence of audio.
+Frame review is **off by default**. Enabling it sends up to four sampled rendered
+frames to the selected free vision model. Its layout findings are advisory; local
+MP4 checks independently verify dimensions, duration and presence of audio.
+Neither a visual review nor retrieved background sources verify live breaking news.
 
 ## Important files
 
 | File / directory | Purpose |
 | --- | --- |
-| `video/narrator.py`, `video/timeline.py` | Measured voiceover, word events and shared clock |
-| `agents/visual_director.py` | Validated local/AI scene planning and scene regeneration |
+| `video/narrator.py`, `video/timeline.py` | Fresh narration, legacy timing imports and shared audio clock |
+| `video/stock.py` | Original picture pipeline and photo reuse |
+| `video/music.py` | Optional music bed, speech ducking, fades and limiting |
+| `agents/visual_director.py` | Validated local/AI planning and scene regeneration |
 | `apis/openrouter.py`, `apis/stock_video.py` | Free-only model access and stock video |
-| `video/renderers/html.py` | Safe project preparation, subprocess lifecycle, MP4 verification |
-| `renderers/hyperframes/` | Pinned npm project, templates and offline smoke fixture |
+| `video/renderers/html.py` | Local project preparation, subprocess lifecycle and MP4 verification |
+| `renderers/hyperframes/` | Pinned npm project, templates, smoke fixtures and silent photo demo |
 | `studio/preflight.py`, `studio/visuals.py` | Setup checks and storyboard/preview endpoints |
-| `output/scene_plan.json`, `output/timeline.json` | Editable plan and measured timeline |
-| `output/motion/` | Portable HTML project with local assets and renderer log |
-| `output/library/` | Reopenable final projects, media, metadata and credits |
+| `studio/channels.py`, `studio/schedules.py` | Profile isolation and recurring generation |
+| `output/scene_plan.json`, `output/timeline.json` | Editable plan and labelled timing |
+| `output/motion/` | HTML project with local assets and renderer log |
+| `output/library/` | Reopenable final projects and scheduled drafts |
 
-The application remains a local, single-job studio. The cloud fork stores the
-source and CI configuration; it does not expose the Flask app as a public service.
+The app remains a local studio with one generation job at a time. A GitHub fork
+stores source and CI configuration; it does not run the Flask app or scheduled
+videos by itself. See [running the scheduler](CHANNELS_AND_SCHEDULES.md#keep-the-scheduler-running)
+for local and hosted-machine operation.
 
 ## Verification
 
-Install development test dependencies in the project venv:
+Install development test dependencies in the project environment:
 
 ```bash
-python -m pip install pytest
+python -m pip install -r requirements.txt pytest
 python -m pip check
 python -m pytest -q
 ```
 
-The Python suite uses mocked providers, synthetic audio and local fixtures. It
-does not spend API credits or publish videos. FFmpeg is needed for the decoded
-audio integration checks.
+The Python suite uses mocked providers and local fixtures. It covers measured and
+imported timing, photo reuse, profile/token isolation, channel-bound publishing,
+schedule validation/recovery, music mixing and renderer lifecycle. It does not
+spend API credits or publish videos. FFmpeg is needed for decoded-audio checks.
+`croniter==6.2.4` and `tzdata>=2025.2` are installed by the normal requirements.
 
-Prepare and render offline fixtures containing all seven templates:
+Prepare and render the offline regression fixtures containing all seven templates:
 
 ```bash
 python renderers/hyperframes/smoke.py --seconds-per-scene 2
 python renderers/hyperframes/smoke.py --portrait --seconds-per-scene 2
 ```
 
-Outputs are under `renderers/hyperframes/.smoke/`. The fixtures use an explicitly
-synthetic tone, test-pattern footage and synthetic chart values. They test rendering,
-not speech quality or external provider availability.
+Those **test fixtures** use a synthetic tone, test-pattern footage and labelled
+synthetic chart values. With two seconds per scene they produce the 168-frame
+verification samples linked in the README. They test encoding and audio presence,
+not sound quality. The optional silent photo demonstration uses `demo.py` instead.
+Outputs are under `renderers/hyperframes/.smoke/`.
 
-For pixel-repeatability, template bounds and preview-control browser checks, set
-`YAAS_TEST_BROWSER` to an installed Chrome/Chromium executable, activate the venv
-so `python` resolves correctly, then run:
+For renderer and studio browser checks, set `YAAS_TEST_BROWSER` to an installed
+Chrome/Chromium executable and activate the project environment so `python`
+resolves correctly. If needed, set `YAAS_TEST_PYTHON` to that interpreter explicitly.
+Prepare both fixtures, then run:
 
 ```bash
+python renderers/hyperframes/smoke.py --prepare-only --seconds-per-scene 2
+python renderers/hyperframes/smoke.py --portrait --prepare-only --seconds-per-scene 2
 npm test --prefix renderers/hyperframes
 ```
 
-In a managed environment that already provides Chromium, `HYPERFRAMES_BROWSER_PATH`
-may point HyperFrames to that executable. It is an optional local environment
-setting; ordinary installations can use the `browser ensure` command from the README.
-Normal renders do not install npm packages or execute code supplied by a model.
+Browser checks include repeatable rendering, template bounds, preview controls,
+profile/schedule separation, explicit voice preview, mobile layouts and the
+legacy-photo action. Their fetched YouTube identities are test fixtures.
+
+In a managed environment, `HYPERFRAMES_BROWSER_PATH` can point to an existing
+compatible browser. Ordinary installations can use the `browser ensure` command
+in the README. Normal renders do not install packages or execute model-supplied code.
 
 ## Limits
 
-- Legacy photo projects can still be opened; synchronized motion requires
-  regenerating their narration once to produce measured timing metadata.
-- Free provider inference, stock selection and the external speech service depend
-  on network access and service availability. Offline fixtures do not verify those
-  services or the quality of their answers.
-- Fixed templates provide controllable explainer motion. They do not generate
-  photorealistic characters or cinematic synthetic footage.
+- Legacy imported or estimated timing is less precise than original speech events.
+  The UI labels that distinction; inspect the recording and captions together.
+- Recovering an old MP4 soundtrack cannot remove music already mixed into it.
+- External inference, stock selection and speech depend on network access and
+  service availability. Offline tests do not verify those services or their output quality.
+- Fixed templates create explanatory motion; they do not generate photorealistic
+  actors or cinematic synthetic footage.
 - Rendering is CPU-intensive. The default is one worker; use a draft before a
   long final render. Stop cancels the HyperFrames process tree, and failed renders
-  leave the prior completed file intact on disk while the app marks it stale.
+  keep the previous completed file on disk while marking it stale in the app.

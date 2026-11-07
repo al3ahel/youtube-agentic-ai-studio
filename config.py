@@ -15,6 +15,7 @@ import os
 # ─────────────────────────────────────────────────────────────────────────────
 
 ROOT_DIR      = os.path.dirname(os.path.abspath(__file__))
+DATA_DIR      = os.path.join(ROOT_DIR, ".yaas")
 ENV_PATH      = os.path.join(ROOT_DIR, ".env")
 SETTINGS_PATH = os.path.join(ROOT_DIR, "settings.json")
 
@@ -113,6 +114,8 @@ Every video should explore the absolute limits of science, space, or tech, makin
 Target audience: highly curious thinkers who want their minds blown by deep scientific and philosophical dives.
 """.strip()
 CHANNEL_NAME = "My AI Channel"   # shown on-screen and in upload metadata
+CHANNEL_PRESET = "general"      # general | news | asmr; each channel profile has its own
+TARGET_DURATION_MINUTES = 8.0    # approximate script target; recorded audio sets the real duration
 
 # On-video branding: the "▶ CHANNEL NAME" tag in the hook and on Shorts,
 # plus the channel line on thumbnails. Leave BRAND_TEXT empty to use CHANNEL_NAME.
@@ -129,9 +132,11 @@ CREDIT_YAAS        = True
 
 def brand_text() -> str:
     """The on-video brand label, or "" when branding is switched off."""
-    if not SHOW_CHANNEL_BRAND:
+    import sys
+    current = sys.modules[__name__]
+    if not current.SHOW_CHANNEL_BRAND:
         return ""
-    return (BRAND_TEXT or CHANNEL_NAME or "").strip()
+    return (current.BRAND_TEXT or current.CHANNEL_NAME or "").strip()
 
 # ─────────────────────────────────────────
 #  Voice (Edge TTS — free, no API key)
@@ -142,8 +147,8 @@ def brand_text() -> str:
 #    en-US-GuyNeural      — US, clear, neutral
 # ─────────────────────────────────────────
 VOICE_ID    = "en-US-AndrewNeural"
-VOICE_RATE  = "-5%"     # slow down slightly for narration feel
-VOICE_PITCH = "-3Hz"    # slightly deeper = more cinematic
+VOICE_RATE  = "+0%"     # natural pace; profiles can choose a slower delivery
+VOICE_PITCH = "+0Hz"    # preserve the selected voice's natural pitch
 
 # ─────────────────────────────────────────
 #  AI Model
@@ -237,8 +242,8 @@ VIDEO_PRIVACY         = "public"   # "public" | "unlisted" | "private"
 #  Drop MP3/WAV files into the  music library/  folder.
 #  Tracks are shuffled and looped automatically to match video length.
 # ─────────────────────────────────────────
-MUSIC_ENABLED     = True
-MUSIC_VOLUME      = 0.12          # 0.0–1.0  (0.12 = subtle underscore)
+MUSIC_ENABLED     = False        # clean narration by default; enable a local music bed
+MUSIC_VOLUME      = 0.08          # quiet bed, ducked further while narration speaks
 MUSIC_LIBRARY_DIR = os.path.join(os.path.dirname(__file__), "music library")
 
 # ─────────────────────────────────────────
@@ -253,7 +258,7 @@ IMAGES_DIR   = "output/images"
 # ─────────────────────────────────────────
 # Settings the GUI may save. Secrets are never stored here; they go to .env.
 USER_SETTINGS = (
-    "CHANNEL_NAME", "CHANNEL_DESCRIPTION", "SHOW_CHANNEL_BRAND", "BRAND_TEXT",
+    "CHANNEL_NAME", "CHANNEL_DESCRIPTION", "CHANNEL_PRESET", "TARGET_DURATION_MINUTES", "SHOW_CHANNEL_BRAND", "BRAND_TEXT",
     "THUMB_STYLE", "CREDIT_YAAS",
     "VOICE_ID", "VOICE_RATE", "VOICE_PITCH",
     "GEMINI_MODEL", "GROQ_MODEL", "OPENROUTER_MODEL",
@@ -277,11 +282,14 @@ def _valid_setting(key: str, value) -> bool:
     choices = {
         "VISUAL_MODE": {"motion", "hybrid", "classic"},
         "MOTION_QUALITY": {"draft", "standard", "high"},
+        "CHANNEL_PRESET": {"general", "news", "asmr"},
     }
     if key in choices:
         return isinstance(value, str) and value in choices[key]
     if key == "MOTION_WORKERS":
         return type(value) is int and 1 <= value <= 4
+    if key == "TARGET_DURATION_MINUTES":
+        return isinstance(value, (int, float)) and not isinstance(value, bool) and .25 <= value <= 60
     if key in {"VISUAL_PLANNER_MODEL", "VISUAL_REVIEW_MODEL"}:
         return isinstance(value, str) and 0 < len(value.strip()) <= 200 and not any(c.isspace() for c in value)
     default = DEFAULTS[key]
@@ -363,3 +371,36 @@ def import_legacy_config(path: str) -> dict:
 
 
 globals().update(load_settings())
+
+
+# Profile settings are local to a request or worker. Never swap module globals
+# while another channel's request is reading them. Existing `import config`
+# consumers continue to work, and secrets/default settings stay shared.
+from contextlib import contextmanager
+from contextvars import ContextVar
+import types as _types
+import sys as _sys
+
+_profile_values = ContextVar("yaas_profile_values", default=None)
+
+
+@contextmanager
+def profile_context(values):
+    """Apply a captured profile to this execution context, restoring it on exit."""
+    token = _profile_values.set(copy.deepcopy(values or {}))
+    try:
+        yield
+    finally:
+        _profile_values.reset(token)
+
+
+class _ProfileConfig(_types.ModuleType):
+    def __getattribute__(self, name):
+        if name.isupper():
+            values = _types.ModuleType.__getattribute__(self, "_profile_values").get()
+            if values is not None and name in values:
+                return values[name]
+        return _types.ModuleType.__getattribute__(self, name)
+
+
+_sys.modules[__name__].__class__ = _ProfileConfig

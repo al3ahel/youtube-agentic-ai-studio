@@ -12,19 +12,29 @@ from uploader import youtube as yt_uploader
 
 bp = Blueprint("upload", __name__)
 
-def secret_ok():
+def secret_ok(profile_id=None):
     try:
-        with open(config.YOUTUBE_CLIENT_SECRET, encoding="utf-8") as f:
+        from studio.channels import client_secret_path
+        path = client_secret_path(profile_id) if profile_id else config.YOUTUBE_CLIENT_SECRET
+        with open(path, encoding="utf-8") as f:
             return "YOUR_CLIENT_ID" not in f.read()
     except Exception:
         return False
 
 @bp.route("/api/yt-status")
 def yt_status():
-    return jsonify({"token": yt_uploader.has_token(), "secret": secret_ok()})
+    from studio.channels import get_profile, public_profile
+    try:
+        profile = public_profile(get_profile(request.args.get("profile_id") or state.get("profile_id")))
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    return jsonify({"token": profile["token_present"], "secret": secret_ok(profile["id"]),
+                    "connected": profile["connected"], "channel": profile.get("channel"),
+                    "profile_id": profile["id"], "profile_name": profile["name"]})
 
 @bp.route("/api/upload", methods=["POST"])
 def upload_route():
+    from studio.channels import get_profile, upload_options, config_overrides, is_connecting
     body    = request.get_json(force=True) or {}
     if not isinstance(body, dict):
         return jsonify({"ok": False, "error": "Expected upload settings as an object."}), 400
@@ -34,7 +44,7 @@ def upload_route():
         return jsonify({"ok": False, "error": "Choose a valid visibility and publication time."}), 400
     publish_at = publish_at.strip()
     with job_lock:
-        if state.get("uploading") or state.get("running") or state.get("visual_editing"):
+        if state.get("uploading") or state.get("running") or state.get("visual_editing") or is_connecting():
             return jsonify({"ok": False, "error": "Wait for the current job to finish before uploading."}), 409
         if state.get("preview_only") or (state.get("visual_plan") and state.get("stages", {}).get("video") != "done"):
             return jsonify({"ok": False, "error": "Render a final video from the current storyboard before uploading."}), 409
@@ -43,7 +53,16 @@ def upload_route():
             return jsonify({"ok": False, "error": "No final video to upload"})
         if os.path.basename(video_path) == "motion_preview.mp4" or (state.get("preview_path") and os.path.abspath(video_path) == os.path.abspath(state["preview_path"])):
             return jsonify({"ok": False, "error": "A draft preview cannot be uploaded as a final video."}), 409
-        if not secret_ok():
+        profile_id = state.get("profile_id") or "default"
+        if body.get("profile_id") and body["profile_id"] != profile_id:
+            return jsonify({"ok": False, "error": "Upload must use the channel this project belongs to."}), 409
+        try:
+            profile = get_profile(profile_id)
+            publish_options = upload_options(profile_id)
+            profile_values = config_overrides(profile_id)
+        except ValueError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 409
+        if not secret_ok(profile_id):
             return jsonify({"ok": False, "error": "client_secret.json is missing — download it from Google Cloud and save it in the project folder (SETUP.md step 4)"})
         script = deepcopy(state.get("script") or {})
         description = state.get("description", script.get("description", ""))
@@ -52,17 +71,19 @@ def upload_route():
 
     def _do_upload():
         try:
-            result = yt_uploader.upload_video(
-                video_path,
-                title=script.get("title", ""),
-                description=description,
-                tags=script.get("tags", []),
-                privacy=privacy,
-                publish_at=publish_at,
-                thumb_path=thumb_path,
-                on_progress=lambda pct: state.__setitem__("upload_pct", pct),
-                log=lambda msg: log(msg, "warn"),
-            )
+            with config.profile_context(profile_values):
+                result = yt_uploader.upload_video(
+                    video_path,
+                    title=script.get("title", ""),
+                    description=description,
+                    tags=script.get("tags", []),
+                    privacy=privacy,
+                    publish_at=publish_at,
+                    thumb_path=thumb_path,
+                    on_progress=lambda pct: state.__setitem__("upload_pct", pct),
+                    log=lambda msg: log(msg, "warn"),
+                    **publish_options,
+                )
             state["yt_url"]         = result["url"]
             state["upload_warning"] = result["thumbnail_error"]
             state["upload_pct"]     = 100

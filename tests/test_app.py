@@ -148,4 +148,4 @@ def test_page_and_every_static_file_it_references_are_served():
 
 
 def test_blueprints_are_registered():
-    assert set(gui.app.blueprints) == {"pipeline", "review", "library", "upload", "settings", "dashboard", "visuals"}
+    assert set(gui.app.blueprints) == {"pipeline", "review", "library", "upload", "settings", "dashboard", "visuals", "channels", "schedules", "audio"}

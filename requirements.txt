@@ -18,6 +18,10 @@ Pillow>=10.0.0
 # Review dashboard
 flask>=3.0.0
 
+# Per-channel schedules and IANA time zones on Windows
+croniter==6.2.4
+tzdata>=2025.2
+
 # YouTube upload
 google-api-python-client>=2.100.0
 google-auth-oauthlib>=1.1.0

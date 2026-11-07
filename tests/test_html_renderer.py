@@ -108,6 +108,64 @@ def test_network_media_is_never_fetched(plan, audio, tmp_path, vendor):
         renderer.prepare_motion_project(plan, str(audio), str(tmp_path))
 
 
+def test_local_image_is_normalized_copied_and_attributed_without_mutating_plan(plan, audio, tmp_path, vendor):
+    from PIL import Image
+    source = tmp_path / "stock picture.jpg"
+    picture = Image.new("RGB", (80, 40), "#408090")
+    exif = Image.Exif()
+    exif[274] = 6
+    picture.save(source, exif=exif)
+    plan["scenes"][0]["image"] = {"path": str(source), "source": "NASA", "credit": "NASA/JPL",
+                                    "source_url": "https://images.nasa.gov/example", "license": "Public domain"}
+    plan.update(timing_source="legacy_srt", timing_precision="phrase", narration_reused=True,
+                warnings=["Section boundaries are inferred from subtitle text."])
+    before = copy.deepcopy(plan)
+    entry = renderer.prepare_motion_project(plan, str(audio), str(tmp_path))
+    saved = json.loads((entry.parent / "project.json").read_text())
+    asset = saved["scenes"][0]["image"]
+    assert asset["path"].startswith("assets/picture-")
+    assert asset["credit"] == "NASA/JPL" and asset["license"] == "Public domain"
+    with Image.open(entry.parent / asset["path"]) as result:
+        assert result.size == (40, 80)
+        assert not result.getexif()
+    assert 'id="image-0"' in entry.read_text()
+    assert saved["timing_source"] == "legacy_srt" and saved["narration_reused"] is True
+    assert plan == before
+
+
+@pytest.mark.parametrize("kind", ["remote", "svg", "fake_raster", "outside"])
+def test_scene_pictures_cannot_fetch_or_embed_unsupported_files(plan, audio, tmp_path, vendor, monkeypatch, kind):
+    output = tmp_path / "job"
+    output.mkdir()
+    monkeypatch.setattr(renderer.config, "OUTPUT_DIR", str(output))
+    if kind == "remote":
+        path = "https://example.com/picture.jpg"
+    elif kind == "outside":
+        path = str(tmp_path / "private.jpg")
+        Path(path).write_bytes(b"private")
+    else:
+        path = str(output / ("script.svg" if kind == "svg" else "script.png"))
+        Path(path).write_text("<svg onload='alert(1)'/>")
+    plan["scenes"][0]["image"] = {"path": path}
+    with pytest.raises(ValueError):
+        renderer.prepare_motion_project(plan, str(audio), str(output))
+    assert not (output / "motion" / "index.html").exists()
+
+
+def test_animated_image_is_imported_as_a_single_seekable_still(plan, audio, tmp_path, vendor):
+    from PIL import Image
+    source = tmp_path / "animated.webp"
+    Image.new("RGB", (32, 24), "red").save(source, save_all=True,
+        append_images=[Image.new("RGB", (32, 24), "blue")], duration=200, loop=0, lossless=True)
+    plan["scenes"][0]["image"] = {"path": str(source)}
+    entry = renderer.prepare_motion_project(plan, str(audio), str(tmp_path))
+    saved = json.loads((entry.parent / "project.json").read_text())
+    with Image.open(entry.parent / saved["scenes"][0]["image"]["path"]) as result:
+        assert getattr(result, "n_frames", 1) == 1
+        red, green, blue = result.convert("RGB").getpixel((16, 12))
+        assert red > 240 and green < 10 and blue < 10
+
+
 def test_render_subprocess_cancels_promptly(tmp_path):
     event = threading.Event()
     timer = threading.Timer(.25, event.set)

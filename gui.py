@@ -23,11 +23,26 @@ app = create_app()
 
 
 if __name__ == "__main__":
+    import atexit
     import webbrowser
     if len(sys.argv) == 3 and sys.argv[1] == "--import-settings":
         from studio.settings import import_settings
         import_settings(sys.argv[2])
         sys.exit(0)
+    if os.getenv("STUDIO_SCHEDULER", "1") != "0":
+        from studio.schedules import start_scheduler
+        scheduler = start_scheduler()
+        atexit.register(scheduler.close)
+        if "--scheduler-only" in sys.argv:
+            if not scheduler.running:
+                raise SystemExit(scheduler.error or "Could not start the scheduler.")
+            print("YAAS channel scheduler is running. Keep this process open; Ctrl+C stops it.")
+            try:
+                while scheduler.running:
+                    scheduler.stop.wait(30)
+            except KeyboardInterrupt:
+                scheduler.close()
+            sys.exit(0)
     port = int(os.getenv("STUDIO_PORT", 7070))
     print("\n🎬  YAAS — youtube-agentic-ai-studio")
     print(f"   Opening at  http://localhost:{port}\n")

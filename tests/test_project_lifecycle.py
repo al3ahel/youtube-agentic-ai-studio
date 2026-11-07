@@ -209,7 +209,11 @@ def test_upload_reserves_the_job_before_thread_start(project, monkeypatch):
     video = output / "final_video.mp4"
     video.write_bytes(b"final")
     state.update(video_path=str(video), script={"title": "Title"})
-    monkeypatch.setattr(upload, "secret_ok", lambda: True)
+    monkeypatch.setattr(upload, "secret_ok", lambda *args: True)
+    from studio import channels
+    monkeypatch.setattr(channels, "upload_options", lambda profile_id: {
+        "token_file": "test-token", "client_secret_file": "test-client",
+        "expected_channel_id": "UC" + "x" * 22, "interactive": False})
     class Thread:
         def __init__(self, **kwargs):
             pass

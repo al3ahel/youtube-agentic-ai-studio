@@ -1,6 +1,11 @@
 /* ═══════════════════════════ library ═══════════════════════════ */
+let libraryLoadSerial = 0;
 async function loadLibrary() {
-  try { library = await api("/api/library"); } catch (e) { return; }
+  const serial = ++libraryLoadSerial, profileId = typeof activeProfileId !== "undefined" ? activeProfileId : null;
+  let result;
+  try { result = await api("/api/library" + (profileId ? `?profile_id=${encodeURIComponent(profileId)}` : "")); } catch (e) { return; }
+  if (serial !== libraryLoadSerial || (typeof activeProfileId !== "undefined" && profileId !== activeProfileId)) return;
+  library = result;
   const t = library.totals;
   $("#lib-stats").innerHTML = [[t.videos, "videos made"], [t.uploaded, "published"], [t.shorts, "shorts"], [t.minutes, "minutes of video"]]
     .map(([v, l]) => `<div class="stat"><b>${v}</b><span>${l}</span></div>`).join("");
@@ -8,7 +13,7 @@ async function loadLibrary() {
   const card = (m, shorts) => `
     <article class="card ${shorts ? "s4" : "s6"} lib-card">
       <div class="thumb-frame ${shorts ? "tall" : ""}">${m.files.thumb ? `<img loading="lazy" src="/library/${m.id}/thumbnail.jpg" alt="">` : `<div class="empty">no thumbnail</div>`}
-        <span class="badge tag ${m.yt_url ? "green" : ""}">${m.yt_url ? "published" : "not published"}</span></div>
+        <span class="badge tag ${m.yt_url ? "green" : m.preview_only ? "amber" : ""}">${m.yt_url ? "published" : m.preview_only ? "draft" : "not published"}</span></div>
       <h4>${esc(m.title.replace(/\s*#shorts\b/ig, ""))}</h4>
       <div class="lib-meta"><span>${ago(m.created_at)}</span>${m.duration ? `<span>· ${clock(m.duration)}</span>` : ""}</div>
       <div class="lib-actions">
@@ -33,6 +38,8 @@ async function loadLibrary() {
 async function openProject(id) {
   const r = await api(`/api/library/${id}/load`, {}).catch(e => ({ ok: false, error: e.message }));
   if (!r.ok) return toast(r.error, "err");
+  if (typeof loadChannels === "function") await loadChannels({ syncWorkspace: true });
+  await pollOnce();
   location.hash === "#review" ? loadReview() : (location.hash = "#review");
 }
 async function deleteProject(id, btn) {

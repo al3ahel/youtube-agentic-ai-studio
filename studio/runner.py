@@ -5,10 +5,13 @@ import shutil
 import subprocess
 import sys
 import time
+from contextlib import nullcontext
+from copy import deepcopy
 
 import config
 from studio.description import build_description
 from studio.library import archive_project
+from studio.project_identity import write_project_identity
 from studio.state import Capture, job_lock, log, log_queue, stage, state, stop_event
 from studio.thumbs import make_thumbnail
 
@@ -29,23 +32,56 @@ def _save_json(path, value):
     temporary.replace(path)
 
 
+def _save_image_map(output, image_map):
+    """Persist project-relative photos so skipped steps survive a restart."""
+    root = output.resolve()
+    saved = {}
+    for section, paths in image_map.items():
+        saved[str(section)] = []
+        for value in (paths if isinstance(paths, list) else [paths]):
+            if not value:
+                continue
+            path = Path(value).resolve()
+            if path.is_file() and root in path.parents:
+                saved[str(section)].append(path.relative_to(root).as_posix())
+    _save_json(output / "image_map.json", saved)
+
+
+def _load_image_map(output):
+    root = output.resolve()
+    saved = _load_json(output / "image_map.json") or {}
+    result = {}
+    for section, paths in saved.items():
+        if not isinstance(paths, list):
+            continue
+        result[str(section)] = []
+        for value in paths:
+            if not isinstance(value, str):
+                continue
+            path = (root / value).resolve()
+            if (path.is_file() and root in path.parents
+                    and path.suffix.lower() in {".jpg", ".jpeg", ".png", ".webp"}):
+                result[str(section)].append(str(path))
+    return result
+
+
 def _invalidate(output, *, script=False, audio=False, visuals=False):
     """Invalidate generated caches after their source successfully changes."""
     state.update(video_path=None, preview_path=None, visual_qa=None,
                  library_id=None, yt_url=None, upload_warning=None)
     names = ["visual_qa.json"]
     if script:
-        state.update(script=None, image_map={}, thumb_path=None, thumb_bg=None,
+        state.update(script=None, image_map={}, image_reuse_note=None, thumb_path=None, thumb_bg=None,
                      thumb_text=None, thumb_bg_index=0)
-        names += ["script.json", "credits.json", "video_credits.json"]
+        names += ["script.json", "image_map.json", "credits.json", "video_credits.json"]
     if audio:
         state.update(audio_path=None, render_audio_path=None)
-        names += ["narration.wav", "narration.mp3", "narration_mixed.mp3",
+        names += ["narration.wav", "narration.mp3", "narration_mixed.mp3", "narration_mixed.wav",
                   "narration.srt", "narration.timings.json", "render_audio.json"]
         # These assets belong to the old script, even when a user unchecks the
         # Images step on the next run. Never reuse them as the new script's B-roll.
         state.update(image_map={}, thumb_path=None, thumb_bg=None, thumb_text=None, thumb_bg_index=0)
-        names += ["credits.json", "video_credits.json"]
+        names += ["image_map.json", "credits.json", "video_credits.json"]
         images = Path(config.IMAGES_DIR).resolve()
         root = output.resolve()
         if images != root and root in images.parents and images.is_dir() and not Path(config.IMAGES_DIR).is_symlink():
@@ -62,7 +98,7 @@ def _invalidate(output, *, script=False, audio=False, visuals=False):
 
 
 def _audio_path(output):
-    candidates = [state.get("audio_path"), output / "narration.wav", output / "narration.mp3"]
+    candidates = [state.get("audio_path"), *(output / ("narration" + suffix) for suffix in (".wav", ".mp3", ".m4a", ".ogg"))]
     root = output.resolve()
     return next((str(Path(p).resolve()) for p in candidates if p and Path(p).is_file()
                  and root in Path(p).resolve().parents), None)
@@ -118,13 +154,27 @@ def _review_video(video_path, plan, output):
 
 def run_pipeline_thread(steps: list, topic_override: str = "", video_type: str = "normal",
                         focus_angle: str = "", use_trends: bool = False,
-                        visual_mode=None, preview_only=False):
+                        visual_mode=None, preview_only=False, profile_id=None,
+                        profile_values=None, schedule_id=None, release_job=True):
+    """Capture a channel for the whole job, independent of the Home selection."""
+    values = profile_values
+    if profile_id and values is None:
+        from studio.profile_context import capture_profile_settings
+        values = capture_profile_settings(profile_id)
+    state["job_profile_values"] = deepcopy(values)
+    with (config.profile_context(values) if values is not None else nullcontext()):
+        return _run_pipeline(steps, topic_override, video_type, focus_angle, use_trends,
+                             visual_mode, preview_only, profile_id, schedule_id, release_job)
+
+
+def _run_pipeline(steps, topic_override, video_type, focus_angle, use_trends,
+                  visual_mode, preview_only, profile_id, schedule_id, release_job):
     orig_stdout = sys.stdout
     sys.stdout = Capture(orig_stdout)
     mode = visual_mode or getattr(config, "VISUAL_MODE", "motion")
     output = Path(config.OUTPUT_DIR)
     state.update(running=True, error=None, started_at=time.time(), visual_mode=mode,
-                 preview_only=preview_only, video_type=video_type)
+                 preview_only=preview_only, video_type=video_type, schedule_id=schedule_id)
     # /api/run clears the event before starting this worker. Clearing it here
     # would lose a Stop click arriving immediately after Start.
 
@@ -164,8 +214,16 @@ def run_pipeline_thread(steps: list, topic_override: str = "", video_type: str =
                                       focus_angle=focus_angle, trend_context=trend_context)
             check_stop("research")
             _invalidate(output, script=True, audio=True, visuals=True)
+            if profile_id:
+                from studio.channels import get_profile
+                profile = get_profile(profile_id)
+                state.update(profile_id=profile_id, profile_name=profile["name"])
             state["research"] = research
+            for warning in research.get("warnings", []):
+                log(warning, "warn")
             _save_json(output / "research.json", research)
+            write_project_identity(output, state.get("profile_id") or "default",
+                                   state.get("profile_name") or config.CHANNEL_NAME)
             stage("research", "done")
             log_queue.put(("research", ""))
             log(f"Topic: {research.get('video_title', topic_override)}")
@@ -186,6 +244,8 @@ def run_pipeline_thread(steps: list, topic_override: str = "", video_type: str =
             _invalidate(output, audio=True, visuals=True)
             state.update(script=script, image_map={}, thumb_path=None, thumb_bg=None)
             _save_json(output / "script.json", script)
+            write_project_identity(output, state.get("profile_id") or profile_id or "default",
+                                   state.get("profile_name") or config.CHANNEL_NAME)
             stage("script", "done")
             log(f"Script: {len(script.get('sections', []))} sections")
         elif not state.get("script"):
@@ -201,21 +261,22 @@ def run_pipeline_thread(steps: list, topic_override: str = "", video_type: str =
 
         if mode == "classic":
             state.update(visual_plan=None, visual_qa=None, preview_path=None)
-            if "images" in steps:
-                stage("images", "running")
-                from video.stock import download_images
-                state["image_map"] = download_images(script, str(output))
-                _invalidate(output)
-                stage("images", "done")
-            elif not state.get("image_map"):
-                from video.stock import section_images
-                state["image_map"] = {s["id"]: section_images(config.IMAGES_DIR, s["id"])
-                                      for s in script.get("sections", [])}
-        else:
-            state["image_map"] = {}
-            stage("images", "skipped")
-            if "images" in steps:
-                log("Motion uses animated scenes; Hybrid adds downloaded stock video during visual planning.")
+        if "images" in steps:
+            stage("images", "running")
+            from video.stock import download_images
+            state["image_map"] = download_images(script, str(output))
+            _save_image_map(output, state["image_map"])
+            state["image_reuse_note"] = None
+            _invalidate(output)
+            stage("images", "done")
+        elif not state.get("image_map"):
+            from video.stock import section_images
+            saved_images = _load_image_map(output)
+            state["image_map"] = {s["id"]: saved_images.get(str(s["id"]))
+                                  or section_images(config.IMAGES_DIR, s["id"])
+                                  for s in script.get("sections", [])}
+        if mode != "classic" and any(state["image_map"].values()):
+            log("Reusing the original visual pipeline's pictures in the motion storyboard.")
         check_stop("images")
         if not set(steps) & {"narration", "music", "visuals", "video"}:
             complete()
@@ -227,6 +288,7 @@ def run_pipeline_thread(steps: list, topic_override: str = "", video_type: str =
             audio_path = generate_narration(script, str(output), stop_event=stop_event)
             _invalidate(output, visuals=True)
             (output / "narration_mixed.mp3").unlink(missing_ok=True)
+            (output / "narration_mixed.wav").unlink(missing_ok=True)
             (output / "render_audio.json").unlink(missing_ok=True)
             state["render_audio_path"] = None
             state["audio_path"] = audio_path
@@ -237,13 +299,15 @@ def run_pipeline_thread(steps: list, topic_override: str = "", video_type: str =
         if not state.get("audio_path"):
             raise FileNotFoundError("Narration is missing. Run the Narration step first.")
 
-        from video.timeline import build_timeline
+        from video.timeline import build_timeline, import_legacy_timeline
         stage("narration", "running")
-        if mode != "classic" or (output / "narration.timings.json").is_file():
+        if (output / "narration.timings.json").is_file():
             state["timeline"] = build_timeline(script, state["audio_path"], str(output), video_type)
         else:
-            state["timeline"] = None
-            log("Legacy narration has no measured sections. Regenerate narration for synchronized chapters and scenes.", "warn")
+            state["timeline"] = import_legacy_timeline(script, state["audio_path"], str(output), video_type)
+            log("Reusing existing narration; timing source: " + state["timeline"]["timing_source"])
+            for warning in state["timeline"].get("warnings", []):
+                log(warning, "warn")
         stage("narration", "done")
 
         final_audio = state["audio_path"]
@@ -251,9 +315,9 @@ def run_pipeline_thread(steps: list, topic_override: str = "", video_type: str =
             from video.music import mix_music_with_narration
             log("Mixing background music from your local music folder…")
             final_audio = mix_music_with_narration(
-                narration_path=state["audio_path"], output_path=str(output / "narration_mixed.mp3"),
-                music_volume=getattr(config, "MUSIC_VOLUME", .12),
-                library_dir=getattr(config, "MUSIC_LIBRARY_DIR", ""))
+                narration_path=state["audio_path"], output_path=str(output / "narration_mixed.wav"),
+                music_volume=getattr(config, "MUSIC_VOLUME", .08),
+                library_dir=getattr(config, "MUSIC_LIBRARY_DIR", ""), stop_event=stop_event)
         elif not set(steps) & {"music", "narration"}:
             soundtrack = _load_json(output / "render_audio.json") or {}
             timeline = state.get("timeline") or {}
@@ -281,10 +345,12 @@ def run_pipeline_thread(steps: list, topic_override: str = "", video_type: str =
             if "visuals" in steps:
                 _invalidate(output)
                 plan = plan_scenes(script, state["timeline"], mode=mode, output_dir=str(output),
-                                   use_ai=getattr(config, "VISUAL_AI_ENABLED", True))
+                                   use_ai=getattr(config, "VISUAL_AI_ENABLED", True), image_map=state["image_map"])
                 plan["script_signature"] = state["timeline"]["script_signature"]
                 plan["timeline_signature"] = state["timeline"]["timeline_signature"]
                 plan["audio_duration"] = state["timeline"]["audio_duration"]
+                if state.get("image_reuse_note"):
+                    plan.setdefault("warnings", []).append(state["image_reuse_note"])
                 _save_json(output / "scene_plan.json", plan)
             elif _matching_plan(saved, state["timeline"], mode):
                 plan = validate_plan(saved)
@@ -319,22 +385,25 @@ def run_pipeline_thread(steps: list, topic_override: str = "", video_type: str =
                     log("Visual review flagged issues. Inspect the storyboard before publishing.", "warn")
             else:
                 from video.creator import create_video
-                image_map = {int(k): v for k, v in state.get("image_map", {}).items()}
+                image_map = state.get("image_map", {})
                 state["video_path"] = create_video(script, final_audio, str(output), image_map,
                                                     video_type=video_type, timeline=state.get("timeline"))
             check_stop("video rendering")
             stage("video", "done")
             try:
-                image_map = {int(k): v for k, v in state.get("image_map", {}).items()}
+                image_map = state.get("image_map", {})
                 state["thumb_path"] = make_thumbnail(script, image_map, str(output))
             except Exception as exc:
                 log(f"Thumbnail unavailable: {exc}", "warn")
 
         state["description"] = build_description(script, state.get("research") or {},
                                                   video_type=video_type, timeline=state.get("timeline"))
-        if "video" in steps and not preview_only:
+        if "video" in steps and (not preview_only or schedule_id):
             try:
-                archive_project()
+                if preview_only:
+                    archive_project(allow_draft=True)
+                else:
+                    archive_project()
             except Exception as exc:
                 log(f"Archive failed; working files are still available: {exc}", "warn")
         complete()
@@ -355,5 +424,7 @@ def run_pipeline_thread(steps: list, topic_override: str = "", video_type: str =
         log_queue.put(("error", str(exc)))
     finally:
         with job_lock:
-            state["running"] = False
+            if release_job:
+                state["running"] = False
+                state.update(job_profile_id=None, job_profile_name=None, job_profile_values=None, job_output_dir=None)
         sys.stdout = orig_stdout

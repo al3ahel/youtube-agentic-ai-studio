@@ -25,10 +25,33 @@
   </div>
 </header>
 
+<div class="studio-shell">
+<aside class="channel-rail" aria-label="Channel profiles">
+  <div class="channel-rail-heading"><span>Your channels</span><button type="button" class="channel-add" id="add-channel" aria-label="Add a channel profile" title="Add a channel">+</button></div>
+  <div class="channel-list" id="channel-list" aria-label="Choose a channel"><p class="rail-note">Loading profiles…</p></div>
+  <button type="button" class="channel-rail-link" id="channel-schedules-link"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M7 3v4M17 3v4M3 11h18"/></svg>Scheduled videos<span id="rail-schedule-count">0</span></button>
+  <div class="channel-rail-foot"><span class="rail-dot"></span><div>Local studio<small>Channels keep separate voices, visuals and schedules.</small></div></div>
+</aside>
+<div class="studio-workspace">
+<div class="channel-mobile">
+  <label for="channel-select">Channel</label>
+  <select id="channel-select" aria-label="Active channel profile"><option value="">Loading profiles…</option></select>
+  <button type="button" id="add-channel-mobile" class="channel-add" aria-label="Add a channel profile">+</button>
+</div>
 <main>
 
 <!-- ════════════════════════ HOME ════════════════════════ -->
 <section class="view" id="view-home">
+
+  <article class="card s24 flat channel-overview" aria-labelledby="active-channel-title">
+    <div id="channel-identity" class="channel-identity"><div class="channel-avatar large" aria-hidden="true">Y</div><div><div class="channel-eyebrow">Creating for</div><h2 id="active-channel-title">Your channel</h2><p class="hint">Loading your profile…</p></div></div>
+    <div class="channel-overview-actions">
+      <button type="button" class="btn btn-ghost btn-sm" id="edit-channel">Profile settings</button>
+      <button type="button" class="btn btn-white btn-sm" id="connect-channel">Connect YouTube</button>
+      <button type="button" class="icon-btn" id="refresh-channel" title="Refresh connected channel" aria-label="Refresh connected YouTube channel" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg></button>
+    </div>
+    <div class="channel-connection-note hint" id="channel-connection-note" aria-live="polite"></div>
+  </article>
 
   <article class="card s16 hero" id="hero">
     <div class="hero-grid"></div>
@@ -83,22 +106,9 @@
             </select>
           </div>
           <div class="field" style="margin-top:0">
-            <div class="label">When AI picks the topic <small>stay within a theme</small></div>
-            <select id="focus-angle">
-              <option value="">Any theme from my channel</option>
-              <option>Theoretical Physics &amp; Time Travel</option>
-              <option>The Dark Forest Theory &amp; Aliens</option>
-              <option>Existential Human Psychology &amp; Illusions</option>
-              <option>Frightening AI Futures &amp; Simulation Theory</option>
-              <option>Mind-bending Mathematical Paradoxes</option>
-              <option>The limits of Human Biology &amp; Immortality</option>
-              <option>Quantum Mechanics &amp; Alternate Realities</option>
-              <option>Cosmic scale, Black Holes, and the end of the Universe</option>
-              <option>Neuroscience &amp; the Mystery of Consciousness</option>
-              <option>Ancient Civilisations &amp; Lost History</option>
-              <option>Cutting-edge Biotechnology &amp; Genetic Engineering</option>
-              <option>The Future of Space Colonisation</option>
-            </select>
+            <label class="label" for="focus-angle">When AI picks the topic <small>optional angle</small></label>
+            <input type="text" id="focus-angle" maxlength="500" list="focus-options" placeholder="Use this channel's topics and tone">
+            <datalist id="focus-options"><option value="Today's most important verified news"></option><option value="A calm description of a peaceful natural place"></option><option value="Explain one science idea with an everyday example"></option><option value="A practical guide for beginners"></option></datalist>
           </div>
           <div>
             <label class="toggle first"><span><b>Check facts</b><small>Look up Wikipedia &amp; arXiv first and cite them</small></span><input type="checkbox" id="quick-grounding" checked><span class="switch"></span></label>
@@ -166,6 +176,14 @@
     </article>
   </div>
 
+  <article class="card s24 schedules-card" id="channel-schedules" aria-labelledby="schedules-title">
+    <div class="card-label"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M7 3v4M17 3v4M3 11h18M8 15h3"/></svg><span id="schedules-title">Scheduled videos</span><span class="count" id="schedule-count">0</span></div>
+    <div class="card-tools"><button type="button" class="btn btn-ghost btn-xs" id="add-schedule">+ Add schedule</button></div>
+    <p class="card-intro">Generate drafts on a schedule; review before publishing.</p>
+    <div id="schedule-list" class="schedule-list"><div class="schedule-empty"><span class="schedule-empty-icon" aria-hidden="true">◷</span><div><b>A routine for every channel</b><p>Set a topic, a time and how often to make a video.</p></div></div></div>
+    <div class="scheduler-foot"><span id="scheduler-status" class="scheduler-status">Checking scheduler…</span><span>Keep YAAS running on this computer or a hosted machine for scheduled jobs.</span></div>
+  </article>
+
   <article class="card s16">
     <div class="card-label"><svg viewBox="0 0 24 24"><path d="M3 17l6-6 4 4 8-8"/><path d="M14 7h7v7"/></svg>Need an idea? Trending today</div>
     <div class="card-tools"><span class="card-note" id="trend-age"></span><button class="icon-btn" id="trend-refresh" title="Refresh"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg></button></div>
@@ -207,6 +225,7 @@
   <article class="card s24 flat review-part">
     <div class="guide">
       <div>
+        <div id="review-channel" class="project-channel" hidden></div>
         <h2 id="review-heading">Review &amp; publish</h2>
         <p id="review-intro">Watch your video, polish the title, description and thumbnail, then upload it. Nothing goes to YouTube until you press Upload.</p>
       </div>
@@ -221,6 +240,11 @@
     </div>
   </article>
 
+  <article class="card s24 flat review-part legacy-motion-card" id="legacy-motion-card" hidden>
+    <div><h3>Bring this project's photos into motion</h3><p class="hint">Keep the recorded voice and existing pictures. YAAS reuses available captions for timing and labels any estimated timing.</p></div>
+    <button type="button" class="btn btn-white" id="animate-legacy">Animate these photos</button>
+  </article>
+
   <article class="card s24 review-part" id="rv-storyboard" hidden>
     <div class="card-label">Storyboard <span class="tag" id="storyboard-status">Draft</span></div>
     <p class="card-intro">Review the explanation scene by scene. Changing one scene keeps your script and narration, then rebuilds the local preview.</p>
@@ -228,6 +252,8 @@
       <div>
         <iframe id="motion-preview" title="Motion storyboard preview" sandbox="allow-scripts" referrerpolicy="no-referrer" allow="autoplay 'none'; camera 'none'; microphone 'none'; geolocation 'none'"></iframe>
         <div class="hint" id="motion-preview-note">Use the preview controls to play or scrub the narration.</div>
+        <div class="hint timing-note" id="timing-source-note" hidden></div>
+        <div class="hint timing-note" id="image-reuse-note" hidden></div>
         <div class="storyboard-actions">
           <button class="btn btn-ghost btn-sm" id="render-draft">Render draft MP4</button>
           <button class="btn btn-white" id="render-final">Render final video</button>
@@ -362,7 +388,7 @@
 <section class="view" id="view-library">
   <article class="card s24">
     <div class="card-label"><svg viewBox="0 0 24 24"><path d="M4 4h4v16H4zM10 4h4v16h-4z"/><path d="M16 5l3.8-1 3 15.5-3.8 1z"/></svg>My videos</div>
-    <p class="card-intro">Every video you finish is saved here automatically. Open one to edit and publish it.</p>
+    <p class="card-intro" id="library-channel-note">Videos for the selected channel appear here. Open one to edit and publish it.</p>
     <div class="stat-row" id="lib-stats"></div>
     <div class="bars" id="lib-bars" style="height:70px"></div>
     <div class="bars-foot"><span>60 days ago</span><span>videos made per day</span><span>today</span></div>
@@ -377,7 +403,7 @@
     <div class="guide">
       <div>
         <h2>Settings</h2>
-        <p>YAAS works without any keys. Free keys make scripts and photos better and let you publish. Keys stay on this computer in a <span class="mono">.env</span> file.</p>
+        <p id="settings-channel-note">Channel, voice, music and visual defaults belong to the selected profile. Provider API keys are shared by this local studio.</p>
       </div>
     </div>
   </article>
@@ -509,6 +535,67 @@
   <span>made by <a href="https://raunakpatil.com" target="_blank" rel="noopener">Raunak Patil · raunakpatil.com</a></span>
   <a href="https://github.com/raunakpatil/youtube-agentic-ai-studio" target="_blank" rel="noopener">GitHub</a>
 </footer>
+</div>
+</div>
+
+<dialog id="channel-dialog" class="studio-dialog" aria-labelledby="channel-dialog-title">
+  <form id="channel-form">
+    <div class="dialog-heading"><div><div class="channel-eyebrow">Channel profile</div><h2 id="channel-dialog-title">Add a channel</h2></div><button type="button" class="dialog-close" data-close-dialog="channel-dialog" aria-label="Close channel settings">×</button></div>
+    <p class="dialog-intro" id="channel-dialog-intro">Give each channel its own voice, visual style and publishing connection.</p>
+    <div class="form-grid">
+      <div class="field"><label class="label" for="profile-name">Profile name</label><input type="text" id="profile-name" maxlength="100" required placeholder="e.g. Morning Brief or Quiet Hours" autocomplete="off"></div>
+      <div class="field"><label class="label" for="profile-preset">Starting style</label><select id="profile-preset"><option value="general">General</option><option value="news">News</option><option value="asmr">ASMR / calm</option></select></div>
+    </div>
+    <div class="preset-note" id="profile-preset-note">Choose a starting style. You can adjust the voice, visuals and music after creating the profile.</div>
+    <div class="field"><label class="label" for="profile-description">Topics, tone and audience <small>optional</small></label><textarea id="profile-description" rows="3" maxlength="6000" placeholder="Describe what this channel makes and who it is for."></textarea></div>
+    <div id="profile-defaults" hidden>
+      <div class="form-grid">
+        <div class="field"><label class="label" for="profile-voice">Narrator</label><select id="profile-voice"></select></div>
+        <div class="field"><label class="label" for="profile-visual-mode">Visual style</label><select id="profile-visual-mode"><option value="motion">Motion — animated scenes</option><option value="hybrid">Hybrid — motion and stock footage</option><option value="classic">Classic — your photo pipeline</option></select></div>
+        <div class="field"><label class="label" for="profile-voice-rate">Voice speed</label><select id="profile-voice-rate"><option value="-20%">Slower · −20%</option><option value="-15%">Calm · −15%</option><option value="-10%">Gentle · −10%</option><option value="+0%">Natural speed</option><option value="+10%">Brisk · +10%</option><option value="+20%">Fast · +20%</option></select></div>
+        <div class="field"><label class="label" for="profile-format">Default format</label><select id="profile-format"><option value="normal">Long video · 16:9</option><option value="shorts">Short · 9:16</option></select></div>
+      </div>
+      <div class="voice-preview">
+        <div class="voice-preview-heading"><button type="button" class="btn btn-ghost btn-sm" id="preview-profile-voice">Preview voice</button><span class="hint" id="voice-preview-status" aria-live="polite">Hear a short sample with these voice settings.</span></div>
+        <audio id="profile-voice-audio" controls preload="none" aria-label="Narrator voice sample" hidden></audio>
+      </div>
+      <label class="toggle"><span><b>Background music</b><small>Use this channel's local music folder beneath the voice</small></span><input type="checkbox" id="profile-music"><span class="switch"></span></label>
+      <div class="field" id="profile-music-level"><label class="label" for="profile-music-volume">Music level</label><div class="range-row"><input type="range" id="profile-music-volume" min="0" max="100" step="1" value="8"><span id="profile-music-value">8%</span></div></div>
+      <details class="more profile-advanced"><summary>More channel settings</summary><div class="more-body">
+        <div class="field"><label class="label" for="profile-duration">Target long-video duration <small>minutes</small></label><input type="number" id="profile-duration" min="0.25" max="60" step="0.25" value="8"><p class="hint">Guides the script length. Shorts keep their shorter format.</p></div>
+        <div class="field"><label class="label" for="profile-voice-pitch">Voice pitch</label><select id="profile-voice-pitch"><option value="-5Hz">Lower · −5 Hz</option><option value="+0Hz">Natural pitch</option><option value="+5Hz">Higher · +5 Hz</option></select></div>
+        <div class="field"><label class="label" for="profile-privacy">Default YouTube visibility</label><select id="profile-privacy"><option value="private">Private</option><option value="unlisted">Unlisted</option><option value="public">Public</option></select></div>
+        <div class="field"><label class="label" for="profile-music-library">Music folder <small>optional local path</small></label><input type="text" id="profile-music-library" placeholder="Use the studio's music library" autocomplete="off"></div>
+        <div class="field"><label class="label" for="profile-client-secret">OAuth client JSON file <small>optional local path</small></label><input type="text" id="profile-client-secret" placeholder="Use the studio's client_secret.json" autocomplete="off"><p class="hint">Each profile keeps its own YouTube sign-in. Leave this field empty to keep the current OAuth client file.</p><p class="hint" id="profile-bound-channel" hidden></p></div>
+      </div></details>
+    </div>
+    <p id="channel-form-error" class="form-error" role="alert" hidden></p>
+    <div class="dialog-actions"><div class="dialog-secondary-actions"><button type="button" class="btn btn-red btn-sm" id="delete-channel" hidden>Delete profile</button><button type="button" class="btn btn-ghost btn-sm" id="disconnect-channel" hidden>Disconnect YouTube</button></div><button type="button" class="btn btn-ghost" data-close-dialog="channel-dialog">Cancel</button><button type="submit" class="btn btn-white" id="save-channel">Create profile</button></div>
+  </form>
+</dialog>
+
+<dialog id="schedule-dialog" class="studio-dialog" aria-labelledby="schedule-dialog-title">
+  <form id="schedule-form">
+    <div class="dialog-heading"><div><div class="channel-eyebrow" id="schedule-channel-name">Scheduled video</div><h2 id="schedule-dialog-title">Add a schedule</h2></div><button type="button" class="dialog-close" data-close-dialog="schedule-dialog" aria-label="Close schedule settings">×</button></div>
+    <p class="dialog-intro">Choose when this channel makes a video. Nothing is published automatically.</p>
+    <div class="field"><label class="label" for="schedule-name">Schedule name</label><input type="text" id="schedule-name" maxlength="100" required placeholder="e.g. Morning news or Sunday wind-down" autocomplete="off"></div>
+    <div class="field"><label class="label" for="schedule-topic">Topic or recurring brief</label><textarea id="schedule-topic" maxlength="2000" rows="3" required placeholder="e.g. Explain today's most important space news for a general audience."></textarea></div>
+    <div class="form-grid">
+      <div class="field"><label class="label" for="schedule-preset">Repeat</label><select id="schedule-preset"><option value="0 9 * * *">Every day at 09:00</option><option value="0 9 * * 1-5">Weekdays at 09:00</option><option value="0 9 * * 1">Mondays at 09:00</option><option value="0 */6 * * *">Every 6 hours</option><option value="custom">Custom cron</option></select></div>
+      <div class="field"><label class="label" for="schedule-timezone">Time zone</label><input type="text" id="schedule-timezone" maxlength="100" required list="timezone-options" placeholder="e.g. Asia/Dubai" autocomplete="off"><datalist id="timezone-options"><option value="UTC"></option><option value="Asia/Dubai"></option><option value="Europe/London"></option><option value="America/New_York"></option><option value="America/Los_Angeles"></option><option value="Asia/Kolkata"></option><option value="Asia/Tokyo"></option><option value="Australia/Sydney"></option></datalist></div>
+    </div>
+    <div class="field cron-field"><label class="label" for="schedule-cron">Cron expression</label><input type="text" id="schedule-cron" class="mono" maxlength="120" required value="0 9 * * *" aria-describedby="schedule-cron-help" spellcheck="false"><p class="hint" id="schedule-cron-help">Five fields: minute, hour, day, month, weekday. Jobs must be at least 15 minutes apart.</p></div>
+    <div class="form-grid">
+      <div class="field"><label class="label" for="schedule-format">Video format</label><select id="schedule-format"><option value="normal">Long video · 16:9</option><option value="shorts">Short · 9:16</option></select></div>
+      <div class="field"><label class="label" for="schedule-visual-mode">Visual style</label><select id="schedule-visual-mode"><option value="motion">Motion — animated scenes</option><option value="hybrid">Hybrid — motion and stock footage</option><option value="classic">Classic — your photo pipeline</option></select></div>
+      <div class="field"><label class="label" for="schedule-output">Output</label><select id="schedule-output"><option value="draft">Draft for review</option><option value="final">Final MP4 · keep local</option></select><p class="hint" id="schedule-output-note">Review the scenes and voice before making a final video.</p></div>
+      <label class="toggle first"><span><b>Use current trends</b><small>Include timely ideas when researching the brief</small></span><input type="checkbox" id="schedule-trends"><span class="switch"></span></label>
+    </div>
+    <label class="toggle"><span><b>Enable this schedule</b><small>YAAS must stay running for jobs to start</small></span><input type="checkbox" id="schedule-enabled" checked><span class="switch"></span></label>
+    <p id="schedule-form-error" class="form-error" role="alert" hidden></p>
+    <div class="dialog-actions"><span class="hint dialog-actions-note">Uses this channel's saved voice and music.</span><button type="button" class="btn btn-ghost" data-close-dialog="schedule-dialog">Cancel</button><button type="submit" class="btn btn-white" id="save-schedule">Create schedule</button></div>
+  </form>
+</dialog>
 
 <div class="savebar" id="savebar">
   <i></i><span>Unsaved changes</span>
@@ -524,6 +611,8 @@
 <script src="/static/js/visuals.js"></script>
 <script src="/static/js/library.js"></script>
 <script src="/static/js/settings.js"></script>
+<script src="/static/js/channels.js"></script>
+<script src="/static/js/schedules.js"></script>
 <script src="/static/js/boot.js"></script>
 </body>
 </html>

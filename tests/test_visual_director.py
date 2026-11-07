@@ -185,3 +185,73 @@ def test_arabic_text_survives_and_credentials_never_reach_saved_plan(monkeypatch
     saved = (tmp_path / "scene_plan.json").read_text()
     assert "كيف تعمل الطاقة الشمسية" in saved
     assert key not in saved
+
+
+def test_saved_stock_pictures_and_credits_are_reused_without_network(tmp_path):
+    script, timeline = source()
+    image = tmp_path / "images" / "section_01_img0.jpg"
+    image.parent.mkdir()
+    image.write_bytes(b"Director fixture; decoding is the renderer boundary")
+    (tmp_path / "credits.json").write_text(json.dumps([{
+        "file": image.name, "source": "NASA", "author": "NASA/JPL", "license": "Public domain",
+        "link": "https://images.nasa.gov/details/example",
+    }]))
+    image_map = {1: [str(image)], "2": [str(image)]}
+    original = copy.deepcopy(image_map)
+    timeline.update(timing_source="legacy_srt", timing_precision="phrase", narration_reused=True,
+                    warnings=["Section boundaries are inferred from existing subtitles."])
+    plan = director.plan_scenes(script, timeline, output_dir=tmp_path, image_map=image_map, use_ai=False)
+    assert image_map == original
+    assert plan["image_status"] == {"available": True, "scenes": 2, "reason": "reused_local_images"}
+    asset = plan["scenes"][0]["image"]
+    assert asset["path"] == str(image)
+    assert asset["credit"] == "NASA/JPL · NASA"
+    assert asset["license"] == "Public domain"
+    assert asset["source_url"] == "https://images.nasa.gov/details/example"
+    assert plan["timing_source"] == "legacy_srt" and plan["narration_reused"] is True
+    assert "Section boundaries are inferred from existing subtitles." in plan["warnings"]
+    edited = director.regenerate_scene(plan, "scene-001", script, "Use a comparison with less text")
+    assert edited["scenes"][0]["image"] == asset
+    assert edited["scenes"][0]["start"] == plan["scenes"][0]["start"]
+    assert edited["scenes"][1] == plan["scenes"][1]
+
+
+def test_missing_external_and_escaped_pictures_fall_back_to_graphics(tmp_path, monkeypatch):
+    script, timeline = source()
+    output = tmp_path / "job"
+    output.mkdir()
+    monkeypatch.setattr(director.config, "OUTPUT_DIR", str(output))
+    private = tmp_path / "private.jpg"
+    private.write_bytes(b"private")
+    image_map = {1: [str(private), "https://example.com/remote.jpg"], 2: ["missing.jpg"]}
+    plan = director.plan_scenes(script, timeline, output_dir=output, image_map=image_map, use_ai=False)
+    assert not any("image" in scene for scene in plan["scenes"])
+    assert plan["image_status"]["available"] is False
+    assert any("Some saved pictures" in warning for warning in plan["warnings"])
+
+
+def test_subtitle_phrase_beats_are_not_labelled_word_timings():
+    script, timeline = source()
+    timeline["words"] = []
+    plan = director.plan_scenes(script, timeline, use_ai=False)
+    scene = plan["scenes"][0]
+    reveals = [beat["time"] for beat in scene["beats"] if beat["action"] == "reveal" and beat["target"].startswith("item-")]
+    assert reveals == [0, 3, 6]
+    assert scene["beat_timing"] == "phrase"
+    assert plan["words"] == []
+
+
+def test_long_sections_cycle_existing_pictures_and_charts_keep_data_space(tmp_path):
+    script, timeline = source()
+    for section in timeline["sections"]:
+        section["duration"] = 24
+    timeline["sections"][1]["start"] = 24
+    timeline["duration"] = 48
+    first, second = tmp_path / "first.jpg", tmp_path / "second.jpg"
+    first.write_bytes(b"first")
+    second.write_bytes(b"second")
+    script["sections"][1]["chart_data"] = [{"label": "A", "value": 1}, {"label": "B", "value": 2}]
+    plan = director.plan_scenes(script, timeline, output_dir=tmp_path,
+                                image_map={1: [str(first), str(second)], 2: [str(first)]}, use_ai=False)
+    assert [scene["image"]["path"] for scene in plan["scenes"][:2]] == [str(first), str(second)]
+    assert all("image" not in scene for scene in plan["scenes"] if scene["template"] == "chart")

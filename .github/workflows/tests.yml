@@ -119,7 +119,7 @@ jobs:
           report = Path(os.environ["RUNNER_TEMP"], "yaas-motion-artifacts", "browser.tap").read_text()
           totals = {name: int(count) for name, count in re.findall(
               r"^# (tests|pass|fail|cancelled|skipped) (\d+)\s*$", report, re.MULTILINE)}
-          assert totals.get("tests", 0) >= 5, f"Browser assertions did not run: {totals}"
+          assert totals.get("tests", 0) >= 14, f"Browser assertions did not run: {totals}"
           assert totals.get("pass") == totals["tests"], f"Browser assertions did not all pass: {totals}"
           assert all(totals.get(name) == 0 for name in ("fail", "cancelled", "skipped")), totals
           PY

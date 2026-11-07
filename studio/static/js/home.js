@@ -44,7 +44,7 @@ function renderChecklist() {
   const mode = $("#visual-mode").value || settings.visual_mode || "motion";
   const items = [
     { ok: true, t: "Voice service", s: "Free Edge TTS. Local setup is checked before recording" },
-    { ok: true, t: "Visual style", s: mode === "motion" ? "Local diagrams, comparisons and animated text" : mode === "hybrid" ? "Motion scenes with licensed footage when available" : P("pexels").ready ? "Pexels + free image sources" : "Classic photos and transitions" },
+    { ok: true, t: "Visual style", s: mode === "motion" ? "Your pipeline's photos with animated scenes and diagrams" : mode === "hybrid" ? "Photos, motion scenes and licensed footage" : P("pexels").ready ? "Pexels + free image sources" : "Classic photos and transitions" },
     { ok: gemini || backup, opt: true, t: "Script writer", s: gemini ? "Gemini connected" : backup ? "Backup AI connected" : "Free backup AI works. A free Gemini key writes better scripts", act: !gemini && ["Add key", "#settings"] },
     { ok: named, opt: true, t: "Channel name", s: named ? settings.channel_name : "Shown in your videos. Set it once", act: !named && ["Set name", "#settings"] },
     { ok: P("youtube_upload").ready, t: "Publishing", s: P("youtube_upload").ready ? "Ready to upload" : "Only needed to upload from here. You can always download the MP4", act: !P("youtube_upload").ready && ["Guide", SETUP_URL] },
@@ -80,29 +80,43 @@ $("#api-probe").onclick = () => loadHealth(true);
 
 async function loadChannel() {
   const lib = library || { totals: {}, activity: [] };
-  const ch = await api("/api/channel-stats").catch(() => null);
+  const profileId = typeof activeProfileId !== "undefined" ? activeProfileId : null;
+  const ch = await api("/api/channel-stats" + (profileId ? `?profile_id=${encodeURIComponent(profileId)}` : "")).catch(() => null);
+  if (typeof activeProfileId !== "undefined" && profileId !== activeProfileId) return;
   if (ch && ch.ok) {
-    $("#pulse-src").textContent = ch.title;
-    $("#pulse-stats").innerHTML = [[fmt(ch.subscribers), "subscribers"], [fmt(ch.views), "total views"], [fmt(ch.videos), "videos on YouTube"], [lib.totals.videos || 0, "made with YAAS"]]
+    const savedChannel = ch.source === "saved_channel";
+    const channelTotal = value => value == null ? "—" : fmt(value);
+    $("#pulse-src").textContent = `${ch.title || "YouTube channel"}${savedChannel ? " · saved totals" : ""}`;
+    $("#pulse-stats").innerHTML = [[channelTotal(ch.subscribers), "subscribers"], [channelTotal(ch.views), "total views"], [channelTotal(ch.videos), "videos on YouTube"], [lib.totals.videos || 0, "made with YAAS"]]
       .map(([v, l]) => `<div class="stat"><b>${v}</b><span>${l}</span></div>`).join("");
-    const recent = ch.recent.slice(-30);
-    drawBars($("#pulse-bars"), recent.map(v => v.views), recent.map(v => `${fmt(v.views)} views · ${v.title.slice(0, 36)}`));
-    $("#pulse-foot").innerHTML = `<span>views per video</span><span>newest →</span>`;
-    $("#pulse-hint").textContent = "";
+    if (savedChannel) {
+      const activity = lib.activity || [];
+      drawBars($("#pulse-bars"), activity.map(a => a.count), activity.map(a => `${a.day}: ${a.count} video${a.count === 1 ? "" : "s"} made with YAAS`));
+      $("#pulse-foot").innerHTML = `<span>local videos · last 60 days</span><span>today</span>`;
+      const fetched = ch.fetched_at ? new Date(typeof ch.fetched_at === "number" && ch.fetched_at < 1e12 ? ch.fetched_at * 1000 : ch.fetched_at) : null;
+      const fetchedNote = fetched && Number.isFinite(fetched.getTime()) ? `Saved channel totals fetched ${fetched.toLocaleString()}.` : "Saved channel totals from your verified connection.";
+      const refreshNote = activeChannelProfile()?.token_present ? "Use Refresh above to update them." : "Connect this channel above to update these totals.";
+      $("#pulse-hint").textContent = [ch.warning, fetchedNote, refreshNote, "Bars show local video production; — means a count was not supplied."].filter(Boolean).join(" ");
+    } else {
+      const recent = (ch.recent || []).slice(-30);
+      drawBars($("#pulse-bars"), recent.map(v => v.views), recent.map(v => `${fmt(v.views)} views · ${v.title.slice(0, 36)}`));
+      $("#pulse-foot").innerHTML = `<span>views per video</span><span>newest →</span>`;
+      $("#pulse-hint").textContent = "";
+    }
   } else {
     $("#pulse-src").textContent = "";
     $("#pulse-stats").innerHTML = [[lib.totals.videos || 0, "videos made"], [lib.totals.uploaded || 0, "published"], [lib.totals.shorts || 0, "shorts"], [lib.totals.minutes || 0, "minutes of video"]]
       .map(([v, l]) => `<div class="stat"><b>${v}</b><span>${l}</span></div>`).join("");
     drawBars($("#pulse-bars"), lib.activity.map(a => a.count), lib.activity.map(a => `${a.day}: ${a.count} video${a.count === 1 ? "" : "s"}`));
     $("#pulse-foot").innerHTML = `<span>last 60 days</span><span>today</span>`;
-    $("#pulse-hint").innerHTML = ch && ch.configured ? `Couldn't reach YouTube: ${esc(ch.error || "")}` : `Want subscribers and views here? Add a free <a href="#settings">YouTube Data API key</a>.`;
+    $("#pulse-hint").innerHTML = ch && ch.configured ? `Couldn't reach YouTube: ${esc(ch.error || "")}` : `Connect this channel to YouTube above to fetch its identity and statistics.`;
   }
 }
 function renderLatest() {
   const m = library && library.items[0];
   if (!m) { $("#latest").innerHTML = `<div class="empty" style="min-height:110px">Your videos will show up here.</div>`; return; }
   $("#latest").innerHTML = `
-    <div class="thumb-frame ${m.video_type === "shorts" ? "tall" : ""}">${m.files.thumb ? `<img src="/library/${m.id}/thumbnail.jpg?t=${Date.now()}" alt="">` : ""}<span class="badge tag ${m.yt_url ? "green" : ""}">${m.yt_url ? "published" : m.video_type === "shorts" ? "short · not published" : "not published"}</span></div>
+    <div class="thumb-frame ${m.video_type === "shorts" ? "tall" : ""}">${m.files.thumb ? `<img src="/library/${m.id}/thumbnail.jpg?t=${Date.now()}" alt="">` : ""}<span class="badge tag ${m.yt_url ? "green" : m.preview_only ? "amber" : ""}">${m.yt_url ? "published" : m.preview_only ? "draft" : m.video_type === "shorts" ? "short · not published" : "not published"}</span></div>
     <div style="margin-top:10px"><div class="vid-title">${esc(m.title)}</div><div class="vid-meta"><span>${ago(m.created_at)}</span>${m.duration ? `<span>· ${clock(m.duration)}</span>` : ""}</div></div>
-    <div style="display:flex;gap:6px;margin-top:12px;flex-wrap:wrap"><button class="btn btn-white btn-sm" onclick="openProject('${m.id}')">Review &amp; publish</button>${m.yt_url ? `<a class="btn btn-ghost btn-sm" href="${esc(m.yt_url)}" target="_blank" rel="noopener">Watch on YouTube ↗</a>` : ""}</div>`;
+    <div style="display:flex;gap:6px;margin-top:12px;flex-wrap:wrap"><button class="btn btn-white btn-sm" onclick="openProject('${m.id}')">${m.preview_only ? "Review draft" : "Review &amp; publish"}</button>${m.yt_url ? `<a class="btn btn-ghost btn-sm" href="${esc(m.yt_url)}" target="_blank" rel="noopener">Watch on YouTube ↗</a>` : ""}</div>`;
 }

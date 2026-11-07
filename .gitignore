@@ -28,6 +28,7 @@ youtube_token.pickle
 .env
 settings.json
 settings.json.tmp
+.yaas/
 *.pickle
 *.pkl
 
@@ -47,6 +48,7 @@ output/images/
 !docs/screenshots/*.png
 # Keep the small, verified README video samples.
 !docs/samples/*.mp4
+!docs/samples/skylab.jpg
 
 # ── OS junk ──────────────────────────────
 .DS_Store

@@ -19,6 +19,7 @@ from apis.http import get, get_json, ttl_cache
 
 _HT = {"ht": "https://trends.google.com/trending/rss"}
 _ATOM = {"a": "http://www.w3.org/2005/Atom"}
+_DEFAULT_ARXIV_CATEGORIES = ("astro-ph.CO", "gr-qc", "quant-ph", "cs.AI", "q-bio.NC")
 
 # Wikipedia's most-read list is dominated by these — never video material
 _WIKI_SKIP = ("Main_Page", "Special:", "Wikipedia:", "Portal:", "File:", "Deaths_in_")
@@ -84,9 +85,8 @@ def spaceflight_news(limit: int = 10) -> list:
     } for a in d.get("results", [])]
 
 
-def arxiv_latest(limit: int = 8) -> list:
-    cats = getattr(config, "ARXIV_CATEGORIES",
-                   ["astro-ph.CO", "gr-qc", "quant-ph", "cs.AI", "q-bio.NC"])
+def arxiv_latest(limit: int = 8, *, categories=None) -> list:
+    cats = categories if categories is not None else getattr(config, "ARXIV_CATEGORIES", _DEFAULT_ARXIV_CATEGORIES)
     query = " OR ".join(f"cat:{c}" for c in cats)
     r = get("https://export.arxiv.org/api/query", params={
         "search_query": query, "sortBy": "submittedDate",
@@ -115,12 +115,14 @@ SOURCES = {
 }
 
 
-def _safe(key: str):
+def _safe(key: str, geo: str, arxiv_categories: tuple):
     label, fn = SOURCES[key]
     t0 = time.time()
     try:
         if key == "google":
-            items = fn(getattr(config, "TRENDS_GEO", "US"))
+            items = fn(geo)
+        elif key == "arxiv":
+            items = fn(categories=arxiv_categories)
         else:
             items = fn()
         return key, {"label": label, "ok": True, "items": items,
@@ -130,12 +132,24 @@ def _safe(key: str):
                      "error": str(e)[:200], "ms": int((time.time() - t0) * 1000)}
 
 
-@ttl_cache(15 * 60)
 def get_trends() -> dict:
-    """All sources, fetched in parallel, cached 15 minutes."""
+    """Capture this channel's inputs before starting workers or checking cache."""
+    geo = getattr(config, "TRENDS_GEO", "US")
+    categories = tuple(getattr(config, "ARXIV_CATEGORIES", _DEFAULT_ARXIV_CATEGORIES))
+    return _get_trends(geo, categories)
+
+
+@ttl_cache(15 * 60)
+def _get_trends(geo: str, categories: tuple) -> dict:
+    # ContextVars do not implicitly follow ThreadPoolExecutor tasks. Pass the
+    # selected region/categories explicitly, and keep them in the cache key.
     with ThreadPoolExecutor(max_workers=len(SOURCES)) as ex:
-        results = dict(ex.map(_safe, SOURCES))
+        futures = [ex.submit(_safe, key, geo, categories) for key in SOURCES]
+        results = dict(future.result() for future in futures)
     return {"sources": results, "fetched_at": int(time.time())}
+
+
+get_trends.cache_clear = _get_trends.cache_clear
 
 
 def headlines(limit: int = 25) -> list:

@@ -1,5 +1,5 @@
 """Settings blueprint: keys go to .env, everything else to settings.json."""
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, g, jsonify, request
 
 import config
 from agents.researcher import load_banned_topics, save_banned_topics
@@ -60,7 +60,9 @@ _SETTINGS = {
 
 @bp.route("/api/settings")
 def get_settings():
-    out = {}
+    # The client keeps this identity with its form so a second browser tab
+    # changing Home's selection cannot redirect the next save.
+    out = {"profile_id": g.profile_id}
     for k, (attr, typ) in _SETTINGS.items():
         val = getattr(config, attr, "")
         out[k] = _mask(val) if typ == "env" else val
@@ -71,8 +73,9 @@ def get_settings():
 
 @bp.route("/api/save-settings", methods=["POST"])
 def save_settings_route():
+    from studio.channels import is_connecting
     with job_lock:
-        if state.get("running") or state.get("visual_editing") or state.get("uploading"):
+        if state.get("running") or state.get("visual_editing") or state.get("uploading") or is_connecting():
             return jsonify({"ok": False, "error": "Wait for the current job to finish before changing settings."}), 409
         return _save_settings()
 
@@ -122,11 +125,32 @@ def _save_settings():
     if invalid:
         return jsonify({"ok": False, "error": "Invalid setting: " + ", ".join(invalid)}), 400
 
+    from studio.channels import DEFAULT_CONFIG_MAP, active_profile_id, get_profile, update_profile_defaults, validate_defaults
+    profile_id = getattr(g, "profile_id", None) or active_profile_id()
+    profile_updates = {key: src_updates[attr] for key, attr in DEFAULT_CONFIG_MAP.items() if attr in src_updates}
+    try:
+        validate_defaults(profile_updates)
+        combined = {**get_profile(profile_id)["defaults"], **profile_updates}
+        if combined.get("broll_xfade", 0) >= combined.get("broll_interval", 10):
+            raise ValueError("The image crossfade must be shorter than the image interval.")
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    if profile_id != "default":
+        # Provider settings are shared; voice/brand/visual settings belong to the
+        # channel being edited and must not leak into another profile.
+        src_updates = {key: value for key, value in src_updates.items() if key not in DEFAULT_CONFIG_MAP.values()}
+        # This legacy field supplies public statistics for the default profile.
+        # Other profiles use their verified connection's channel ID, so saving
+        # their full Settings form must not overwrite the legacy identity.
+        env_updates.pop("YOUTUBE_CHANNEL_ID", None)
+
     try:
         if env_updates:
             config.save_env(env_updates)
         if src_updates:
             config.save_settings(src_updates)
+        if profile_updates and profile_id != "default":
+            update_profile_defaults(profile_id, profile_updates)
     except Exception as e:
         return jsonify({"ok": False, "error": f"Could not save settings: {e}"})
 
@@ -138,7 +162,7 @@ def _save_settings():
     tr.get_trends.cache_clear()
     from apis import youtube_stats
     youtube_stats.channel_stats.cache_clear()
-    return jsonify({"ok": True})
+    return jsonify({"ok": True, "profile_id": profile_id})
 
 @bp.route("/api/banned-topics")
 def get_banned_topics():

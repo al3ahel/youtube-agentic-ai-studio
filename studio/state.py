@@ -5,6 +5,7 @@ Also the live-log queue that /api/stream sends to the browser.
 """
 import queue
 import threading
+from copy import deepcopy
 
 log_queue  = queue.Queue()
 stop_event = threading.Event()   # set() to request pipeline stop
@@ -40,6 +41,7 @@ state = {
     "audio_path":   None,
     "render_audio_path": None,   # soundtrack chosen for this project's render
     "image_map":    {},
+    "image_reuse_note": None,
     "script":       None,
     "research":     None,
     "yt_url":       None,
@@ -49,7 +51,20 @@ state = {
     "upload_warning": None,       # e.g. thumbnail refused; the video itself uploaded
     "library_id":   None,         # set once the run is archived to the Library
     "started_at":   None,
+    "profile_id":   None,
+    "profile_name": None,
+    "job_profile_id": None,
+    "job_profile_name": None,
+    "job_profile_values": None,
+    "schedule_id": None,
+    "job_output_dir": None,
 }
+
+_EMPTY_PROJECT = deepcopy(state)
+
+
+def fresh_project_state():
+    return deepcopy(_EMPTY_PROJECT)
 
 class Capture:
     """Redirect stdout into the log queue so pipeline prints appear in GUI."""

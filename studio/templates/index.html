@@ -20,10 +20,16 @@
     <a href="#library" data-view="library">My videos</a>
   </nav>
   <div class="bar-right">
+    <button class="build-badge" id="build-info" type="button" title="Show the running YAAS version and diagnostics"><span id="build-label">Checking build…</span></button>
     <div class="status-pill" id="status-pill"><i></i><span id="status-text">Ready</span></div>
-    <a class="settings-btn" id="settings-btn" href="#settings" title="Settings"><span><i></i><i></i><i></i><i></i></span><em>Settings</em></a>
+    <a class="settings-btn" id="settings-btn" href="#settings" title="Settings" aria-label="Settings"><span aria-hidden="true"><i></i><i></i><i></i><i></i></span><em>Settings</em></a>
   </div>
 </header>
+
+<div class="build-warning" id="build-warning" role="status" aria-live="polite" hidden>
+  <div><b id="build-warning-title">Restart YAAS to finish updating</b><p id="build-warning-message"></p></div>
+  <button class="btn btn-dark btn-sm" id="build-warning-details" type="button">Version details</button>
+</div>
 
 <div class="studio-shell">
 <aside class="channel-rail" aria-label="Channel profiles">
@@ -47,6 +53,7 @@
     <div id="channel-identity" class="channel-identity"><div class="channel-avatar large" aria-hidden="true">Y</div><div><div class="channel-eyebrow">Creating for</div><h2 id="active-channel-title">Your channel</h2><p class="hint">Loading your profile…</p></div></div>
     <div class="channel-overview-actions">
       <button type="button" class="btn btn-ghost btn-sm" id="edit-channel">Profile settings</button>
+      <a class="btn btn-ghost btn-sm" id="home-sound-settings" href="#settings/audio">Sound design</a>
       <button type="button" class="btn btn-white btn-sm" id="connect-channel">Connect YouTube</button>
       <button type="button" class="icon-btn" id="refresh-channel" title="Refresh connected channel" aria-label="Refresh connected YouTube channel" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg></button>
     </div>
@@ -260,7 +267,7 @@
     <p class="hint" id="review-audio-master" hidden></p>
     <div id="review-audio-credits" class="review-audio-credits"></div>
     <p class="hint" id="review-audio-note">Save this channel's audio choices in Settings, then apply them to the current draft. Your script and recorded voice stay the same.</p>
-    <div class="draft-actions" style="margin-top:12px"><button class="btn btn-white" type="button" id="apply-review-audio">Regenerate sound design</button><button class="btn btn-ghost" type="button" id="review-audio-settings">Sound settings</button></div>
+    <div class="draft-actions" style="margin-top:12px"><button class="btn btn-white" type="button" id="apply-review-audio">Regenerate sound design</button><button class="btn btn-ghost" type="button" id="review-audio-settings">Sound design settings</button></div>
   </article>
 
   <article class="card s24 review-part" id="rv-storyboard" hidden>
@@ -422,65 +429,24 @@
 <!-- ════════════════════════ SETTINGS ════════════════════════ -->
 <section class="view" id="view-settings">
 
-  <article class="card s24 flat">
+  <article class="card s24 flat" id="settings-guide">
     <div class="guide">
       <div>
         <h2>Settings</h2>
-        <p id="settings-channel-note">Channel, voice, music and visual defaults belong to the selected profile. Provider API keys are shared by this local studio.</p>
+        <p id="settings-channel-note">Sound, voice, channel and visual defaults belong to the selected profile. Provider API keys are shared by this local studio.</p>
       </div>
     </div>
-  </article>
-
-  <article class="card s12 r2">
-    <div class="card-label"><svg viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M17 6l3 3"/></svg>Free API keys</div>
-    <p class="card-intro">Choose a free-tier writing provider here or set up Ollama below. Media and publishing keys are optional for the features you use.</p>
-    <div id="key-fields"></div>
-  </article>
-
-  <article class="card s12">
-    <div class="card-label"><svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="3"/><path d="M10 9l5 3-5 3z"/></svg>Your channel</div>
-    <div class="field"><div class="label">Channel name</div><input type="text" id="s-channel_name" placeholder="Your YouTube channel name"></div>
-    <label class="toggle" style="margin-top:6px"><span><b>Show channel name in videos</b><small>“▶ NAME” tag in the intro, on Shorts and on thumbnails</small></span><input type="checkbox" id="s-show_brand"><span class="switch"></span></label>
-    <div class="field" id="brand-field" style="margin-top:4px"><div class="label">Text to show <small>optional, defaults to channel name</small></div><input type="text" id="s-brand_text" placeholder="Same as channel name"><div class="hint" id="brand-preview"></div></div>
-    <div class="field"><div class="label">Default thumbnail style <small>change it per video on Review</small></div>
-      <select id="s-thumb_style">
-        <option value="impact">Impact — huge outlined text, classic YouTube</option>
-        <option value="cinematic">Cinematic — full-bleed photo, film letterbox</option>
-        <option value="split">Split — bold colour panel + angled photo</option>
-        <option value="studio">Studio — clean dark card, light type</option>
-      </select></div>
-    <div class="field"><div class="label">What your channel is about</div><textarea id="s-channel_desc" rows="5"></textarea><div class="hint">The AI uses this to pick topics and match your style. Be specific about subjects, tone and audience.</div></div>
-  </article>
-
-  <article class="card s12">
-    <div class="card-label"><svg viewBox="0 0 24 24"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v4"/></svg>Voice</div>
-    <div class="field">
-      <div class="label">Narrator</div>
-      <select id="s-voice_id">
-        <optgroup label="Captions synced word by word">
-          <option value="en-US-AndrewNeural">Andrew — US, warm male</option>
-          <option value="en-GB-LibbyNeural">Libby — UK, clear female</option>
-        </optgroup>
-        <optgroup label="Captions synced by sentence">
-          <option value="en-US-BrianNeural">Brian — US, calm male</option>
-          <option value="en-US-GuyNeural">Guy — US, neutral male</option>
-          <option value="en-GB-RyanNeural">Ryan — UK, warm male</option>
-          <option value="en-US-ChristopherNeural">Christopher — US, deep male</option>
-          <option value="en-US-AriaNeural">Aria — US, expressive female</option>
-          <option value="en-GB-SoniaNeural">Sonia — UK, clear female</option>
-          <option value="en-AU-NatashaNeural">Natasha — AU, female</option>
-        </optgroup>
-      </select>
-    </div>
-    <div class="field"><div class="label">Speed</div><div class="range-row"><input type="range" id="r-voice_rate" min="-20" max="20"><span id="v-voice_rate"></span></div></div>
-    <div class="field"><div class="label">Pitch</div><div class="range-row"><input type="range" id="r-voice_pitch" min="-10" max="10"><span id="v-voice_pitch"></span></div></div>
-  </article>
-
-  <article class="card s12">
-    <div class="card-label">Publishing</div>
-    <label class="toggle"><span><b>Credit YAAS in descriptions</b><small>Adds “Made with YAAS by Raunak Patil · raunakpatil.com”</small></span><input type="checkbox" id="s-credit_yaas"><span class="switch"></span></label>
-    <div class="field"><div class="label">Default visibility</div>
-      <select id="s-privacy"><option value="public">Everyone (public)</option><option value="unlisted">Anyone with the link (unlisted)</option><option value="private">Only me (private)</option></select></div>
+    <nav class="settings-sections" id="settings-sections" aria-label="Settings sections">
+      <a href="#settings/audio" data-section="audio">Sound design</a>
+      <a href="#settings/voice" data-section="voice">Voice</a>
+      <a href="#settings/visuals" data-section="visuals">Visuals &amp; captions</a>
+      <a href="#settings/models" data-section="models">Writing models</a>
+      <a href="#settings/keys" data-section="keys">API keys</a>
+      <a href="#settings/channel" data-section="channel">Channel</a>
+      <a href="#settings/publishing" data-section="publishing">Publishing</a>
+      <a href="#settings/topics" data-section="topics">Topics</a>
+      <a href="#settings/advanced" data-section="advanced">Advanced</a>
+    </nav>
   </article>
 
   <article class="card s24" id="settings-audio" aria-labelledby="audio-library-title">
@@ -491,6 +457,7 @@
       <div class="field" id="sound-intensity-field"><label class="label" for="s-sound_intensity">Intensity</label><select id="s-sound_intensity"><option value="low">Low — subtle and calm</option><option value="balanced">Balanced — more emphasis</option></select></div>
     </div>
     <p class="hint" id="sound-direction-note">Automatic uses the script and this channel's style to choose suitable music, ambience and timed effects. No track selection is required.</p>
+    <label class="toggle audio-mastering-control"><span><b>Audio mastering</b><small>Balance loudness and limit peaks in the finished soundtrack. Applies to all sound modes, including narration only.</small></span><input type="checkbox" id="s-audio_mastering"><span class="switch"></span></label>
     <div id="manual-audio-settings" hidden>
     <div class="audio-settings-grid">
       <div>
@@ -543,6 +510,58 @@
     </details>
   </article>
 
+  <article class="card s12 r2" id="settings-keys">
+    <div class="card-label"><svg viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M17 6l3 3"/></svg>Free API keys</div>
+    <p class="card-intro">Choose a free-tier writing provider here or set up Ollama below. Media and publishing keys are optional for the features you use.</p>
+    <div id="key-fields"></div>
+  </article>
+
+  <article class="card s12" id="settings-channel">
+    <div class="card-label"><svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="3"/><path d="M10 9l5 3-5 3z"/></svg>Your channel</div>
+    <div class="field"><div class="label">Channel name</div><input type="text" id="s-channel_name" placeholder="Your YouTube channel name"></div>
+    <label class="toggle" style="margin-top:6px"><span><b>Show channel name in videos</b><small>“▶ NAME” tag in the intro, on Shorts and on thumbnails</small></span><input type="checkbox" id="s-show_brand"><span class="switch"></span></label>
+    <div class="field" id="brand-field" style="margin-top:4px"><div class="label">Text to show <small>optional, defaults to channel name</small></div><input type="text" id="s-brand_text" placeholder="Same as channel name"><div class="hint" id="brand-preview"></div></div>
+    <div class="field"><div class="label">Default thumbnail style <small>change it per video on Review</small></div>
+      <select id="s-thumb_style">
+        <option value="impact">Impact — huge outlined text, classic YouTube</option>
+        <option value="cinematic">Cinematic — full-bleed photo, film letterbox</option>
+        <option value="split">Split — bold colour panel + angled photo</option>
+        <option value="studio">Studio — clean dark card, light type</option>
+      </select></div>
+    <div class="field"><div class="label">What your channel is about</div><textarea id="s-channel_desc" rows="5"></textarea><div class="hint">The AI uses this to pick topics and match your style. Be specific about subjects, tone and audience.</div></div>
+  </article>
+
+  <article class="card s12" id="settings-voice">
+    <div class="card-label"><svg viewBox="0 0 24 24"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v4"/></svg>Voice</div>
+    <div class="field">
+      <div class="label">Narrator</div>
+      <select id="s-voice_id">
+        <optgroup label="Captions synced word by word">
+          <option value="en-US-AndrewNeural">Andrew — US, warm male</option>
+          <option value="en-GB-LibbyNeural">Libby — UK, clear female</option>
+        </optgroup>
+        <optgroup label="Captions synced by sentence">
+          <option value="en-US-BrianNeural">Brian — US, calm male</option>
+          <option value="en-US-GuyNeural">Guy — US, neutral male</option>
+          <option value="en-GB-RyanNeural">Ryan — UK, warm male</option>
+          <option value="en-US-ChristopherNeural">Christopher — US, deep male</option>
+          <option value="en-US-AriaNeural">Aria — US, expressive female</option>
+          <option value="en-GB-SoniaNeural">Sonia — UK, clear female</option>
+          <option value="en-AU-NatashaNeural">Natasha — AU, female</option>
+        </optgroup>
+      </select>
+    </div>
+    <div class="field"><div class="label">Speed</div><div class="range-row"><input type="range" id="r-voice_rate" min="-20" max="20"><span id="v-voice_rate"></span></div></div>
+    <div class="field"><div class="label">Pitch</div><div class="range-row"><input type="range" id="r-voice_pitch" min="-10" max="10"><span id="v-voice_pitch"></span></div></div>
+  </article>
+
+  <article class="card s12" id="settings-publishing">
+    <div class="card-label">Publishing</div>
+    <label class="toggle"><span><b>Credit YAAS in descriptions</b><small>Adds “Made with YAAS by Raunak Patil · raunakpatil.com”</small></span><input type="checkbox" id="s-credit_yaas"><span class="switch"></span></label>
+    <div class="field"><div class="label">Default visibility</div>
+      <select id="s-privacy"><option value="public">Everyone (public)</option><option value="unlisted">Anyone with the link (unlisted)</option><option value="private">Only me (private)</option></select></div>
+  </article>
+
   <article class="card s12" id="settings-models">
     <div class="card-label">Writing models</div>
     <div class="field"><label class="label" for="s-llm_route">Model route</label><select id="s-llm_route"><option value="auto">Automatic — configured free providers</option><option value="local">Local only — Ollama</option></select></div>
@@ -554,14 +573,14 @@
     <label class="toggle"><span><b>Reuse unchanged narration</b><small>Cache voice recordings when the text and voice settings match</small></span><input type="checkbox" id="s-voice_cache_enabled"><span class="switch"></span></label>
   </article>
 
-  <article class="card s12">
+  <article class="card s12" id="settings-topics">
     <div class="card-label"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/></svg>Topics to avoid</div>
     <p class="card-intro">One per line. The AI never picks these. Add a topic after you've covered it so you don't repeat yourself.</p>
     <textarea id="s-banned" rows="6" class="mono" placeholder="The Fermi Paradox&#10;Dark Matter"></textarea>
     <button class="btn btn-ghost btn-sm" id="save-banned" style="margin-top:10px">Save list</button>
   </article>
 
-  <article class="card s12">
+  <article class="card s12" id="settings-visuals">
     <div class="card-label">Motion studio</div>
     <div class="field"><label class="label" for="s-visual_mode">Default visual style</label>
       <select id="s-visual_mode"><option value="motion">Motion — animated graphics</option><option value="hybrid">Hybrid — motion, photos and footage</option><option value="classic">Classic — photos and transitions</option></select></div>
@@ -578,7 +597,7 @@
     </div>
   </article>
 
-  <article class="card s12">
+  <article class="card s12" id="settings-advanced">
     <div class="card-label"><svg viewBox="0 0 24 24"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg>Advanced</div>
     <details class="more">
       <summary>AI models, image sources and video style</summary>
@@ -700,6 +719,14 @@
 </div>
 <div class="toasts" id="toasts"></div>
 
+<dialog id="build-dialog" class="studio-dialog" aria-labelledby="build-dialog-title">
+  <div class="dialog-heading"><div><div class="channel-eyebrow">Local studio</div><h2 id="build-dialog-title">Running version</h2></div><button type="button" class="dialog-close" data-close-dialog="build-dialog" aria-label="Close version details">×</button></div>
+  <p class="dialog-intro" id="build-dialog-status">Checking the running server…</p>
+  <dl class="build-details" id="build-details"></dl>
+  <p class="hint">The project directory and Python executable identify which installation this browser is connected to. Restart that process after updating its Python code.</p>
+  <div class="dialog-actions"><button type="button" class="btn btn-ghost" id="build-refresh">Refresh status</button><button type="button" class="btn btn-white" id="build-reload">Reload page</button><button type="button" class="btn btn-ghost" data-close-dialog="build-dialog">Close</button></div>
+</dialog>
+
 <script src="/static/js/core.js"></script>
 <script src="/static/js/run.js"></script>
 <script src="/static/js/home.js"></script>
@@ -710,6 +737,7 @@
 <script src="/static/js/audio.js"></script>
 <script src="/static/js/channels.js"></script>
 <script src="/static/js/schedules.js"></script>
+<script src="/static/js/build.js"></script>
 <script src="/static/js/boot.js"></script>
 </body>
 </html>

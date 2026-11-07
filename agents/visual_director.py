@@ -444,7 +444,19 @@ def _visual_ai_available():
             or gemini_client.gemini_configured() or bool(llm.providers()))
 
 
-def _request_design(scenes: list[dict], sources: dict, instructions: str = "", *, stop_event=None, direction=None) -> dict:
+def _request_design(scenes: list[dict], sources: dict, instructions: str = "", *,
+                    stop_event=None, direction=None, provider_info=None) -> dict:
+    from agents import gemini_client
+    from agents.json_utils import extract_json
+    from apis import llm
+
+    def check_stop():
+        if stop_event is not None and stop_event.is_set():
+            raise InterruptedError("Stopped while planning visuals")
+
+    check_stop()
+    if provider_info is not None:
+        provider_info.clear()
     source_scenes = []
     for scene in scenes:
         source = sources[scene["id"]]
@@ -481,32 +493,53 @@ def _request_design(scenes: list[dict], sources: dict, instructions: str = "", *
         "Source scenes:\n" + json.dumps(source_scenes, ensure_ascii=False)
     )
     schema = _ai_schema([scene["id"] for scene in scenes])
+    def validated(design):
+        check_stop()
+        # Text-only providers can return the older constrained scene schema.
+        # Preserve existing choices where that response does not supply them.
+        if isinstance(design, dict):
+            model_direction = design.get("visual_direction", {})
+            fallback = direction or art_direction.local_direction({"title": scenes[0]["title"],
+                "sections": [{"narration": source["narration"]} for source in sources.values()]},
+                getattr(config, "CHANNEL_PRESET", "general"))
+            design.setdefault("visual_direction", copy.deepcopy(fallback))
+            current = {scene["id"]: scene for scene in scenes}
+            for row in design.get("scenes", []) if isinstance(design.get("scenes"), list) else []:
+                if isinstance(row, dict) and row.get("id") in current:
+                    old = current[row["id"]]
+                    row.setdefault("composition", old.get("composition", "default"))
+                    for field in ("look", "rhythm"):
+                        chosen = model_direction.get(field) if isinstance(model_direction, dict) else None
+                        row.setdefault(field, chosen or old.get(field, fallback[field]))
+        openrouter.validate_json(design, schema)
+        return design
+
+    excluded, fallback_reason = (), None
     if (getattr(config, "LLM_ROUTE", "auto") != "local" and not getattr(config, "OLLAMA_MODEL", "")
             and openrouter._api_key()):
-        design = openrouter.plan_json(prompt, schema, stop_event=stop_event)
-    else:
-        from agents import gemini_client
-        from agents.json_utils import extract_json
-        design = extract_json(gemini_client.generate(
-            prompt + "\nRequired JSON schema:\n" + json.dumps(schema, ensure_ascii=False),
-            stop_event=stop_event), "Visual director")
-    # Text-only providers can return the older constrained scene schema. Keep
-    # its established look/composition rather than inventing an AI style choice.
-    if isinstance(design, dict):
-        model_direction = design.get("visual_direction", {})
-        fallback = direction or art_direction.local_direction({"title": scenes[0]["title"],
-            "sections": [{"narration": source["narration"]} for source in sources.values()]},
-            getattr(config, "CHANNEL_PRESET", "general"))
-        design.setdefault("visual_direction", copy.deepcopy(fallback))
-        current = {scene["id"]: scene for scene in scenes}
-        for row in design.get("scenes", []) if isinstance(design.get("scenes"), list) else []:
-            if isinstance(row, dict) and row.get("id") in current:
-                old = current[row["id"]]
-                row.setdefault("composition", old.get("composition", "default"))
-                for field in ("look", "rhythm"):
-                    chosen = model_direction.get(field) if isinstance(model_direction, dict) else None
-                    row.setdefault(field, chosen or old.get(field, fallback[field]))
-    openrouter.validate_json(design, schema)
+        selected = str(getattr(config, "VISUAL_PLANNER_MODEL", "openrouter/free") or "openrouter/free").strip()
+        try:
+            design = validated(openrouter.plan_json(prompt, schema, model=selected, stop_event=stop_event))
+            if provider_info is not None:
+                provider_info.update(provider="openrouter", model=selected)
+            return design
+        except (RuntimeError, openrouter.OpenRouterError, ValueError, KeyError, TypeError) as exc:
+            check_stop()
+            # One alternate configured text chain, without resubmitting the
+            # failed OpenRouter route or changing its explicitly selected model.
+            if not (gemini_client.gemini_configured()
+                    or any(row[0] != "openrouter" for row in llm.providers())):
+                raise
+            excluded = ("openrouter",)
+            fallback_reason = getattr(exc, "code", "invalid_design")
+    response_info = {}
+    design = validated(extract_json(gemini_client.generate(
+        prompt + "\nRequired JSON schema:\n" + json.dumps(schema, ensure_ascii=False),
+        stop_event=stop_event, exclude_providers=excluded, provider_info=response_info), "Visual director"))
+    if provider_info is not None:
+        provider_info.update(response_info or {"model": "configured free AI"})
+        if fallback_reason:
+            provider_info.update(fallback_from="openrouter", fallback_reason=fallback_reason)
     return design
 
 
@@ -922,16 +955,17 @@ def plan_scenes(script: dict, timeline: dict, mode: str = "motion",
         plan["ai_status"] = {"status": "unavailable", "reason": "missing_key"}
     else:
         try:
+            provider_info = {}
             with openrouter.call_budget(2):
-                design = _request_design(plan["scenes"], sources, stop_event=stop_event, direction=plan["visual_direction"])
+                design = _request_design(plan["scenes"], sources, stop_event=stop_event,
+                                         direction=plan["visual_direction"], provider_info=provider_info)
             candidate = copy.deepcopy(plan)
             wants_footage = _apply_design(candidate, design, sources)
             validate_plan(candidate)
             plan = candidate
-            from agents import gemini_client
-            plan["ai_status"] = {"status": "planned", "model": (getattr(config, "VISUAL_PLANNER_MODEL", "openrouter/free")
-                if openrouter._api_key() and getattr(config, "LLM_ROUTE", "auto") != "local" and not config.OLLAMA_MODEL
-                else gemini_client.last_provider or "configured free AI")}
+            plan["ai_status"] = {"status": "planned", **provider_info}
+            if provider_info.get("fallback_from"):
+                plan["warnings"].append("The selected free OpenRouter planner did not produce a usable design; a configured free text model supplied this storyboard.")
         except (RuntimeError, openrouter.OpenRouterError, ValueError, KeyError, TypeError) as exc:
             plan["ai_status"] = {"status": "fallback", "reason": getattr(exc, "code", "invalid_design")}
             plan["warnings"].append("Visual AI was unavailable or returned an invalid design; local animated templates are ready.")
@@ -1036,10 +1070,12 @@ def regenerate_scene(plan: dict, scene_id: str, script: dict, instructions: str 
     simpler = bool(re.search(r"\b(shorter|less text|simpler|concise)\b", local_instructions))
     sources = {original["id"]: {"section": source_section, "narration": narration}}
     ai_applied = False
+    provider_info = {}
     if bool(getattr(config, "VISUAL_AI_ENABLED", True)) and _visual_ai_available():
         try:
             with openrouter.call_budget(2):
-                design = _request_design([replacement], sources, instructions, direction=result.get("visual_direction"))
+                design = _request_design([replacement], sources, instructions,
+                                         direction=result.get("visual_direction"), provider_info=provider_info)
             temporary = {**result, "scenes": [copy.deepcopy(replacement)], "warnings": []}
             _apply_design(temporary, design, sources)
             replacement = temporary["scenes"][0]
@@ -1050,6 +1086,8 @@ def regenerate_scene(plan: dict, scene_id: str, script: dict, instructions: str 
                     if field not in update:
                         replacement[field] = temporary["visual_direction"][field]
             result.setdefault("warnings", []).extend(temporary["warnings"])
+            if ai_applied and provider_info.get("fallback_from"):
+                result["warnings"].append("The selected free OpenRouter planner did not produce a usable design; a configured free text model supplied this scene edit.")
         except (RuntimeError, openrouter.OpenRouterError, ValueError, KeyError, TypeError):
             result.setdefault("warnings", []).append("Scene regeneration used local templates because visual AI was unavailable.")
     supported = preference or simpler or remove_photos or graphics_only or replace_image or look or rhythm or composition
@@ -1112,7 +1150,8 @@ def regenerate_scene(plan: dict, scene_id: str, script: dict, instructions: str 
         changes.append("Replaced the project photo." if replacement.get("image") else "Removed the photo.")
     if original.get("footage") != replacement.get("footage"):
         changes.append("Changed the scene's footage.")
-    result["last_edit"] = {"scene_id": original["id"], "status": "ai" if ai_applied else "local", "changes": changes}
+    result["last_edit"] = {"scene_id": original["id"], "status": "ai" if ai_applied else "local", "changes": changes,
+                           **(provider_info if ai_applied else {})}
     if "image_status" in result:
         attached = sum(bool(scene.get("image")) and scene["template"] not in {"chart", "footage"}
                        for scene in result["scenes"])

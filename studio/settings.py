@@ -146,13 +146,20 @@ def _save_settings():
     profile_updates = {key: src_updates[attr] for key, attr in DEFAULT_CONFIG_MAP.items() if attr in src_updates}
     try:
         validate_defaults(profile_updates)
-        combined = {**get_profile(profile_id)["defaults"], **profile_updates}
+        previous = get_profile(profile_id)["defaults"]
+        combined = {**previous, **profile_updates}
         if combined.get("sound_mode", "manual") == "manual" and combined.get("sfx_enabled") and not combined.get("sfx_track"):
             raise ValueError("Choose an imported sound effect before enabling sound effects.")
-        for key, kind in (("music_track", "music"), ("sfx_track", "sfx")):
-            if profile_updates.get(key):
+        for key, kind, enabled in (("music_track", "music", "music_enabled"), ("sfx_track", "sfx", "sfx_enabled")):
+            identifier = combined.get(key)
+            changed = key in profile_updates and identifier != previous.get(key)
+            used = combined.get("sound_mode", "manual") == "manual" and combined.get(enabled)
+            # A full form carries hidden manual selections when switching to
+            # Automatic/Off. A missing, unused old file must not trap that
+            # switch. New selections and enabled Manual layers remain checked.
+            if identifier and (changed or used):
                 from studio.audio_library import resolve_audio_asset
-                resolve_audio_asset(profile_id, profile_updates[key], kind=kind)
+                resolve_audio_asset(profile_id, identifier, kind=kind)
         if combined.get("broll_xfade", 0) >= combined.get("broll_interval", 10):
             raise ValueError("The image crossfade must be shorter than the image interval.")
     except ValueError as exc:

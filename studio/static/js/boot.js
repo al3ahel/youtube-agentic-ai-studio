@@ -7,6 +7,7 @@ Object.assign(loaders, {
 });
 setHero("form");
 route();
+loadBuildStatus();
 pollStatus();
 loadTrends();
 loadChannels().then(refreshChannelWorkspace).catch(error => toast(error.message, "err"));

@@ -77,7 +77,7 @@ def _should_switch_model(err: Exception) -> bool:
     ])
 
 
-def _generate_gemini(prompt: str, starting_model: str | None, stop_event=None) -> str:
+def _generate_gemini(prompt: str, starting_model: str | None, stop_event=None, *, provider_info=None) -> str:
     global last_provider
     from google.genai import types
     client = _get_client()
@@ -100,6 +100,8 @@ def _generate_gemini(prompt: str, starting_model: str | None, stop_event=None) -
                     raise ValueError("The model returned no text.")
                 from apis.openrouter import _redact
                 last_provider = model
+                if provider_info is not None:
+                    provider_info.update(provider="gemini", model=model)
                 return _redact(response.text).strip()
 
             except InterruptedError:
@@ -130,10 +132,13 @@ def _generate_gemini(prompt: str, starting_model: str | None, stop_event=None) -
     )
 
 
-def generate(prompt: str, starting_model: str | None = None, *, stop_event=None) -> str:
+def generate(prompt: str, starting_model: str | None = None, *, stop_event=None,
+             exclude_providers=(), provider_info=None) -> str:
     global last_provider
     from apis import llm
 
+    if provider_info is not None:
+        provider_info.clear()
     if not isinstance(prompt, str) or not prompt.strip() or len(prompt) > 60000:
         raise ValueError("AI requests must contain 1–60,000 characters.")
     from apis.openrouter import _redact
@@ -144,6 +149,8 @@ def generate(prompt: str, starting_model: str | None = None, *, stop_event=None)
         try:
             text = local_llm.generate(prompt, stop_event=stop_event)
             last_provider = "Ollama · " + config.OLLAMA_MODEL
+            if provider_info is not None:
+                provider_info.update(provider="ollama", model=config.OLLAMA_MODEL)
             return text
         except InterruptedError:
             raise
@@ -153,22 +160,28 @@ def generate(prompt: str, starting_model: str | None = None, *, stop_event=None)
             print("   ⚠ Local model unavailable — trying configured free cloud providers…")
 
     gemini_err = None
-    if gemini_configured():
+    if gemini_configured() and "gemini" not in exclude_providers:
         try:
-            return _generate_gemini(prompt, starting_model, stop_event)
+            return _generate_gemini(prompt, starting_model, stop_event, provider_info=provider_info)
         except InterruptedError:
             raise
         except Exception as e:
             gemini_err = e
-            if not llm.providers():
+            if not any(provider[0] not in exclude_providers for provider in llm.providers()):
                 raise RuntimeError("The configured free Gemini models are unavailable. Check the key and free quota, or select an installed local Ollama model.") from None
             print("   ⚠ Gemini unavailable — trying the configured free fallback providers…")
     else:
         print("   → Using configured free fallback LLMs")
 
     try:
-        text = llm.chat(prompt, stop_event=stop_event)
-        last_provider = "fallback"
+        response_info = {}
+        text = llm.chat(prompt, stop_event=stop_event, exclude_providers=exclude_providers,
+                        provider_info=response_info)
+        if provider_info is not None:
+            provider_info.update(response_info)
+        provider = response_info.get("provider")
+        last_provider = (({"groq": "Groq", "openrouter": "OpenRouter", "ollama": "Ollama"}.get(provider, provider)
+                          + " · " + response_info["model"]) if provider and response_info.get("model") else "configured free AI")
         return text
     except InterruptedError:
         raise

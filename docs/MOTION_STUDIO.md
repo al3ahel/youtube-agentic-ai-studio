@@ -189,7 +189,7 @@ The original narration controls speech ducking for both layers, followed by peak
 limiting. Motion prepares the soundtrack as lossless WAV before video encoding.
 No generated sound effects or test tones are added to normal videos.
 
-Use **Review → Music & effects → Regenerate sound design** for Automatic, or
+Use **Review → Sound design → Regenerate sound design** for Automatic, or
 **Apply music & effects to current draft** for Manual. This reruns Music and Video,
 preserving the script, recorded voice, measured timeline, storyboard and edited
 publishing prose (the marked applied-audio credit block is refreshed). For Classic, leave the Home topic empty and select only

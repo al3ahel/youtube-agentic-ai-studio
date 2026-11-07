@@ -27,7 +27,10 @@ config.DATA_DIR = str(scratch / ".yaas")
 config.OUTPUT_DIR = str(scratch / "output")
 config.IMAGES_DIR = str(scratch / "output" / "images")
 config.SETTINGS_PATH = str(scratch / "settings.json")
+config.ENV_PATH = str(scratch / ".env")
 config.YOUTUBE_CLIENT_SECRET = str(scratch / "client_secret.json")
+for key in config.ENV_KEYS:
+    setattr(config, key, "")
 config.YOUTUBE_API_KEY = ""
 config.YOUTUBE_CHANNEL_ID = ""
 from uploader import youtube
@@ -281,6 +284,125 @@ test("studio: settings and quick preferences stay with their channel across anot
   await page.waitForFunction(() => [...document.querySelectorAll(".toast")].some(node => node.textContent === "Voice saved for Quiet Hours"));
   const updatedCalm = await (await fetch(`${origin}/api/settings?profile_id=${calm.id}`)).json();
   assert.equal(updatedCalm.voice_id, "en-GB-LibbyNeural");
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+test("studio: visible Sound design routes save and undo real per-channel mastering preferences", {skip: skipped, timeout: 60000}, async () => {
+  const create = async name => (await (await fetch(`${origin}/api/channels`, {
+    method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({name}),
+  })).json()).profile;
+  const selected = await create("Sound design channel"), other = await create("Separate sound channel");
+  await fetch(`${origin}/api/channels/${selected.id}/activate`, {method: "POST", headers: {"Content-Type": "application/json"}, body: "{}"});
+  const writes = [];
+  const {page, errors} = await openStudio(request => {
+    const url = new URL(request.url());
+    if (request.method() === "POST") writes.push({path: url.pathname, profile: url.searchParams.get("profile_id"), body: JSON.parse(request.postData() || "{}")});
+    return false; // Settings, profiles, saves and build information use the actual Flask app.
+  });
+  const waitForSection = async section => {
+    await page.waitForFunction(({section, profile}) => location.hash === `#settings/${section}`
+      && settingsProfileId === profile && document.querySelector("#view-settings").classList.contains("active")
+      && !pendingSettingsSection, {}, {section, profile: selected.id});
+  };
+  const openSection = async section => {
+    await page.$eval("#settings-guide", node => node.scrollIntoView({block: "start", behavior: "instant"}));
+    await page.click(`#settings-sections [data-section="${section}"]`);
+    await waitForSection(section);
+  };
+  const save = async () => {
+    await page.waitForFunction(() => {
+      const r = document.querySelector("#savebar-save").getBoundingClientRect();
+      return document.querySelector("#savebar").classList.contains("show") && r.top > 0 && r.bottom < innerHeight
+        && Number(getComputedStyle(document.querySelector("#savebar")).opacity) > .99;
+    });
+    const [response] = await Promise.all([
+      page.waitForResponse(response => new URL(response.url()).pathname === "/api/save-settings"),
+      page.click("#savebar-save"),
+    ]);
+    assert.equal(response.status(), 200, await response.text());
+    await page.waitForFunction(() => !settingsSavePending && !settingsDirty());
+  };
+  await page.click("#home-sound-settings");
+  await waitForSection("audio");
+  await page.waitForFunction(() => Number(getComputedStyle(document.querySelector("#settings-audio")).opacity) > .99);
+  assert.equal(await page.$eval("#settings-btn", node => node.classList.contains("active")), true);
+  assert.equal(await page.$$eval("#s-audio_mastering", nodes => nodes.length), 1);
+  assert.equal(await page.$eval("#s-audio_mastering", node => node.checked), true);
+  assert.equal(await page.$eval("#s-sound_mode", node => node.value), "auto");
+  assert.ok(await page.$eval("#s-sound_mode", node => { const rect = node.getBoundingClientRect(); return rect.top > 60 && rect.bottom < innerHeight; }));
+  await page.select("#s-sound_mode", "off");
+  await page.click('label:has(#s-audio_mastering)');
+  assert.equal(await page.$eval("#s-audio_mastering", node => node.checked), false);
+  // A section change must retain the loaded profile and unsaved form. The save
+  // bar must still call Settings, never the Review metadata endpoint.
+  await openSection("voice");
+  assert.equal(await page.$eval("#s-sound_mode", node => node.value), "off");
+  assert.equal(await page.$eval("#s-audio_mastering", node => node.checked), false);
+  await save();
+  const savedOff = await (await fetch(`${origin}/api/settings?profile_id=${selected.id}`)).json();
+  assert.equal(savedOff.sound_mode, "off"); assert.equal(savedOff.audio_mastering, false);
+  assert.deepEqual(writes.filter(item => item.path === "/api/save-settings").map(item => [item.profile, item.body.sound_mode, item.body.audio_mastering]), [[selected.id, "off", false]]);
+
+  await openSection("audio");
+  await page.select("#s-sound_mode", "auto");
+  await page.click('label:has(#s-audio_mastering)');
+  await page.waitForFunction(() => document.querySelector("#savebar-undo").getBoundingClientRect().bottom < innerHeight);
+  await page.click("#savebar-undo");
+  await page.waitForFunction(() => !settingsDirty() && document.querySelector("#s-sound_mode").value === "off" && !document.querySelector("#s-audio_mastering").checked);
+  await page.select("#s-sound_mode", "auto");
+  await page.select("#s-sound_intensity", "balanced");
+  await page.click('label:has(#s-audio_mastering)');
+  await save();
+  await page.reload({waitUntil: "domcontentloaded"});
+  await waitForSection("audio");
+  await page.waitForFunction(() => document.querySelector("#s-sound_mode").value === "auto" && document.querySelector("#s-sound_intensity").value === "balanced" && document.querySelector("#s-audio_mastering").checked);
+  await page.waitForFunction(() => Number(getComputedStyle(document.querySelector("#settings-audio")).opacity) > .99 && document.querySelector("#build-warning").hidden);
+  assert.equal(await page.evaluate(() => isSettingsView()), true);
+  assert.match(await page.$eval("#settings-channel-note", node => node.textContent), /Sound design channel/);
+  await page.screenshot({path: path.join(screenshots, "settings-sound-desktop.png")});
+
+  const running = await (await fetch(`${origin}/api/build`)).json();
+  assert.equal(running.status, "current"); assert.equal(running.diagnostics, undefined);
+  await page.click("#build-info");
+  await page.waitForFunction(() => document.querySelector("#build-details").textContent.includes("Project directory"));
+  assert.match(await page.$eval("#build-details", node => node.textContent), /Python executable/);
+  assert.ok((await page.$eval("#build-details", node => node.textContent)).includes(root));
+  await page.click('#build-dialog [data-close-dialog="build-dialog"]');
+
+  await page.setViewport({width: 390, height: 844});
+  await page.click('#tabs a[data-view="home"]');
+  await page.click("#settings-btn");
+  await page.waitForFunction(() => location.hash === "#settings" && document.querySelector("#view-settings").classList.contains("active"));
+  assert.ok(await page.$eval("#settings-btn em", node => getComputedStyle(node).display !== "none" && node.getBoundingClientRect().width > 0));
+  assert.ok(await page.$eval("#s-sound_mode", node => node.getBoundingClientRect().bottom < innerHeight), "Sound direction is visible on the first mobile Settings screen");
+  await openSection("audio");
+  await page.waitForFunction(() => Number(getComputedStyle(document.querySelector("#settings-audio")).opacity) > .99);
+  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
+  await page.screenshot({path: path.join(screenshots, "settings-sound-mobile.png")});
+
+  const [first, second] = await Promise.all([selected, other].map(async profile => (await fetch(`${origin}/api/settings?profile_id=${profile.id}`)).json()));
+  assert.deepEqual([first.sound_mode, first.sound_intensity, first.audio_mastering], ["auto", "balanced", true]);
+  assert.deepEqual([second.sound_mode, second.sound_intensity, second.audio_mastering], ["auto", "low", true]);
+  assert.equal(writes.filter(item => item.path === "/api/run").length, 0);
+  assert.ok(writes.every(item => item.path === "/api/save-settings"), JSON.stringify(writes.map(item => item.path)));
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+test("studio: a server without build diagnostics gives an explicit restart instruction", {skip: skipped}, async () => {
+  const {page, errors} = await openStudio(request => {
+    if (new URL(request.url()).pathname !== "/api/build") return false;
+    request.respond({status: 404, contentType: "text/html", body: "Not Found"});
+    return true;
+  });
+  await page.waitForSelector("#build-warning:not([hidden])");
+  assert.match(await page.$eval("#build-warning", node => node.textContent), /running server does not have the updated version check/);
+  assert.match(await page.$eval("#build-warning", node => node.textContent), /Ctrl\+C.*gui\.py.*same Python environment/);
+  assert.doesNotMatch(await page.$eval("#build-warning", node => node.textContent), /clear.*cache/i);
+  assert.equal(await page.$eval("#build-label", node => node.textContent), "Restart needed");
+  await page.click("#build-info");
+  await page.waitForFunction(() => document.querySelector("#build-dialog-status").textContent.includes("Ctrl+C"));
   assert.deepEqual(errors, []);
   await page.close();
 });

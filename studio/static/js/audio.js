@@ -206,7 +206,7 @@ $("#review-audio-settings").onclick = async () => {
     await activateChannel(reviewProfileId);
     if (activeProfileId !== reviewProfileId) return;
   }
-  location.hash = "#settings";
+  location.hash = "#settings/audio";
 };
 $("#apply-review-audio").onclick = () => {
   if (settingsProfileId === reviewProfileId && settingsDirty()) return toast("Save this channel's Settings changes before applying its audio.", "err");

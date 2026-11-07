@@ -143,6 +143,31 @@ def test_settings_accept_owned_imports_and_refuse_foreign_or_wrong_kind_without_
     assert channels.get_profile(owner["id"])["defaults"] == own_defaults
 
 
+@pytest.mark.parametrize("profile_kind", ["default", "separate"])
+@pytest.mark.parametrize("mode", ["auto", "off"])
+@pytest.mark.parametrize("kind,setting,enable", [("music", "music_track", "music_enabled"), ("sfx", "sfx_track", "sfx_enabled")])
+def test_unavailable_retained_manual_track_does_not_block_automatic_or_off(client, profile_kind, mode, kind, setting, enable):
+    profile_id = "default" if profile_kind == "default" else channels.create_profile("Saved soundtrack")["id"]
+    asset = _import(client, profile_id, kind=kind)
+    selected = {"sound_mode": "manual", setting: asset["id"], enable: True}
+    response = client.post("/api/save-settings", query_string={"profile_id": profile_id}, json=selected)
+    assert response.status_code == 200
+    Path(audio_library.resolve_audio_asset(profile_id, asset["id"], kind=kind)["path"]).unlink()
+
+    # A full Settings save still contains the now-hidden manual selection.
+    response = client.post("/api/save-settings", query_string={"profile_id": profile_id},
+                           json={**selected, "sound_mode": mode})
+    assert response.status_code == 200, response.json
+    saved = client.get("/api/settings", query_string={"profile_id": profile_id}).json
+    assert saved["sound_mode"] == mode and saved[setting] == asset["id"]
+
+    # Re-enabling a used manual layer must validate even a retained selection.
+    response = client.post("/api/save-settings", query_string={"profile_id": profile_id},
+                           json={"sound_mode": "manual"})
+    assert response.status_code == 400
+    assert client.get("/api/settings", query_string={"profile_id": profile_id}).json["sound_mode"] == mode
+
+
 @pytest.mark.parametrize("changes", [
     {"filename": "../outside.wav"}, {"filename": "folder/file.wav"},
     {"filename": "C:\\private\\file.wav"}, {"filename": "clip.wav:stream"},

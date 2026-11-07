@@ -397,7 +397,10 @@ def config_overrides(profile_id=None):
             defaults = {key: value for key, value in defaults.items()
                         if DEFAULT_CONFIG_MAP.get(key) not in config.USER_SETTINGS}
         else:
-            defaults = {**_fresh_audio_defaults(profile["preset"]), **defaults}
+            # Requests and workers must use the same migrations as the public
+            # profile. In particular, an old explicit soundtrack stays Manual
+            # before the user has opened or saved Settings after an upgrade.
+            defaults = _resolved(profile)["defaults"]
         overrides = {attr: deepcopy(defaults[key]) for key, attr in DEFAULT_CONFIG_MAP.items() if key in defaults}
         overrides["CHANNEL_PRESET"] = (_resolved(profile)["preset"] if profile["id"] == "default" else profile["preset"])
         if profile.get("channel"):

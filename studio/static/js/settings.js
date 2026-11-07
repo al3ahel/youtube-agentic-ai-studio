@@ -25,7 +25,7 @@ const RANGES = {
   broll_xfade:    { to: v => Math.round(v * 10), from: v => v / 10, label: v => (v / 10).toFixed(1) + " s" },
 };
 const TEXT = ["channel_name", "channel_desc", "brand_text", "thumb_style", "gemini_model", "groq_model", "openrouter_model", "render_preset", "kb_start", "kb_end", "privacy", "voice_id", "trends_geo", "visual_mode", "visual_planner_model", "visual_review_model", "motion_quality", "motion_workers", "caption_style", "music_track", "sfx_track", "sfx_mode", "sound_mode", "sound_intensity", "llm_route", "ollama_base_url", "ollama_model"];
-const BOOLS = ["fact_grounding", "music_enabled", "sfx_enabled", "show_brand", "credit_yaas", "visual_ai_enabled", "visual_review_enabled", "openrouter_free_only", "voice_cache_enabled", "script_review_enabled"];
+const BOOLS = ["fact_grounding", "music_enabled", "sfx_enabled", "audio_mastering", "show_brand", "credit_yaas", "visual_ai_enabled", "visual_review_enabled", "openrouter_free_only", "voice_cache_enabled", "script_review_enabled"];
 Object.entries(RANGES).forEach(([k, r]) => { const el = $("#r-" + k); el.addEventListener("input", () => $("#v-" + k).textContent = r.label(+el.value)); });
 
 let settingsSnap = "", settingsProfileId = null, settingsLoadSerial = 0, settingsSavePending = false;
@@ -51,7 +51,7 @@ function updateSettingsChannelNote() {
   const retained = settingsProfileId && activeProfileId && settingsProfileId !== activeProfileId && settingsDirty();
   $("#settings-channel-note").textContent = retained
     ? `Your unsaved settings belong to ${name}. Home is now showing ${profileName(activeProfileId)}. Save or undo these changes to load that channel's settings.`
-    : `Editing defaults for ${name}. Channel, voice, music and visual choices belong to this profile. Provider API keys are shared by this local studio.`;
+    : `Editing defaults for ${name}. Sound, voice, channel and visual choices belong to this profile. Provider API keys are shared by this local studio.`;
 }
 async function loadSettings({ discardChanges = false } = {}) {
   const profileId = typeof activeProfileId !== "undefined" ? activeProfileId : null;
@@ -95,10 +95,11 @@ async function loadSettings({ discardChanges = false } = {}) {
   updateAudioSettingsControls();
   updateLocalModelControls();
   loadAudioLibrary(settingsProfileId);
+  revealSettingsSection();
   return d;
 }
 function settingsChanged() {
-  if (location.hash === "#settings") $("#savebar").classList.toggle("show", !!settingsDirty());
+  if (isSettingsView()) $("#savebar").classList.toggle("show", !!settingsDirty());
 }
 function brandPreview() {
   const on = $("#s-show_brand").checked, text = ($("#s-brand_text").value.trim() || $("#s-channel_name").value.trim()).toUpperCase();
@@ -182,7 +183,7 @@ $("#save-banned").onclick = async () => {
 };
 
 // one floating save bar, shared by Review and Settings
-$("#savebar-save").onclick = () => location.hash === "#settings" ? saveSettings() : saveMeta();
-$("#savebar-undo").onclick = () => location.hash === "#settings"
+$("#savebar-save").onclick = () => isSettingsView() ? saveSettings() : saveMeta();
+$("#savebar-undo").onclick = () => isSettingsView()
   ? loadSettings({ discardChanges: true }).then(() => toast("Changes undone"))
   : (fillMeta(saved), toast("Changes undone"));

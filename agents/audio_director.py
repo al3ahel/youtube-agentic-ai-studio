@@ -124,10 +124,23 @@ At most 8 events; a clear narration with no added sound is valid.\nPROJECT DATA:
 
 def direct_audio(script, timeline, profile_id, *, stop_event=None):
     """Return a reviewable plan and private resolved files, without modifying defaults."""
+    # Standalone callers bind the requested owner. A worker or queued job has
+    # already captured its settings, which must stay authoritative throughout
+    # planning, narration, mixing and mastering even after a profile edit.
+    if config._profile_values.get() is None:
+        from studio.profile_context import capture_profile_settings
+        with config.profile_context(capture_profile_settings(profile_id)):
+            return _direct_audio(script, timeline, profile_id, stop_event=stop_event)
+    return _direct_audio(script, timeline, profile_id, stop_event=stop_event)
+
+
+def _direct_audio(script, timeline, profile_id, *, stop_event=None):
     from studio.channels import get_profile
     from studio.audio_library import list_audio_assets, resolve_audio_asset
     from apis import audio_sources
-    profile = get_profile(profile_id)
+    get_profile(profile_id)  # Validate the current owner; do not reload job preferences.
+    profile = {"name": config.CHANNEL_NAME, "preset": config.CHANNEL_PRESET,
+               "defaults": {"channel_desc": config.CHANNEL_DESCRIPTION}}
     preset = profile["preset"]
     duration = timeline.get("duration")
     if isinstance(duration, bool) or not isinstance(duration, (int, float)) or not math.isfinite(duration) or duration <= 0:

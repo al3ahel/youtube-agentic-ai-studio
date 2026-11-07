@@ -15,6 +15,8 @@ are identified separately.
 | `motion-studio.png` | Motion storyboard editor and local animated preview |
 | `motion-photo-demo.png` | Frame at 7.25 seconds from the current 640 × 360 landscape verification MP4; see [sample details](../samples/README.md) |
 | `studio-channels.png` | Current channel sidebar, Home identity and schedule card; captured by the isolated real-Flask browser regression at 1440 pixels wide |
+| `settings-sound-desktop.png` | Sound design as the first Settings section, Automatic direction and the per-channel Audio mastering switch, from the real Flask app |
+| `settings-sound-mobile.png` | Direct Sound design section on a 390-pixel-wide mobile viewport, with the visible Settings label |
 
 `studio-channels.png` shows example profiles and a simulated fetched YouTube
 identity. Its schedule is paused and the test scheduler is disabled. No live

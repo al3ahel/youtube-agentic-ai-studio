@@ -16,7 +16,7 @@ def capture_profile_settings(profile_id):
 def init_app(app):
     @app.before_request
     def bind_channel():
-        if request.endpoint == "static" or request.blueprint in {"channels", "schedules"}:
+        if request.endpoint in {"static", "build_info"} or request.blueprint in {"channels", "schedules"}:
             return None
         from studio.channels import get_profile, config_overrides
         try:

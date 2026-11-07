@@ -590,11 +590,29 @@ def _run_pipeline(steps, topic_override, video_type, focus_angle, use_trends,
         elif not set(steps) & {"music", "narration"}:
             soundtrack = _load_json(output / "render_audio.json") or {}
             timeline = state.get("timeline") or {}
-            candidate = (output / str(soundtrack.get("path", ""))).resolve()
-            if (soundtrack.get("audio_sha256") == timeline.get("audio_sha256")
+            current_voice = soundtrack.get("audio_sha256") == timeline.get("audio_sha256")
+            if soundtrack.get("version") == 2 and current_voice:
+                from studio.workspace import _fingerprint, _local_file
+                try:
+                    candidate = _local_file(output.resolve(), soundtrack.get("path"),
+                                            {".wav", ".mp3", ".m4a", ".ogg"}, relative=True)
+                    signature = soundtrack.get("soundtrack_sha256")
+                    verified = bool(candidate and isinstance(signature, str)
+                                    and _fingerprint(output.resolve(), candidate)["sha256"] == signature)
+                except (OSError, ValueError, TypeError, RuntimeError):
+                    verified = False
+                if not verified:
+                    # A render-only request must not silently replace the
+                    # committed mix/credits with clean speech. Explicit Music
+                    # regeneration bypasses this reuse path and can repair it.
+                    raise ValueError("The saved soundtrack is missing, changed or could not be verified. Apply sound design again before rendering.")
+                final_audio = str(candidate)
+            else:
+                candidate = (output / str(soundtrack.get("path", ""))).resolve()
+            if (soundtrack.get("version") != 2 and current_voice
                     and candidate.is_file() and output.resolve() in candidate.parents):
                 from video.timeline import audio_signature
-                if ((soundtrack.get("version") != 2 and not soundtrack.get("soundtrack_sha256"))
+                if (not soundtrack.get("soundtrack_sha256")
                         or soundtrack.get("soundtrack_sha256") == audio_signature(candidate)):
                     final_audio = str(candidate)
                 else:

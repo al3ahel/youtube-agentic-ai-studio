@@ -263,7 +263,12 @@ from the speech service, when available. See [the full Motion workflow](docs/MOT
 
 ## Step 7 — Let the agent direct sound
 
-Choose **Automatic** under sound design and save the profile. The agent reads the
+Open **Settings → Sound design**, or click **Sound design** on Home. This is the
+first Settings panel. At port 8765, go directly to
+[`http://127.0.0.1:8765/#settings/audio`](http://127.0.0.1:8765/#settings/audio).
+In **Sound direction**, choose **Automatic — let the agent choose**, then click
+**Save** in the floating **Unsaved changes** bar. **Audio mastering** is a separate per-channel switch.
+The agent reads the
 script and measured narration, chooses appropriate search terms or an owned
 recording, and can fetch declared CC0/Public Domain/CC BY audio from Wikimedia
 Commons without a key. You do not need to import tracks for this mode. An available
@@ -338,6 +343,9 @@ hosting details are in [Channels and schedules](docs/CHANNELS_AND_SCHEDULES.md).
 | Time zone rejected | Use an IANA name such as `Asia/Dubai`; install the current project requirements including `tzdata` |
 | Tiny/ugly Classic text | Install DejaVu fonts on Linux, for example `sudo apt install fonts-dejavu` |
 | A profile setting appears unchanged | Check the selected channel, save its settings, and regenerate the relevant stage; existing recordings are not changed by a preference edit |
+| Automatic sound control cannot be found | Use Home's **Sound design** shortcut or `/#settings/audio`. Compare the top-right build badge with `git rev-parse --short=8 HEAD`; stop and restart `gui.py` after updating. |
+| Code changed while the app was running | The running-build notice identifies a required restart. API changes are paused, while viewing and Stop remain available. Stop YAAS and any scheduler-only process, then restart from the updated checkout. |
+| Port 8765 is already occupied | The new process exits without opening the browser. Stop the older YAAS process in its terminal, or choose a different port for a separate instance. |
 
 ## Upgrading from an earlier checkout
 
@@ -346,13 +354,13 @@ Back up local data before changing machines or replacing an environment. Keep
 `output/library/` and custom music together. Stop the app while backing up the
 schedule database. See [storage details](docs/CHANNELS_AND_SCHEDULES.md#local-storage-and-backups).
 
-If an earlier checkout used the feature branch, preserve any local code edits
-before switching to this fork's main branch:
+Stop the running app and any scheduler-only process before updating. Preserve
+local code edits before switching to this fork's main branch. Pull the fork URL
+explicitly so an older `origin` setting cannot select the upstream repository:
 
 ```bash
-git fetch origin
 git switch main
-git pull --ff-only
+git pull --ff-only https://github.com/al3ahel/youtube-agentic-ai-studio.git main
 ```
 
 Reinstall `requirements.txt` in the project environment and run `pip check`, then
@@ -365,23 +373,52 @@ existing environment and local project data; an untracked `.venv-yaas312/`
 directory is not a code conflict.
 
 ```powershell
+$ErrorActionPreference = "Stop"
 cd C:\Users\Admin\youtube-agentic-ai-studio
 git switch main
-git pull --ff-only origin main
+if ($LASTEXITCODE -ne 0) { throw "Could not switch to main. Resolve the Git message before continuing." }
+git pull --ff-only https://github.com/al3ahel/youtube-agentic-ai-studio.git main
+if ($LASTEXITCODE -ne 0) { throw "Update failed. Resolve the Git message before continuing." }
+git rev-parse --short=8 HEAD
 .\.venv-yaas312\Scripts\python.exe -m pip install -r requirements.txt
+if ($LASTEXITCODE -ne 0) { throw "Python dependency installation failed." }
 .\.venv-yaas312\Scripts\python.exe -m pip check
+if ($LASTEXITCODE -ne 0) { throw "Python dependencies are inconsistent." }
 npm ci --prefix renderers/hyperframes
+if ($LASTEXITCODE -ne 0) { throw "Renderer dependency installation failed." }
+node renderers/hyperframes/node_modules/hyperframes/bin/hyperframes.mjs browser ensure
+if ($LASTEXITCODE -ne 0) { throw "Renderer browser setup failed." }
 ffmpeg -version
+if ($LASTEXITCODE -ne 0) { throw "FFmpeg must be available in this terminal." }
 ffprobe -version
+if ($LASTEXITCODE -ne 0) { throw "ffprobe must be available in this terminal." }
 $env:STUDIO_PORT = "8765"
 .\.venv-yaas312\Scripts\python.exe gui.py
 ```
 
-Open `http://127.0.0.1:8765` and refresh the page after updating. In the selected
-channel's settings, choose **Automatic** sound for agent-selected music/ambience
+Open `http://127.0.0.1:8765/#settings/audio` and refresh the page after updating. In the selected
+channel's Sound design settings, choose **Automatic** for agent-selected music/ambience
 and effects. A previously enabled, explicitly selected track remains **Manual**
 on upgrade. Setting changes affect the next relevant generation step; an old
 render is not silently rebuilt just by changing a preference.
+
+The top-right build badge shows the running commit on every page; clicking it
+opens **Running version**. Its commit should match the checkout command above
+after restarting. If the app still looks old, this read-only command in a
+second PowerShell window shows exactly which checkout and Python process serves
+port 8765:
+
+```powershell
+Invoke-RestMethod 'http://127.0.0.1:8765/api/build?diagnostics=1' |
+    ConvertTo-Json -Depth 4
+```
+
+A 404 from that URL means that process does not expose the new build diagnostic;
+verify the pull, stop the existing process, and start `gui.py` again. `running`
+records the code loaded at startup, while `disk` describes the current checkout.
+`restart_required: true` identifies changed executable code. A browser refresh
+does not reload imported Python. The diagnostic includes the checkout directory,
+Python executable and PID, without provider keys or environment-variable contents.
 
 Very old YAAS versions wrote settings into tracked `config.py`. Export that old
 file to `old_config.py`, then use the migration command:

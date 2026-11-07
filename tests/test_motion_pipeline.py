@@ -134,6 +134,75 @@ def test_render_only_preserves_prepared_soundtrack_after_global_setting_change(j
     assert seen[-1] == str(path / "narration.wav")
 
 
+@pytest.mark.parametrize("broken", ["missing", "directory", "nonlocal", "no_checksum", "wrong_checksum", "malformed_checksum"])
+def test_render_only_keeps_invalid_v2_receipt_and_requires_explicit_sound_repair(job, monkeypatch, tmp_path_factory, broken):
+    from video.renderers import html
+    from video.timeline import audio_signature
+    path, _, _ = job
+    runner.run_pipeline_thread(["visuals"], visual_mode="motion")
+    assert state["error"] is None
+    voice = path / "narration.wav"
+    original_hash = audio_signature(voice)
+    mixed = path / "soundtracks" / "committed.wav"
+    mixed.parent.mkdir()
+    shutil.copyfile(voice, mixed)
+    receipt = {"version": 2, "path": mixed.relative_to(path).as_posix(),
+               "audio_sha256": original_hash, "soundtrack_sha256": audio_signature(mixed),
+               "credits": [{"kind": "music", "title": "Previously applied recording"}]}
+    if broken == "missing":
+        mixed.unlink()
+    elif broken == "directory":
+        mixed.unlink()
+        mixed.mkdir()
+    elif broken == "nonlocal":
+        outside = tmp_path_factory.mktemp("outside-soundtrack") / "outside.wav"
+        shutil.copyfile(voice, outside)
+        receipt["path"] = str(outside)
+    elif broken == "no_checksum":
+        receipt.pop("soundtrack_sha256")
+    elif broken == "wrong_checksum":
+        receipt["soundtrack_sha256"] = "0" * 64
+    else:
+        receipt["soundtrack_sha256"] = [original_hash]
+    manifest = path / "render_audio.json"
+    runner._save_json(manifest, receipt)
+    previous = manifest.read_bytes()
+    monkeypatch.setattr(html, "render_motion_video", lambda *a, **kw: pytest.fail("Invalid soundtrack was silently replaced"))
+
+    runner.run_pipeline_thread(["video"], visual_mode="motion", preview_only=True)
+
+    assert "Apply sound design again" in state["error"]
+    assert manifest.read_bytes() == previous
+    assert audio_signature(voice) == original_hash
+
+
+def test_explicit_sound_regeneration_repairs_missing_v2_asset(job, monkeypatch):
+    from video.renderers import html
+    from video.timeline import audio_signature
+    path, _, _ = job
+    runner.run_pipeline_thread(["visuals"], visual_mode="motion")
+    voice = path / "narration.wav"
+    voice_hash = audio_signature(voice)
+    runner._save_json(path / "render_audio.json", {"version": 2, "path": "soundtracks/missing.wav",
+        "audio_sha256": voice_hash, "soundtrack_sha256": None, "credits": []})
+    rendered = []
+
+    def render(script, audio, output, plan, **kwargs):
+        rendered.append(audio)
+        result = path / "motion_preview.mp4"
+        result.write_bytes(b"repaired soundtrack draft")
+        return str(result)
+
+    monkeypatch.setattr(html, "render_motion_video", render)
+    runner.run_pipeline_thread(["music", "video"], visual_mode="motion", preview_only=True)
+
+    assert state["error"] is None
+    assert rendered == [str(voice)]  # This test's explicit saved mode disables added sound.
+    repaired = json.loads((path / "render_audio.json").read_text())
+    assert repaired["version"] == 2 and repaired["path"] == voice.name
+    assert repaired["soundtrack_sha256"] == repaired["audio_sha256"] == voice_hash
+
+
 def test_preparation_error_is_reported_at_named_stage(job, monkeypatch):
     from studio import preflight
     monkeypatch.setattr(preflight, "check_environment", lambda *args: {

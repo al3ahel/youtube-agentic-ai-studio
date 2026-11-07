@@ -1,6 +1,8 @@
 """Creative decisions must reach supported fields without changing source timing."""
 from copy import deepcopy
 import json
+from types import SimpleNamespace
+from threading import Event
 
 import pytest
 
@@ -224,3 +226,164 @@ def test_separate_positive_request_remains_supported_after_an_exclusion(project)
     assert updated["scenes"][0]["look"] == "editorial"
     assert updated["scenes"][0]["rhythm"] == "calm"
     assert updated["scenes"][0]["composition"] == "stack"
+
+
+def _full_design(plan):
+    design = {"visual_direction": deepcopy(plan["visual_direction"]), "scenes": []}
+    for scene in plan["scenes"]:
+        row = _design_for_scene(plan, scene)["scenes"][0]
+        row["look"] = "editorial"
+        design["scenes"].append(row)
+    return design
+
+
+def _gemini_response(monkeypatch, design):
+    calls = []
+
+    def generate_content(**kwargs):
+        calls.append(kwargs["model"])
+        return SimpleNamespace(text=json.dumps(design))
+
+    monkeypatch.setattr(config, "GEMINI_API_KEY", "configured-free-gemini-key")
+    monkeypatch.setattr(config, "GEMINI_MODEL", "gemini-2.5-flash")
+    monkeypatch.setattr(gemini_client, "_get_client", lambda: SimpleNamespace(
+        models=SimpleNamespace(generate_content=generate_content)))
+    return calls
+
+
+@pytest.mark.parametrize("code", ["rate_limited", "access_denied", "provider_unavailable"])
+def test_unavailable_selected_openrouter_planner_uses_working_gemini(project, monkeypatch, code):
+    script, timeline = project
+    old = visual_director.plan_scenes(script, timeline, use_ai=False)
+    design = _full_design(old)
+    calls = _gemini_response(monkeypatch, design)
+    monkeypatch.setattr(config, "OPENROUTER_API_KEY", "configured-free-openrouter-key")
+    monkeypatch.setattr(config, "VISUAL_PLANNER_MODEL", "example/chosen-director:free")
+    preferred = []
+
+    def unavailable(*args, **kwargs):
+        preferred.append(kwargs["model"])
+        raise visual_director.openrouter.OpenRouterError(code, "Selected free planner unavailable")
+
+    monkeypatch.setattr(visual_director.openrouter, "plan_json", unavailable)
+    updated = visual_director.plan_scenes(script, timeline)
+
+    assert preferred == ["example/chosen-director:free"]
+    assert calls == ["gemini-2.5-flash"]
+    assert updated["ai_status"] == {"status": "planned", "provider": "gemini", "model": "gemini-2.5-flash",
+                                     "fallback_from": "openrouter", "fallback_reason": code}
+    assert updated["scenes"][0]["look"] == "editorial"
+    assert updated["sections"] == old["sections"]
+    assert any("configured free text model supplied" in item for item in updated["warnings"])
+
+
+@pytest.mark.parametrize("groq_succeeds", [True, False])
+def test_alternate_groq_chain_never_retries_failed_openrouter(project, monkeypatch, groq_succeeds):
+    from apis import llm
+    script, timeline = project
+    old = visual_director.plan_scenes(script, timeline, use_ai=False)
+    design = _full_design(old)
+    monkeypatch.setattr(config, "OPENROUTER_API_KEY", "configured-free-openrouter-key")
+    monkeypatch.setattr(config, "GROQ_API_KEY", "configured-free-groq-key")
+    monkeypatch.setattr(config, "GROQ_MODEL", "openai/gpt-oss-120b")
+    preferred, requests = [], []
+
+    def unavailable(*args, **kwargs):
+        preferred.append(True)
+        raise visual_director.openrouter.OpenRouterError("rate_limited", "Selected free planner unavailable")
+
+    def response(url, body, **kwargs):
+        requests.append(url)
+        if not groq_succeeds:
+            raise RuntimeError("Unavailable configured provider")
+        return {"choices": [{"message": {"content": json.dumps(design)}}]}
+
+    monkeypatch.setattr(visual_director.openrouter, "plan_json", unavailable)
+    monkeypatch.setattr(llm, "post_json", response)
+    updated = visual_director.plan_scenes(script, timeline)
+
+    assert preferred == [True]
+    assert requests == ["https://api.groq.com/openai/v1/chat/completions"]
+    if groq_succeeds:
+        assert updated["ai_status"]["provider"] == "groq"
+        assert updated["ai_status"]["model"] == "openai/gpt-oss-120b"
+        assert gemini_client.last_provider == "Groq · openai/gpt-oss-120b"
+        assert updated["scenes"][0]["look"] == "editorial"
+    else:
+        assert updated["ai_status"]["status"] == "fallback"
+        assert updated["scenes"] == old["scenes"]
+
+
+def test_successful_selected_openrouter_planner_keeps_precedence(project, monkeypatch):
+    script, timeline = project
+    old = visual_director.plan_scenes(script, timeline, use_ai=False)
+    design = _full_design(old)
+    monkeypatch.setattr(config, "OPENROUTER_API_KEY", "configured-free-openrouter-key")
+    monkeypatch.setattr(config, "GEMINI_API_KEY", "configured-free-gemini-key")
+    monkeypatch.setattr(config, "VISUAL_PLANNER_MODEL", "example/chosen-director:free")
+    calls = []
+    monkeypatch.setattr(visual_director.openrouter, "plan_json", lambda *a, **kw: calls.append(kw["model"]) or design)
+    monkeypatch.setattr(gemini_client, "generate", lambda *a, **kw: pytest.fail("Successful selected planner was overridden"))
+    result = visual_director.plan_scenes(script, timeline)
+    assert calls == ["example/chosen-director:free"]
+    assert result["ai_status"] == {"status": "planned", "provider": "openrouter", "model": "example/chosen-director:free"}
+
+
+@pytest.mark.parametrize("returns_design", [True, False])
+def test_stop_during_selected_planner_never_starts_an_alternate_or_saves_a_plan(project, monkeypatch, tmp_path, returns_design):
+    script, timeline = project
+    old = visual_director.plan_scenes(script, timeline, use_ai=False)
+    event = Event()
+    monkeypatch.setattr(config, "OPENROUTER_API_KEY", "configured-free-openrouter-key")
+    monkeypatch.setattr(config, "GEMINI_API_KEY", "configured-free-gemini-key")
+
+    def stopped(*args, **kwargs):
+        assert kwargs["stop_event"] is event
+        event.set()
+        if returns_design:
+            return _full_design(old)
+        raise visual_director.openrouter.OpenRouterError("provider_unavailable", "Selected free planner unavailable")
+
+    monkeypatch.setattr(visual_director.openrouter, "plan_json", stopped)
+    monkeypatch.setattr(gemini_client, "generate", lambda *a, **kw: pytest.fail("Cancellation started an alternate provider"))
+    with pytest.raises(InterruptedError):
+        visual_director.plan_scenes(script, timeline, stop_event=event, output_dir=tmp_path)
+    assert not (tmp_path / "scene_plan.json").exists()
+
+
+def test_local_only_visual_planning_never_uses_configured_cloud_keys(project, monkeypatch):
+    from apis import llm, local_llm
+    script, timeline = project
+    old = visual_director.plan_scenes(script, timeline, use_ai=False)
+    monkeypatch.setattr(config, "LLM_ROUTE", "local")
+    monkeypatch.setattr(config, "OLLAMA_MODEL", "local:small")
+    for name in ("OPENROUTER_API_KEY", "GEMINI_API_KEY", "GROQ_API_KEY"):
+        monkeypatch.setattr(config, name, "configured-free-provider-key")
+    monkeypatch.setattr(local_llm, "generate", lambda *a, **kw: json.dumps(_full_design(old)))
+    monkeypatch.setattr(visual_director.openrouter, "plan_json", lambda *a, **kw: pytest.fail("Local-only used hosted planner"))
+    monkeypatch.setattr(gemini_client, "_get_client", lambda: pytest.fail("Local-only used Gemini"))
+    monkeypatch.setattr(llm, "post_json", lambda *a, **kw: pytest.fail("Local-only used hosted fallback"))
+    result = visual_director.plan_scenes(script, timeline)
+    assert result["ai_status"] == {"status": "planned", "provider": "ollama", "model": "local:small"}
+
+
+def test_scene_edit_recovers_from_openrouter_failure_with_actual_alternate_identity(project, monkeypatch):
+    script, timeline = project
+    old = visual_director.plan_scenes(script, timeline, use_ai=False)
+    scene = old["scenes"][0]
+    design = _design_for_scene(old, scene)
+    design["scenes"][0]["look"] = "editorial"
+    calls = _gemini_response(monkeypatch, design)
+    monkeypatch.setattr(config, "OPENROUTER_API_KEY", "configured-free-openrouter-key")
+
+    def unavailable(*args, **kwargs):
+        raise visual_director.openrouter.OpenRouterError("rate_limited", "Selected free planner unavailable")
+
+    monkeypatch.setattr(visual_director.openrouter, "plan_json", unavailable)
+    result = visual_director.regenerate_scene(old, scene["id"], script, "Give this scene a softer treatment")
+    assert calls == ["gemini-2.5-flash"]
+    assert result["scenes"][0]["look"] == "editorial"
+    assert result["scenes"][1:] == old["scenes"][1:]
+    assert result["last_edit"]["provider"] == "gemini"
+    assert result["last_edit"]["model"] == "gemini-2.5-flash"
+    assert result["last_edit"]["fallback_from"] == "openrouter"

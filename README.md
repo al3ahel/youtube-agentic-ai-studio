@@ -13,7 +13,7 @@ YAAS gathers sources, writes the script, records narration, directs visuals and 
 
 [**Quick start**](#-quick-start) · [**Channels & schedules**](docs/CHANNELS_AND_SCHEDULES.md) · [**Motion workflow**](docs/MOTION_STUDIO.md) · [**Setup guide**](SETUP.md) · [**FAQ**](#-faq)
 
-[**Pipeline map**](docs/PIPELINE_ARCHITECTURE.md) · [**Purffle comparison**](docs/REPOSITORY_COMPARISON.md) · [**Agent capabilities and skills**](docs/AGENT_CAPABILITIES.md)
+[**Pipeline map**](docs/PIPELINE_ARCHITECTURE.md) · [**Purffle comparison**](docs/REPOSITORY_COMPARISON.md) · [**Agent capabilities and skills**](docs/AGENT_CAPABILITIES.md) · [**Release re-audit**](docs/POST_RELEASE_AUDIT.md)
 
 </div>
 
@@ -246,7 +246,17 @@ source/license information. You do not need to import or choose every track.
 News omits transient effects; ASMR uses calmer choices. Unavailable or unsuitable
 recordings are omitted with a visible explanation, not replaced by synthetic tones.
 
-**Review → Music & effects → Regenerate sound design** rebuilds the soundtrack
+Open **Settings → Sound design**, or the **Sound design** shortcut on Home. Sound
+is the first Settings panel; its **Sound direction** selector includes
+**Automatic — let the agent choose**. Click **Save** in the floating **Unsaved
+changes** bar. On port 8765, the direct link is
+[`http://127.0.0.1:8765/#settings/audio`](http://127.0.0.1:8765/#settings/audio).
+The **Audio mastering** switch is independent of added music/effects and is saved
+for the selected channel.
+
+![The Sound design settings with Automatic selected](docs/screenshots/settings-sound-desktop.png)
+
+**Review → Sound design → Regenerate sound design** rebuilds the soundtrack
 and draft while keeping the original voice, storyboard and publishing prose.
 Review shows actual layers, cue times and measured loudness/peak results.
 Normal/news finishing targets −16 LUFS; ASMR targets −20 LUFS with a smaller
@@ -264,7 +274,7 @@ Pixabay's [public API documentation](https://pixabay.com/api/docs/) provides ima
 and video endpoints, but no documented music or sound-effect endpoint. To use its
 audio as an optional Manual source, download a track and import the file into YAAS:
 
-1. Select the channel in the sidebar, then open **Settings → Audio library**.
+1. Select the channel in the sidebar, then open **Settings → Sound design → Audio library**.
 2. Choose **Music** or **Sound effect**, select the downloaded file, and click
    **Import audio**. MP3, WAV, OGG, M4A and FLAC are supported, up to 20 MiB and two
    hours per file. The optional source URL, creator, license note and Content ID
@@ -274,7 +284,7 @@ audio as an optional Manual source, download a track and import the file into YA
    script sections; **Ambience** loops it beneath the narration for calm or ASMR
    projects. Each channel keeps its own library and selections.
 4. New videos use the saved choices. For an existing Motion or Hybrid draft, open
-   **Review → Music & effects → Apply music & effects to current draft**. This
+   **Review → Sound design → Apply music & effects to current draft**. This
    rebuilds the soundtrack and preview using the current script, recorded voice
    and storyboard. For Classic, clear the topic on Home and select only **Music**
    and **Render** under More options.

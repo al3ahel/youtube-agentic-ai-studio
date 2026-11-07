@@ -19,6 +19,7 @@ async function api(url, body, method) {
   if (!r.ok) {
     const error = new Error(data.error || `${r.status} ${r.statusText}`);
     error.data = data; error.status = r.status;
+    if (data.code === "restart_required" && typeof showRestartRequired === "function") showRestartRequired(error.message);
     throw error;
   }
   return data;
@@ -57,7 +58,34 @@ function drawBars(el, values, tips = []) {
 
 /* ═══════════════════════════ navigation ═══════════════════════════ */
 const VIEWS = ["home", "review", "library", "settings"];
+const SETTINGS_SECTIONS = {
+  audio: "settings-audio", voice: "settings-voice", visuals: "settings-visuals",
+  models: "settings-models", keys: "settings-keys", channel: "settings-channel",
+  publishing: "settings-publishing", topics: "settings-topics", advanced: "settings-advanced",
+};
 const loaders = {};
+let navigationSerial = 0, pendingSettingsSection = null;
+function currentRoute() {
+  const [requested, section, extra] = location.hash.slice(1).split("/");
+  const view = VIEWS.includes(requested) ? requested : "home";
+  return {view, section: view === "settings" && !extra && Object.hasOwn(SETTINGS_SECTIONS, section) ? section : null};
+}
+function isSettingsView() { return currentRoute().view === "settings"; }
+function revealSettingsSection() {
+  if (!pendingSettingsSection || !isSettingsView()) return;
+  const requested = pendingSettingsSection;
+  requestAnimationFrame(() => {
+    if (pendingSettingsSection !== requested || navigationSerial !== requested.serial || location.hash !== requested.hash) return;
+    const target = $("#" + SETTINGS_SECTIONS[requested.section]);
+    pendingSettingsSection = null;
+    if (!target) return;
+    const warning = $("#build-warning");
+    const margin = $(".topbar").getBoundingClientRect().height + (warning && !warning.hidden ? warning.getBoundingClientRect().height : 0) + 14;
+    window.scrollTo({top: window.scrollY + target.getBoundingClientRect().top - margin, behavior: "instant"});
+    target.tabIndex = -1;
+    target.focus({preventScroll: true});
+  });
+}
 function moveIndicator() {
   const a = $("#tabs a.active"), ind = $("#tabs-indicator");
   if (!a) { ind.style.width = "0"; return; }
@@ -65,18 +93,24 @@ function moveIndicator() {
   ind.style.transform = `translateX(${a.offsetLeft}px)`;
 }
 function route() {
-  const v = VIEWS.includes(location.hash.slice(1)) ? location.hash.slice(1) : "home";
+  const {view: v, section} = currentRoute(), serial = ++navigationSerial;
+  pendingSettingsSection = v === "settings" && section ? {section, serial, hash: location.hash} : null;
   $$(".view").forEach(s => s.classList.toggle("active", s.id === "view-" + v));
   $$("#tabs a").forEach(a => a.classList.toggle("active", a.dataset.view === v));
   $("#settings-btn").classList.toggle("active", v === "settings");
   if (v === "review") $("#tabs a[data-view=review]").classList.remove("notify");
   $("#savebar").classList.remove("show");
+  $$("#settings-sections a").forEach(link => {
+    const selected = v === "settings" && link.dataset.section === (section || "audio");
+    if (selected) link.setAttribute("aria-current", "location");
+    else link.removeAttribute("aria-current");
+  });
   moveIndicator();
   try {
     const loading = loaders[v] && loaders[v]();
     if (loading?.catch) loading.catch(error => toast(`Could not open ${v}: ${error.message}`, "err"));
   } catch (error) { toast(`Could not open ${v}: ${error.message}`, "err"); }
-  window.scrollTo({ top: 0 });
+  if (!pendingSettingsSection) window.scrollTo({ top: 0 });
 }
 window.addEventListener("hashchange", route);
 window.addEventListener("resize", moveIndicator);
@@ -84,4 +118,6 @@ window.addEventListener("resize", moveIndicator);
 document.addEventListener("click", e => {
   const a = e.target.closest('a[href^="#rv-"]');
   if (a) { e.preventDefault(); $(a.getAttribute("href")).scrollIntoView({ behavior: "smooth", block: "start" }); }
+  const section = e.target.closest('a[href^="#settings/"]');
+  if (section && section.getAttribute("href") === location.hash) { e.preventDefault(); route(); }
 });

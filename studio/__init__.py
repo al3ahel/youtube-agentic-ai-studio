@@ -22,10 +22,11 @@ from flask import Flask
 
 
 def create_app() -> Flask:
-    from studio import audio, channels, dashboard, library, pipeline, profile_context, review, schedules, security, settings, upload, visuals
+    from studio import audio, build_info, channels, dashboard, library, pipeline, profile_context, review, schedules, security, settings, upload, visuals
 
     app = Flask(__name__)
     security.init_app(app)
+    build_info.init_app(app)
     profile_context.init_app(app)
     for module in (pipeline, review, library, upload, settings, dashboard, visuals, channels, schedules, audio):
         app.register_blueprint(module.bp)

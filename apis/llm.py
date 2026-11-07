@@ -63,12 +63,25 @@ def providers() -> list:
     return out
 
 
-def chat(prompt: str, temperature: float = 0.9, stop_event=None) -> str:
+def chat(prompt: str, temperature: float = 0.9, stop_event=None, *,
+         exclude_providers=(), provider_info=None) -> str:
+    """Try the configured free chain, optionally skipping a failed provider.
+
+    ``provider_info`` is filled only by the request that returned the text; it
+    avoids guessing the responder from which credentials happen to be saved.
+    """
+    if provider_info is not None:
+        provider_info.clear()
     if getattr(config, "LLM_ROUTE", "auto") == "local":
         from apis.local_llm import generate
-        return generate(prompt, temperature=temperature, stop_event=stop_event)
+        text = generate(prompt, temperature=temperature, stop_event=stop_event)
+        if provider_info is not None:
+            provider_info.update(provider="ollama", model=getattr(config, "OLLAMA_MODEL", ""))
+        return text
     errors = []
     for name, url, model, headers in providers():
+        if name in exclude_providers:
+            continue
         if name == "groq":
             _announce_groq_migration(model)
         if stop_event is not None and stop_event.is_set():
@@ -106,6 +119,8 @@ def chat(prompt: str, temperature: float = 0.9, stop_event=None) -> str:
                 content = d["choices"][0]["message"].get("content")
                 text = openrouter._redact(content).strip() if isinstance(content, str) else ""
                 if text:
+                    if provider_info is not None:
+                        provider_info.update(provider=name, model=model)
                     return text
                 errors.append(f"{name}: empty response")
                 break

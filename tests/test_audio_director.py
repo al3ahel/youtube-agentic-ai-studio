@@ -153,3 +153,35 @@ def test_unpublishable_credit_is_omitted_before_a_recording_can_be_mixed(project
     plan, files = director.direct_audio(script, timeline, owner["id"])
     assert plan["music"] is files["music"] is None
     assert any("all required audio credits complete" in warning for warning in plan["warnings"])
+
+
+def test_queued_sound_uses_captured_preset_and_description_after_profile_edit(project, monkeypatch):
+    from studio import schedules
+    _, script, timeline, calls = project
+    owner = channels.create_profile("Queued calm channel", "asmr", defaults={
+        "channel_desc": "The captured quiet channel description.", "sound_intensity": "low"})
+    item = schedules.create_schedule({"profile_id": owner["id"], "name": "Quiet scheduled video",
+        "cron": "0 9 * * *", "timezone": "UTC", "visual_mode": "motion"})
+    schedules.enqueue_now(item["id"])
+    with schedules._db() as db:
+        payload = json.loads(db.execute("SELECT payload FROM schedule_jobs WHERE schedule_id=?", (item["id"],)).fetchone()[0])
+    channels.update_profile(owner["id"], {"preset": "general", "defaults": {
+        "channel_name": "New brand after enqueue", "channel_desc": "A newly edited energetic channel.",
+        "sound_intensity": "balanced"}})
+    proposed = intent()
+    proposed["ambience"] = {"use": True, "query": "gentle rain", "reason": "Quiet background"}
+    prompts = []
+    monkeypatch.setattr(director.gemini_client, "generate", lambda prompt, **kwargs: prompts.append(prompt) or json.dumps(proposed))
+
+    with config.profile_context(payload["profile_values"]):
+        plan, files = director.direct_audio(script, timeline, owner["id"])
+
+    data = json.loads(prompts[0].split("PROJECT DATA:\n", 1)[1])
+    assert data["preset"] == plan["preset"] == "asmr"
+    assert data["channel"] == "Queued calm channel"
+    assert data["channel_description"] == "The captured quiet channel description."
+    assert data["intensity"] == plan["intensity"] == "low"
+    assert plan["events"] == files["events"] == []
+    assert plan["music"] is None and plan["ambience"]
+    assert all(options["mood"] == "calm" and options["profile_id"] == owner["id"] for _, options in calls)
+    assert channels.get_profile(owner["id"])["preset"] == "general"

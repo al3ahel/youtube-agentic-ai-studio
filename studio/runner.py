@@ -14,6 +14,7 @@ from studio.library import archive_project
 from studio.project_identity import write_project_identity
 from studio.state import Capture, job_lock, log, log_queue, stage, state, stop_event
 from studio.thumbs import make_thumbnail
+from studio.workspace import checkpoint_workspace
 
 
 def _load_json(path):
@@ -95,6 +96,7 @@ def _invalidate(output, *, script=False, audio=False, visuals=False):
             shutil.rmtree(motion)
     for name in names:
         (output / name).unlink(missing_ok=True)
+    checkpoint_workspace(output)
 
 
 def _audio_path(output):
@@ -174,7 +176,8 @@ def _run_pipeline(steps, topic_override, video_type, focus_angle, use_trends,
     mode = visual_mode or getattr(config, "VISUAL_MODE", "motion")
     output = Path(config.OUTPUT_DIR)
     state.update(running=True, error=None, started_at=time.time(), visual_mode=mode,
-                 preview_only=preview_only, video_type=video_type, schedule_id=schedule_id)
+                 preview_only=preview_only, video_type=video_type, schedule_id=schedule_id,
+                 workspace_restored=False, workspace_warning=None)
     # /api/run clears the event before starting this worker. Clearing it here
     # would lose a Stop click arriving immediately after Start.
 
@@ -379,6 +382,7 @@ def _run_pipeline(steps, topic_override, video_type, focus_angle, use_trends,
                     state["preview_path"] = video_path
                 else:
                     state["video_path"] = video_path
+                checkpoint_workspace(output, rendered_kind="draft" if preview_only else "final")
                 state["visual_qa"] = _review_video(video_path, plan, output)
                 _save_json(output / "visual_qa.json", state["visual_qa"])
                 if state["visual_qa"].get("passed") is False:
@@ -388,6 +392,7 @@ def _run_pipeline(steps, topic_override, video_type, focus_angle, use_trends,
                 image_map = state.get("image_map", {})
                 state["video_path"] = create_video(script, final_audio, str(output), image_map,
                                                     video_type=video_type, timeline=state.get("timeline"))
+                checkpoint_workspace(output, rendered_kind="final")
             check_stop("video rendering")
             stage("video", "done")
             try:
@@ -428,6 +433,7 @@ def _run_pipeline(steps, topic_override, video_type, focus_angle, use_trends,
         log(f"ERROR: {exc}", "error")
         log_queue.put(("error", str(exc)))
     finally:
+        checkpoint_workspace(output)
         with job_lock:
             if release_job:
                 state["running"] = False

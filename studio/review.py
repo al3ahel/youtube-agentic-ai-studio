@@ -11,7 +11,7 @@ import time
 from flask import Blueprint, abort, jsonify, request
 
 import config
-from studio.description import build_description, load_credits
+from studio.description import build_description, load_credits, research_sources
 from studio.files import send
 from studio.library import sync_library
 from studio.state import is_shorts, job_lock, state
@@ -47,20 +47,23 @@ def serve_thumb_ts(ts):
 
 @bp.route("/api/output")
 def get_output():
-    s = state.get("script") or {}
-    r = state.get("research") or {}
+    s = state.get("script") if isinstance(state.get("script"), dict) else {}
+    r = state.get("research") if isinstance(state.get("research"), dict) else {}
+    description = state.get("description")
+    if not isinstance(description, str):
+        description = build_description(s, r, state.get("video_type", "normal"), timeline=state.get("timeline")) if s else ""
     return jsonify({
         "title":       s.get("title", ""),
-        "description": state.get("description", build_description(s, r, state.get("video_type","normal"), timeline=state.get("timeline")) if s and r else ""),
-        "tags":        s.get("tags", []),
-        "sections":    s.get("sections", []),
+        "description": description,
+        "tags":        [tag for tag in s.get("tags", []) if isinstance(tag, str)] if isinstance(s.get("tags"), list) else [],
+        "sections":    [section for section in s.get("sections", []) if isinstance(section, dict)] if isinstance(s.get("sections"), list) else [],
         "topic":       r.get("topic", ""),
         "why_now":     r.get("why_now", ""),
         "hook":        r.get("hook_question", ""),
         "key_points":  r.get("key_points", []),
         "audience":    r.get("target_audience", ""),
         "thumbnail_concept": r.get("thumbnail_concept", ""),
-        "sources":     (r.get("grounding") or {}).get("sources", []),
+        "sources":     research_sources(r),
         "credits":     load_credits(),
         "video_type":  state.get("video_type", "normal"),
     })
@@ -74,13 +77,15 @@ def get_research():
                 r = json.load(f)
         except Exception:
             r = {}
+    if not isinstance(r, dict):
+        r = {}
     return jsonify({
         "topic":      r.get("topic", ""),
         "title":      r.get("video_title", ""),
         "hook":       r.get("hook_question", ""),
         "why_now":    r.get("why_now", ""),
         "key_points": r.get("key_points", []),
-        "sources":    (r.get("grounding") or {}).get("sources", []),
+        "sources":    research_sources(r),
     })
 
 @bp.route("/api/save-output", methods=["POST"])
@@ -138,6 +143,7 @@ Return ONLY the opening description text, no explanation."""
                                  {**research, "hook_question": "", "why_now": ""},
                                  state.get("video_type", "normal"), timeline=state.get("timeline"))
         state["description"] = desc
+        sync_library()
         return jsonify({"ok": True, "description": desc})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)})

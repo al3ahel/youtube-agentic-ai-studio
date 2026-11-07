@@ -2,8 +2,38 @@
 import json
 import math
 import os
+from urllib.parse import urlsplit
 
 import config
+
+
+def research_sources(research):
+    """Older projects can have source links without today's optional labels."""
+    grounding = research.get("grounding") if isinstance(research, dict) else None
+    records = grounding.get("sources") if isinstance(grounding, dict) else None
+    if not isinstance(records, list):
+        return []
+    sources = []
+    for row in records[:50]:
+        if not isinstance(row, dict):
+            continue
+        url = row.get("url")
+        if not isinstance(url, str):
+            continue
+        try:
+            parsed = urlsplit(url)
+            if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+                continue
+        except ValueError:
+            continue
+        source = row.get("source")
+        title = row.get("title")
+        sources.append({
+            "url": url,
+            "source": source.strip() if isinstance(source, str) and source.strip() else parsed.hostname,
+            "title": title.strip() if isinstance(title, str) and title.strip() else url,
+        })
+    return sources
 
 def _ts(secs):
     secs = max(0, int(secs))
@@ -125,7 +155,7 @@ def build_description(script, research, video_type: str = "normal", timeline=Non
                   "💬 Drop a comment — we read every one.", ""]
 
     # Sources from fact grounding (Wikipedia / arXiv)
-    sources = (research.get("grounding") or {}).get("sources") or []
+    sources = research_sources(research)
     if sources and not is_shorts:
         lines += ["─"*40, "📚 SOURCES", "─"*40]
         for s in sources[:6]:

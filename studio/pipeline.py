@@ -30,8 +30,10 @@ def _run_options(body):
 
 @bp.route("/")
 def index():
+    from studio.assets import versioned_page
     with open(os.path.join(current_app.root_path, "templates", "index.html"), encoding="utf-8") as f:
-        return f.read()
+        html = versioned_page(f.read(), current_app.static_folder)
+    return Response(html, mimetype="text/html", headers={"Cache-Control": "no-store"})
 
 @bp.route("/api/stream")
 def stream():
@@ -141,11 +143,21 @@ def stop_pipeline():
 def status_route():
     from agents import gemini_client
     from studio.channels import active_profile_id
+    from studio.workspace import has_valid_storyboard
+    def available(path):
+        try:
+            return bool(path and os.path.isfile(path) and os.path.getsize(path) > 0)
+        except OSError:
+            return False
+    has_video = available(state.get("video_path"))
+    has_preview = available(state.get("preview_path"))
+    has_storyboard = has_valid_storyboard(state.get("visual_plan"))
+    has_html_preview = has_storyboard and available(os.path.join(config.OUTPUT_DIR, "motion", "index.html"))
     return jsonify({
         "running":        state["running"],
         "stop_requested": state.get("stop_requested", False),
         "stages":         state["stages"],
-        "has_video":      bool(state.get("video_path") and os.path.exists(state["video_path"])),
+        "has_video":      has_video,
         "has_thumb":      bool(state.get("thumb_path") and os.path.exists(state["thumb_path"])),
         "has_script":     bool(state.get("script")),
         "has_audio": bool(state.get("audio_path") and os.path.isfile(state["audio_path"])),
@@ -153,10 +165,13 @@ def status_route():
                            for path in (paths if isinstance(paths, list) else [paths]) if path and os.path.isfile(path)),
         "has_images": any(path and os.path.isfile(path) for paths in state.get("image_map", {}).values()
                           for path in (paths if isinstance(paths, list) else [paths])),
-        "has_preview":    bool(state.get("preview_path") and os.path.isfile(state["preview_path"])),
-        "has_storyboard": bool(state.get("visual_plan")),
-        "has_html_preview": bool(state.get("visual_plan") and os.path.isfile(os.path.join(config.OUTPUT_DIR, "motion", "index.html"))),
-        "plan_revision": plan_revision(state.get("visual_plan")),
+        "has_preview":    has_preview,
+        "has_storyboard": has_storyboard,
+        "has_html_preview": has_html_preview,
+        "review_ready": has_video or has_preview or has_html_preview,
+        "workspace_warning": state.get("workspace_warning"),
+        "workspace_restored": bool(state.get("workspace_restored")),
+        "plan_revision": plan_revision(state.get("visual_plan")) if has_storyboard else None,
         "preview_revision": file_revision(state.get("preview_path")),
         "video_revision": file_revision(state.get("video_path")),
         "has_captions":   os.path.exists(os.path.join(config.OUTPUT_DIR, "narration.srt")),

@@ -4,13 +4,29 @@ let reviewLoadSerial = 0, reviewMediaSerial = 0;
 
 function invalidateReviewLoads() {
   reviewLoadSerial++;
-  invalidateStoryboardLoads();
+  if (typeof invalidateStoryboardLoads === "function") invalidateStoryboardLoads();
+  setReviewFeedback("");
+}
+
+function setReviewFeedback(kind, message = "") {
+  const panel = $("#review-feedback");
+  if (!panel) { if (kind === "error") toast(message, "err"); return; }
+  panel.hidden = !kind;
+  panel.classList.toggle("error", kind === "error");
+  panel.setAttribute("role", kind === "error" ? "alert" : "status");
+  $("#view-review").setAttribute("aria-busy", String(kind === "loading"));
+  $("#review-feedback-title").textContent = kind === "error" ? "Could not open Review" : kind === "loading" ? "Loading your project…" : "Saved project notice";
+  $("#review-feedback-message").textContent = message;
+  $("#review-retry").hidden = kind !== "error";
+  $("#review-error-create").hidden = kind !== "error";
 }
 
 function updateReviewMedia(st) {
   const final = !!st.has_video, hasPlayable = final || st.has_preview;
-  $("#review-heading").textContent = final ? "Review & publish" : "Review your draft";
-  $("#review-intro").textContent = final ? "Watch the final video, polish its details, then publish when you are ready." : "Review the storyboard and adjust individual scenes. Each change rebuilds the draft video. Render a final video when the explanation looks right.";
+  $("#review-heading").textContent = final ? "Review & publish" : reviewReady(st) ? "Review your draft" : "Review your storyboard";
+  $("#review-intro").textContent = final ? "Watch the final video, polish its details, then publish when you are ready." : reviewReady(st)
+    ? "Review the storyboard and adjust individual scenes. Each change rebuilds the draft video. Render a final video when the explanation looks right."
+    : "The scenes have been planned. Render a draft to play the motion with the saved narration, then review the result here.";
   $("#rv-publish").hidden = !final;
   $("#publish-nav").hidden = !final;
   $("#rv-watch").hidden = !hasPlayable;
@@ -32,54 +48,79 @@ function updateReviewMedia(st) {
   $("#review-src").textContent = st.library_id ? "from My videos" : final ? "Final render" : "Draft — not ready to publish";
 }
 
-async function loadReview({ preserveEdits = false, expectedPlanRevision = null, expectedProfileId = null } = {}) {
+async function loadReview({ preserveEdits = false, expectedPlanRevision = null, expectedProfileId = null, throwOnError = false } = {}) {
   const serial = ++reviewLoadSerial;
-  preserveEdits = preserveEdits || editingScene || !!reviewRender;
-  const [st, d] = await Promise.all([api("/api/status"), api("/api/output")]);
-  if (serial !== reviewLoadSerial) return false;
-  if ((expectedPlanRevision && st.plan_revision !== expectedPlanRevision)
-      || (expectedProfileId && st.profile_id !== expectedProfileId)) {
-    throw new Error("The open storyboard changed. Reopen Review before rendering it again.");
+  preserveEdits = preserveEdits || (typeof editingScene !== "undefined" && editingScene) || (typeof reviewRender !== "undefined" && !!reviewRender);
+  setReviewFeedback("loading", "Checking the saved video, storyboard and details.");
+  $("#review-empty").hidden = true;
+  if (!preserveEdits) $$(".review-part").forEach(el => el.hidden = true);
+  try {
+    const [st, d] = await Promise.all([api("/api/status"), api("/api/output")]);
+    if (serial !== reviewLoadSerial) return false;
+    if ((expectedPlanRevision && st.plan_revision !== expectedPlanRevision)
+        || (expectedProfileId && st.profile_id !== expectedProfileId)) {
+      throw new Error("The open storyboard changed. Reopen Review before rendering it again.");
+    }
+    if (!d || typeof d !== "object" || Array.isArray(d)) throw new Error("The studio did not return the project's details. Try again.");
+    if (metaDirty() && reviewProfileId === st.profile_id && st.plan_revision
+        && typeof storyboardData !== "undefined" && storyboardData?.plan_revision === st.plan_revision) preserveEdits = true;
+    const has = hasReviewContent(st), warning = typeof st.workspace_warning === "string" ? st.workspace_warning : "";
+    if (typeof updateChannelControls === "function") updateChannelControls(st);
+    $("#review-empty").hidden = has;
+    $$(".review-part").forEach(el => el.hidden = !has);
+    if (!has) {
+      $("#review-empty-note").textContent = warning || "Make a draft on Home, review its scenes here, then render the final video.";
+      $("#player").replaceChildren(); $("#motion-preview").removeAttribute("src");
+      $("#savebar").classList.remove("show");
+      setReviewFeedback("");
+      return false;
+    }
+    reviewProfileId = st.profile_id || null;
+    reviewVideoType = st.video_type || "normal";
+    $("#legacy-motion-card").hidden = st.visual_mode !== "classic" || !st.has_audio || !st.has_script;
+    updateReviewMedia(st);
+    $("#thumb-wrap").innerHTML = st.has_thumb ? `<img src="/thumbnail/${Date.now()}" alt="Thumbnail">` : `<div class="empty">No thumbnail yet</div>`;
+    if (st.has_thumb) loadThumb();
+    $("#rv-thumb").hidden = !st.has_thumb;
+    $('.guide-steps a[href="#rv-thumb"]').hidden = !st.has_thumb;
+    $("#dl-thumb").hidden = !st.has_thumb;
+    $("#dl-srt").hidden = !st.has_captions;
+    const keepMetadata = preserveEdits && saved;
+    saved = { title: typeof d.title === "string" ? d.title : "", desc: typeof d.description === "string" ? d.description : "", tags: Array.isArray(d.tags) ? d.tags.filter(tag => typeof tag === "string") : [] };
+    if (keepMetadata) edited(true);
+    else fillMeta(saved);
+    const sections = Array.isArray(d.sections) ? d.sections.filter(section => section && typeof section === "object") : [];
+    $("#sections").innerHTML = sections.map((s, i) => `
+      <details class="section"><summary><span class="n">${String(i + 1).padStart(2, "0")}</span><span>${esc(s.title || s.section_type || "Section")}</span><span class="tag">${esc(s.section_type || "")}</span></summary><p>${esc(s.narration || "")}</p></details>`).join("") || `<div class="hint">No script</div>`;
+    const credits = Array.isArray(d.credits) ? d.credits.filter(credit => credit && typeof credit.source === "string") : [];
+    const bySrc = credits.reduce((a, c) => (a[c.source] = (a[c.source] || 0) + 1, a), Object.create(null));
+    $("#review-sources").innerHTML = sourcesHTML(d.sources) +
+      (credits.length ? `<div class="label" style="margin:16px 0 8px">Where the images came from</div><div class="chips">${Object.entries(bySrc).map(([k, v]) => `<span class="chip" style="cursor:default">${esc(k)} <span class="count">${v}</span></span>`).join("")}</div>` : "");
+    $("#upload-status").innerHTML = st.yt_url ? `Already on YouTube: <a class="link" href="${esc(st.yt_url)}" target="_blank" rel="noopener">${esc(st.yt_url)}</a>` : "";
+    if (!preserveEdits) {
+      $("#ideas").innerHTML = "";
+      if (typeof setReviewRenderResult === "function") setReviewRenderResult("");
+    }
+    loadKeywords();
+    if (st.has_video) checkYt();
+    if (typeof loadStoryboard !== "function") throw new Error("The scene editor did not load. Reload this page, then try again.");
+    const loaded = await loadStoryboard(st, { preserveEditor: preserveEdits, expectedPlanRevision, isCurrent: () => serial === reviewLoadSerial });
+    if (serial !== reviewLoadSerial) return false;
+    if (loaded === false) throw new Error("The storyboard could not be loaded. Try again.");
+    setReviewFeedback(warning ? "notice" : "", warning);
+    return true;
+  } catch (error) {
+    if (serial !== reviewLoadSerial) return false;
+    $("#review-empty").hidden = true;
+    setReviewFeedback("error", error.message || "The project could not be loaded. Try again.");
+    if (throwOnError) throw error;
+    return false;
   }
-  if (metaDirty() && reviewProfileId === st.profile_id && st.plan_revision
-      && storyboardData?.plan_revision === st.plan_revision) preserveEdits = true;
-  const has = st.has_video || st.has_preview || st.has_storyboard;
-  reviewProfileId = st.profile_id || null;
-  reviewVideoType = st.video_type || "normal";
-  if (typeof updateChannelControls === "function") updateChannelControls(st);
-  $("#review-empty").hidden = has;
-  $$(".review-part").forEach(el => el.hidden = !has);
-  if (!has) return false;
-  $("#legacy-motion-card").hidden = st.visual_mode !== "classic" || !st.has_audio || !st.has_script;
-  updateReviewMedia(st);
-  $("#thumb-wrap").innerHTML = st.has_thumb ? `<img src="/thumbnail/${Date.now()}" alt="Thumbnail">` : `<div class="empty">No thumbnail yet</div>`;
-  if (st.has_thumb) loadThumb();
-  $("#rv-thumb").hidden = !st.has_thumb;
-  $('.guide-steps a[href="#rv-thumb"]').hidden = !st.has_thumb;
-  $("#dl-thumb").hidden = !st.has_thumb;
-  $("#dl-srt").hidden = !st.has_captions;
-  const keepMetadata = preserveEdits && saved;
-  saved = { title: d.title || "", desc: d.description || "", tags: [...(d.tags || [])] };
-  if (keepMetadata) edited(true);
-  else fillMeta(saved);
-  $("#sections").innerHTML = (d.sections || []).map((s, i) => `
-    <details class="section"><summary><span class="n">${String(i + 1).padStart(2, "0")}</span><span>${esc(s.title || s.section_type || "Section")}</span><span class="tag">${esc(s.section_type || "")}</span></summary><p>${esc(s.narration || "")}</p></details>`).join("") || `<div class="hint">No script</div>`;
-  const credits = d.credits || [];
-  const bySrc = credits.reduce((a, c) => (a[c.source] = (a[c.source] || 0) + 1, a), {});
-  $("#review-sources").innerHTML = sourcesHTML(d.sources) +
-    (credits.length ? `<div class="label" style="margin:16px 0 8px">Where the images came from</div><div class="chips">${Object.entries(bySrc).map(([k, v]) => `<span class="chip" style="cursor:default">${esc(k)} <span class="count">${v}</span></span>`).join("")}</div>` : "");
-  $("#upload-status").innerHTML = st.yt_url ? `Already on YouTube: <a class="link" href="${esc(st.yt_url)}" target="_blank" rel="noopener">${esc(st.yt_url)}</a>` : "";
-  if (!preserveEdits) {
-    $("#ideas").innerHTML = "";
-    setReviewRenderResult("");
-  }
-  loadKeywords();
-  if (st.has_video) checkYt();
-  await loadStoryboard(st, { preserveEditor: preserveEdits, expectedPlanRevision, isCurrent: () => serial === reviewLoadSerial });
-  return serial === reviewLoadSerial;
 }
+$("#review-retry")?.addEventListener("click", () => loadReview());
 function sourcesHTML(sources) {
-  if (!sources || !sources.length) return `<div class="hint">No fact-check sources for this video.</div>`;
+  sources = Array.isArray(sources) ? sources.filter(source => source && typeof source === "object") : [];
+  if (!sources.length) return `<div class="hint">No fact-check sources for this video.</div>`;
   return `<div class="label" style="margin-bottom:8px">Fact-checked against ${sources.length} sources <small>also listed in the description</small></div><div class="sources">${sources.map(s =>
     `<div class="source"><span class="tag ${s.source === "arXiv" ? "green" : ""}">${esc(s.source)}</span><a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.title)}</a></div>`).join("")}</div>`;
 }

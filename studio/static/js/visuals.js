@@ -55,7 +55,8 @@ function updateVisualControls(st = status) {
   $("#animate-legacy").disabled = locked;
   $("#rv-storyboard").setAttribute("aria-busy", String(locked));
   $("#regenerate-scene").textContent = editingScene ? "Updating scene…" : reviewRender ? "Rendering video…" : "Regenerate scene & draft";
-  $("#storyboard-status").textContent = reviewRender ? (reviewRender.previewOnly ? "Rendering draft" : "Rendering final") : st.has_video ? "Final rendered" : "Draft";
+  $("#storyboard-status").textContent = reviewRender ? (reviewRender.previewOnly ? "Rendering draft" : "Rendering final")
+    : st.has_video ? "Final rendered" : st.has_preview ? "Draft rendered" : storyboardData?.preview_url ? "Scene preview" : "Storyboard only";
   if (reviewRender) {
     const label = reviewRender.previewOnly ? "draft" : "final video";
     const elapsed = st.running && st.started_at ? ` ${clock(Date.now() / 1000 - st.started_at)} elapsed.` : "";
@@ -98,17 +99,18 @@ function showScene(id, { preserveEditor = false } = {}) {
 
 async function loadStoryboard(st = status, { data = null, preserveEditor = false, expectedPlanRevision = null, isCurrent = () => true } = {}) {
   const serial = ++storyboardLoadSerial;
-  data = data || await api("/api/visuals").catch(() => null);
+  data = data || await api("/api/visuals");
   if (!data || serial !== storyboardLoadSerial || !isCurrent()) return false;
+  if (data.ok === false) throw new Error(data.error || "The storyboard could not be loaded.");
   if (expectedPlanRevision && data.plan_revision !== expectedPlanRevision) {
     throw new Error("The open storyboard changed. Reopen Review before rendering it again.");
   }
+  const scenes = Array.isArray(data.plan?.scenes) ? data.plan.scenes.filter(scene => scene && typeof scene === "object") : [], visible = scenes.length > 0;
+  if (st.has_storyboard && !visible) throw new Error("The saved storyboard has no reviewable scenes. Try loading the project again.");
   storyboardData = data;
-  const scenes = data.plan?.scenes || [], visible = scenes.length > 0;
   $("#rv-storyboard").hidden = !visible;
   $("#storyboard-nav").hidden = !visible;
   if (!visible) { $("#motion-preview").removeAttribute("src"); return true; }
-  $("#storyboard-status").textContent = st.has_video ? "Final rendered" : "Draft";
   $("#scene-list").innerHTML = scenes.map((scene, index) => `<button class="scene-choice" type="button" data-scene="${esc(scene.id)}" aria-pressed="false"><span class="scene-number">${String(index + 1).padStart(2, "0")}</span><span><b>${esc(scene.title || `Scene ${index + 1}`)}</b><small>${esc(String(scene.template || "motion").replaceAll("_", " "))}</small></span></button>`).join("");
   $$("#scene-list button").forEach(button => button.onclick = () => showScene(button.dataset.scene));
   showScene(scenes.some(scene => String(scene.id) === selectedScene) ? selectedScene : scenes[0].id, { preserveEditor });
@@ -153,7 +155,8 @@ $("#regenerate-scene").onclick = async () => {
     });
     if (!updated.ok) throw new Error(updated.error || "Could not update this scene.");
     statusRequestSerial++;
-    const st = status = { ...status, has_video: false, has_preview: false, has_storyboard: true, library_id: null,
+    const st = status = { ...status, has_video: false, has_preview: false, has_storyboard: true,
+      has_html_preview: !!updated.preview_url, review_ready: !!updated.preview_url, library_id: null,
       yt_url: null, error: null, visual_editing: false, video_type: context.videoType, visual_mode: context.visualMode,
       plan_revision: updated.plan_revision, preview_revision: null, video_revision: null };
     updateReviewMedia(st);
@@ -209,7 +212,7 @@ async function finishReviewRender(st) {
     if (operation.profileId && st.profile_id && st.profile_id !== operation.profileId) {
       throw new Error("The open project changed. Reopen Review to see the current project.");
     }
-    const refreshed = await loadReview({ preserveEdits: true, expectedPlanRevision: operation.planRevision, expectedProfileId: operation.profileId });
+    const refreshed = await loadReview({ preserveEdits: true, expectedPlanRevision: operation.planRevision, expectedProfileId: operation.profileId, throwOnError: true });
     if (!refreshed) throw new Error("Could not refresh the video. Reopen Review to load the latest draft.");
     const failure = st.error || lastRunError;
     if (failure) throw new Error(failure);

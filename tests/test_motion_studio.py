@@ -193,9 +193,17 @@ def _editable_plan(monkeypatch):
     (motion / "index.html").write_text("original preview", encoding="utf-8")
     audio = output / "narration.mp3"
     audio.write_bytes(b"audio")
-    plan = {"scenes": [{"id": "scene-001", "title": "Original", "template": "timeline", "visual_goal": "Explain order", "start": 0, "duration": 5}]}
-    state.update(visual_plan=deepcopy(plan), script={"title": "A script"}, audio_path=str(audio), video_path="previous-final.mp4")
+    from agents.visual_director import plan_scenes, validate_plan
+    script = {"title": "A script", "sections": [{
+        "id": 1, "title": "Original", "narration": "First observe the pattern. Then compare the evidence.",
+    }]}
+    timeline = {"fps": 24, "width": 640, "height": 360, "duration": 5,
+                "sections": [{"id": 1, "start": 0, "duration": 5}], "captions": []}
+    plan = plan_scenes(script, timeline, use_ai=False)
+    state.update(visual_plan=deepcopy(plan), script=script, timeline=timeline,
+                 audio_path=str(audio), video_path="previous-final.mp4")
     module = types.ModuleType("agents.visual_director")
+    module.validate_plan = validate_plan
     def regenerate(original, scene_id, script, instructions=""):
         assert state["visual_editing"] and not state["running"]
         assert scene_id == "scene-001" and script["title"] == "A script"
@@ -256,7 +264,7 @@ def test_page_has_motion_controls_and_opaque_preview_iframe(client):
     assert 'id="visual-mode"' in html and 'id="draft-preview"' in html
     assert 'id="s-visual_review_enabled"' in html
     assert 'sandbox="allow-scripts"' in html and "allow-same-origin" not in html
-    assert 'src="/static/js/visuals.js"' in html
+    assert 'src="/static/js/visuals.js?v=' in html
 
 
 def _review_files():

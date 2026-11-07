@@ -18,6 +18,8 @@ state = {
     "visual_mode":    None,
     "preview_only":   False,
     "visual_editing": False,
+    "workspace_warning": None,
+    "workspace_restored": False,
     "stages": {
         "preparation": "pending",
         "research":  "pending",   # pending | running | done | error

@@ -11,6 +11,7 @@ from flask import Blueprint, abort, jsonify, request, send_file
 import config
 from studio.revisions import file_revision, plan_revision, validate_expected_revision
 from studio.state import job_lock, state
+from studio.workspace import checkpoint_workspace, has_valid_storyboard
 
 bp = Blueprint("visuals", __name__)
 _ASSET_TYPES = {".html", ".js", ".mjs", ".json", ".css", ".svg", ".png", ".jpg",
@@ -43,6 +44,8 @@ def _motion_file(filename):
 @bp.get("/api/visuals")
 def storyboard():
     plan = state.get("visual_plan")
+    if not has_valid_storyboard(plan):
+        plan = None
     return jsonify({
         "ok": True, "plan": plan, "timeline": state.get("timeline"),
         "qa": state.get("visual_qa"), "editing": state.get("visual_editing", False),
@@ -182,6 +185,7 @@ def regenerate(scene_id):
                          visual_revision=state.get("visual_revision", 0) + 1)
             state["stages"]["visuals"] = "done"
             state["stages"]["video"] = "pending"
+        checkpoint_workspace(output)
         # QA belongs to the previous frames. A later render will write its own
         # result; reopening the project must not resurrect this stale report.
         try:

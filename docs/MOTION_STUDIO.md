@@ -59,6 +59,21 @@ Final renders are archived. Scheduled runs also archive their drafts, marked
 **Draft** in **My videos**. Opening an archive restores its saved channel profile,
 script, audio, timing, pictures, storyboard, local media and credits.
 
+### Continue after restarting YAAS
+
+The current working project is also saved locally for restart recovery. After
+restarting the server, reload the page and open Review to continue with its existing
+recording, pictures and storyboard. A saved draft MP4 is offered only when it still
+matches the project; an old render left behind after a scene edit is not marked
+ready. If only the storyboard is recoverable, use **Render draft MP4** to finish it.
+To create something else, choose **Make another video** on Home. If there is no
+draft or storyboard, Home returns to the topic form automatically.
+
+This working copy is separate from **My videos** and is replaced when you start a
+new project. Review shows a loading error with a retry action if its data cannot be
+loaded. Each page loads one version of the interface assets so an update does not
+mix old preview code with new Review code.
+
 ## Animate an existing photo project
 
 1. Open the project from **My videos**.

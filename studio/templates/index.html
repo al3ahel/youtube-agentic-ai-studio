@@ -55,6 +55,7 @@
 
   <article class="card s16 hero" id="hero">
     <div class="hero-grid"></div>
+    <p id="workspace-warning" class="hint workspace-warning" role="status" hidden></p>
 
     <!-- Idle: ask for a topic -->
     <div id="hero-form">
@@ -214,11 +215,17 @@
 <!-- ════════════════════════ REVIEW ════════════════════════ -->
 <section class="view" id="view-review">
 
+  <article class="card s24 flat review-feedback" id="review-feedback" role="status" aria-live="polite" hidden>
+    <h2 id="review-feedback-title">Loading your project…</h2>
+    <p class="hint" id="review-feedback-message">Checking the saved video, storyboard and details.</p>
+    <div class="draft-actions"><button type="button" class="btn btn-white" id="review-retry" hidden>Retry loading Review</button><a class="btn btn-ghost" id="review-error-create" href="#home" onclick="showNewVideoForm()" hidden>Make a video</a></div>
+  </article>
+
   <article class="card s24 flat" id="review-empty" hidden>
     <div class="empty" style="min-height:320px">
       <div style="font-size:28px;font-weight:300;color:var(--on-card)">No draft or video to review yet</div>
-      <div>Make a draft on Home, review its scenes here, then render the final video.</div>
-      <div style="display:flex;gap:8px;justify-content:center"><a class="btn btn-white" href="#home">Make a video</a><a class="btn btn-ghost" href="#library">Open a past video</a></div>
+      <div id="review-empty-note">Make a draft on Home, review its scenes here, then render the final video.</div>
+      <div style="display:flex;gap:8px;justify-content:center"><a class="btn btn-white" id="review-new-video" href="#home" onclick="showNewVideoForm()">Make a video</a><a class="btn btn-ghost" href="#library">Open a past video</a></div>
     </div>
   </article>
 

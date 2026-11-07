@@ -98,10 +98,15 @@ def test_archive_roundtrip_restores_portable_motion_narration_and_timing(project
         shutil.rmtree(output / name)
     for name in ("narration.wav", "narration.srt", "narration.timings.json", "timeline.json"):
         (output / name).unlink()
-    state.update(script={"title": "Wrong project"}, research={"topic": "Wrong"}, visual_plan=None, audio_path=None)
+    state.update(script={"title": "Wrong project"}, research={"topic": "Wrong"}, visual_plan=None, audio_path=None,
+                 workspace_warning="Previous project has stale narration. Open its original saved video.",
+                 workspace_restored=True)
     (output / "script.json").write_text('{"title":"Wrong cache"}', encoding="utf-8")
     response = client.post(f"/api/library/{pid}/load", json={})
     assert response.json == {"ok": True}
+    assert state["workspace_warning"] is None and state["workspace_restored"] is False
+    status = client.get("/api/status").json
+    assert status["workspace_warning"] is None and status["workspace_restored"] is False
     assert state["script"] == script and state["visual_mode"] == "hybrid"
     assert state["audio_path"] == str(output / "narration.wav")
     restored_path = Path(state["visual_plan"]["scenes"][1]["footage"]["path"])
@@ -145,11 +150,13 @@ def test_library_rejects_escaping_scene_paths_before_changing_current_project(pr
     plan = json.loads(plan_path.read_text())
     plan["scenes"][1]["footage"]["path"] = "../../private.mp4"
     plan_path.write_text(json.dumps(plan), encoding="utf-8")
-    previous_script = deepcopy(state["script"])
+    state.update(workspace_warning="This current project was recovered without a playable draft.",
+                 workspace_restored=True)
+    previous_state = deepcopy(state)
     (output / "script.json").write_text('{"title":"Current cached script"}', encoding="utf-8")
     response = client.post(f"/api/library/{pid}/load", json={})
     assert not response.json["ok"]
-    assert state["script"] == previous_script
+    assert state == previous_state
     assert json.loads((output / "script.json").read_text())["title"] == "Current cached script"
 
 

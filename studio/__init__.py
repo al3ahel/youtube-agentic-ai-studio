@@ -29,4 +29,6 @@ def create_app() -> Flask:
     profile_context.init_app(app)
     for module in (pipeline, review, library, upload, settings, dashboard, visuals, channels, schedules, audio):
         app.register_blueprint(module.bp)
+    from studio.workspace import restore_workspace
+    restore_workspace()
     return app

@@ -449,6 +449,12 @@ details.more > .more-body { margin-top: 14px; }
 .draft-ready { display: grid; justify-items: start; gap: 13px; }
 .draft-ready h3 { font-size: 23px; font-weight: 500; }
 .draft-ready p { margin: 0 0 5px; max-width: 560px; }
+.draft-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+.workspace-warning { padding: 12px; margin: 0 0 18px; border: 1px solid var(--amber); border-radius: 8px; }
+.review-feedback h2 { margin: 0 0 8px; font-size: 22px; }
+.review-feedback p { margin: 0; max-width: 80ch; overflow-wrap: anywhere; }
+.review-feedback .btn { margin-top: 16px; }
+.review-feedback.error { border: 1px solid var(--pink); }
 .storyboard-layout { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(260px, 1fr); gap: 24px; }
 #motion-preview { width: 100%; min-width: 0; height: clamp(300px, 40vw, 620px); display: block; border: 1px solid #333; border-radius: 8px; background: #111; }
 #motion-preview[hidden] { display: none; }

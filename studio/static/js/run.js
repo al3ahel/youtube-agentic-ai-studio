@@ -9,6 +9,7 @@ const STEPS = [
   ["video",     "Rendering the video",     "The slow part, usually 2–10 minutes"],
 ];
 let status = {}, es = null, heroMode = "form", runSteps = [], videoType = "normal", lastRunError = "", lastRequest = null, statusRequestSerial = 0;
+let restoredWorkspaceShown = false;
 
 function setHero(mode) {
   heroMode = mode;
@@ -18,6 +19,30 @@ function setHero(mode) {
   $("#run-done").hidden = mode !== "done";
   $("#run-error").hidden = mode !== "error";
   $("#stop-btn").hidden = mode !== "running";
+}
+
+function showNewVideoForm() {
+  restoredWorkspaceShown = true;
+  setHero("form");
+  $("#topic-input").focus();
+}
+
+function showDraftCompletion(d) {
+  const playable = reviewReady(d), mp4 = !!d.has_preview;
+  $("#run-title").textContent = mp4 ? (d.workspace_restored ? "Your saved draft is ready" : "Your draft is ready")
+    : playable ? "Your scene preview is ready" : "Your storyboard is ready";
+  $("#run-topic").textContent = "";
+  const heading = playable ? "Review the motion before the final render" : "Render a draft to play the planned scenes";
+  const detail = mp4 ? "Watch the draft, change any scene, then render the final video from Review. Nothing has been published."
+    : playable ? "Play the scene preview, adjust the storyboard, then render a draft MP4 or the final video."
+    : "The scenes have been planned, but there is no playable preview yet. Open Review to render a draft using the saved narration.";
+  const kind = mp4 ? "draft" : playable ? "preview" : "storyboard", card = $("#run-done");
+  // Preserve focused/clicked controls across status polls of the same result.
+  if (card.dataset.completionKind !== kind || !$(".draft-ready", card)) {
+    card.dataset.completionKind = kind;
+    card.innerHTML = `<div class="draft-ready"><span class="tag">${mp4 ? "Draft preview" : playable ? "Scene preview" : "Storyboard only"}</span><h3>${heading}</h3><p class="hint">${detail}</p><div class="draft-actions"><a class="btn btn-white btn-lg" href="#review">${playable ? "Review scenes" : "Review storyboard"} →</a><button class="btn btn-ghost btn-lg" id="make-another-video" type="button" onclick="showNewVideoForm()">Make another video</button></div></div>`;
+  }
+  setHero("done");
 }
 
 function renderRun(d) {
@@ -41,12 +66,15 @@ function renderRun(d) {
 
 function applyStatus(d) {
   const was = status.running;
+  const previouslyAvailable = hasReviewContent(status);
   const completedSchedule = was && !d.running && status.schedule_id ? status : null;
   status = d;
-  const state = d.running ? "running" : d.error ? "error" : d.has_video || d.has_preview || d.has_storyboard ? "done" : "idle";
+  const state = d.running ? "running" : d.error ? "error" : hasReviewContent(d) ? "done" : "idle";
   $("#status-pill").className = "status-pill " + state;
-  $("#status-text").textContent = d.uploading ? "Uploading…" : d.running ? (d.preview_only ? "Making a draft…" : "Making video…") : d.visual_editing ? "Updating project…" : d.error ? "Last run failed" : d.has_storyboard && !d.has_video ? "Draft ready" : "Ready";
-  $("#tabs a[data-view=review]").textContent = d.has_storyboard && !d.has_video ? "Review draft" : "Review & publish";
+  $("#status-text").textContent = d.uploading ? "Uploading…" : d.running ? (d.preview_only ? "Making a draft…" : "Making video…") : d.visual_editing ? "Updating project…" : d.error ? "Last run failed" : !d.has_video && reviewReady(d) ? "Draft ready" : d.has_storyboard && !d.has_video ? "Storyboard ready" : "Ready";
+  $("#tabs a[data-view=review]").textContent = !d.has_video && reviewReady(d) ? "Review draft" : d.has_storyboard && !d.has_video ? "Review storyboard" : "Review & publish";
+  $("#workspace-warning").textContent = typeof d.workspace_warning === "string" ? d.workspace_warning : "";
+  $("#workspace-warning").hidden = !$("#workspace-warning").textContent;
   if (typeof updateVisualControls === "function") updateVisualControls(d);
   if (typeof updateChannelControls === "function") updateChannelControls(d);
   if (typeof channelProfilesLoaded !== "undefined" && channelProfilesLoaded && d.active_profile_id && d.active_profile_id !== activeProfileId && !channelMutation) {
@@ -76,6 +104,17 @@ function applyStatus(d) {
     if (location.hash === "#review") loadReview();
     toast(`Scheduled run finished for ${completedSchedule.profile_name || profileName(completedSchedule.profile_id)}. Check its schedule for the result.`);
   } else if (was && !d.running) onFinished(d);
+  else if (!d.running && !d.visual_editing) {
+    if (d.workspace_restored && reviewReady(d) && !restoredWorkspaceShown && heroMode === "form") {
+      restoredWorkspaceShown = true;
+      onFinished(d);
+    } else if (heroMode === "done") {
+      if (!hasReviewContent(d)) {
+        setHero("form"); $("#run-done").replaceChildren(); $("#run-title").textContent = "";
+      } else if (!d.has_video) showDraftCompletion(d);
+    }
+    if (previouslyAvailable && !hasReviewContent(d) && location.hash === "#review") loadReview();
+  }
 }
 async function pollStatus() {
   await pollOnce();
@@ -90,6 +129,7 @@ async function pollOnce() {
 }
 
 async function onFinished(d) {
+  if (d.workspace_restored) restoredWorkspaceShown = true;
   const reviewed = typeof finishReviewRender === "function" && await finishReviewRender(d);
   renderRun(d);
   loadLibrary();
@@ -103,16 +143,13 @@ async function onFinished(d) {
     $("#run-error").innerHTML = `<div class="err-box"><b>Stopped at: ${failed ? failed[1].toLowerCase() : "preparation"}</b>${esc(msg.slice(0, 800))}
       <div style="margin-top:8px;color:#d9a8ae">${quota ? "The free AI ran out of quota. Wait a minute and try again, or add a free key in Settings for more quota."
         : preparation ? "Fix the missing items below in the same environment, then try again." : "The technical log below has the details."}</div>${preparation}</div>
-      <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap"><button class="btn btn-white" onclick="retry()">Try again</button><button class="btn btn-ghost" onclick="setHero('form')">Change topic</button><a class="btn btn-ghost" href="#settings">Settings</a></div>`;
+      <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap"><button class="btn btn-white" onclick="retry()">Try again</button><button class="btn btn-ghost" onclick="showNewVideoForm()">Change topic</button><a class="btn btn-ghost" href="#settings">Settings</a></div>`;
     setHero("error");
     $("#log-details").open = true;
     return;
   }
-  if (!d.has_video && (d.has_preview || d.has_storyboard)) {
-    $("#run-title").textContent = "Your draft is ready";
-    $("#run-topic").textContent = "";
-    $("#run-done").innerHTML = `<div class="draft-ready"><span class="tag">Draft preview</span><h3>Review the motion before the final render</h3><p class="hint">Play the storyboard, change any scene, then render the final video from Review. This draft has not been archived or published.</p><a class="btn btn-white btn-lg" href="#review">Review scenes →</a></div>`;
-    setHero("done");
+  if (!d.has_video && hasReviewContent(d)) {
+    showDraftCompletion(d);
     $("#tabs a[data-view=review]").classList.add("notify");
     if (!reviewed && location.hash === "#review") loadReview();
     return;
@@ -123,13 +160,13 @@ async function onFinished(d) {
     return;
   }
   const out = await api("/api/output").catch(() => ({}));
-  $("#run-title").textContent = "Your video is ready";
+  $("#run-title").textContent = d.workspace_restored ? "Your saved video is ready" : "Your video is ready";
   $("#run-topic").textContent = "";
   $("#run-done").innerHTML = `<div class="done-box">
       <div class="thumb-frame">${d.has_thumb ? `<img src="/thumbnail/${Date.now()}" alt="">` : ""}</div>
       <div><div style="font-size:20px;line-height:1.25">${esc(out.title || "")}</div>
         <p class="hint" style="margin:8px 0 16px">${out.sources && out.sources.length ? `Fact-checked against ${out.sources.length} sources. ` : ""}Next: watch it, polish the title and thumbnail, then publish.</p>
-        <div style="display:flex;gap:8px;flex-wrap:wrap"><a class="btn btn-white btn-lg" href="#review">Review &amp; publish →</a><button class="btn btn-ghost btn-lg" onclick="setHero('form')">Make another</button></div></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap"><a class="btn btn-white btn-lg" href="#review">Review &amp; publish →</a><button class="btn btn-ghost btn-lg" id="make-another-video" type="button" onclick="showNewVideoForm()">Make another video</button></div></div>
     </div>`;
   setHero("done");
   $("#tabs a[data-view=review]").classList.add("notify");

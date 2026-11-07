@@ -6,8 +6,16 @@ const fmt = n => n >= 1e6 ? (n / 1e6).toFixed(n >= 1e7 ? 0 : 1) + "M" : n >= 1e4
 const clock = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
 async function api(url, body, method) {
   const opt = body !== undefined ? { method: method || "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : (method ? { method } : {});
-  const r = await fetch(url, opt);
-  const data = await r.json();
+  let r;
+  try { r = await fetch(url, opt); }
+  catch { throw new Error("Cannot reach YAAS. Check that the studio is running, then try again."); }
+  let data;
+  try { data = await r.json(); }
+  catch {
+    const error = new Error(`The studio returned an unreadable response (${r.status}). Try again after checking the studio's log.`);
+    error.status = r.status;
+    throw error;
+  }
   if (!r.ok) {
     const error = new Error(data.error || `${r.status} ${r.statusText}`);
     error.data = data; error.status = r.status;
@@ -15,6 +23,8 @@ async function api(url, body, method) {
   }
   return data;
 }
+const reviewReady = st => typeof st.review_ready === "boolean" ? st.review_ready : !!(st.has_video || st.has_preview || st.has_html_preview);
+const hasReviewContent = st => reviewReady(st) || !!st.has_storyboard;
 function toast(msg, kind = "") {
   const t = document.createElement("div");
   t.className = "toast " + kind; t.textContent = msg;
@@ -62,7 +72,10 @@ function route() {
   if (v === "review") $("#tabs a[data-view=review]").classList.remove("notify");
   $("#savebar").classList.remove("show");
   moveIndicator();
-  loaders[v] && loaders[v]();
+  try {
+    const loading = loaders[v] && loaders[v]();
+    if (loading?.catch) loading.catch(error => toast(`Could not open ${v}: ${error.message}`, "err"));
+  } catch (error) { toast(`Could not open ${v}: ${error.message}`, "err"); }
   window.scrollTo({ top: 0 });
 }
 window.addEventListener("hashchange", route);

@@ -131,6 +131,15 @@ for another image already downloaded for its section, then render the final vide
 when ready. Try **Profile settings → Preview voice** before making
 a long recording; it auditions the currently selected voice, speed and pitch.
 
+YAAS restores the current local project when you restart it, including a valid
+draft, its storyboard and recorded narration. Home distinguishes a playable draft
+from a storyboard that still needs rendering. If saved files are incomplete or a
+preview cannot load, Review explains the problem and offers a retry instead of
+showing an empty screen. Choose **Make another video** on the completion card to
+return to the topic form; an empty workspace shows that form automatically.
+Starting a new project still replaces the working project;
+the separate **My videos** archive keeps saved final videos and scheduled drafts.
+
 For recurring videos, use **Home → Scheduled videos → Add schedule**. Choose a
 topic, five-field cron expression and time zone. Schedules generate drafts or local
 final MP4s; publishing still requires review and a separate action. Keep the app

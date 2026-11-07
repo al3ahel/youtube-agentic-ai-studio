@@ -282,6 +282,8 @@ def archive_project(allow_draft=False):
 
 def sync_library():
     """Push review edits (title, description, tags, thumbnail, upload URL) into the Library entry."""
+    from studio.workspace import checkpoint_workspace
+    checkpoint_workspace()
     pid = state.get("library_id")
     if not pid or not os.path.isdir(lib_path(pid)):
         return
@@ -359,7 +361,7 @@ def library_load(pid):
         return _load_project(pid)
 
 
-_PROJECT_CACHE = ("script.json", "research.json", "project_profile.json", "image_map.json", "credits.json", "video_credits.json", "narration.srt",
+_PROJECT_CACHE = ("script.json", "research.json", "project_profile.json", "workspace.json", "image_map.json", "credits.json", "video_credits.json", "narration.srt",
                   "narration.wav", "narration.mp3", "narration.m4a", "narration.ogg", "narration.timings.json",
                   "timeline.json", "scene_plan.json", "visual_qa.json", "motion", "assets", "images",
                   "motion_preview.mp4", "narration_with_music.mp3", "narration_mixed.mp3", "narration_mixed.wav", "audio_mixed.mp3",
@@ -568,6 +570,8 @@ def _load_project(pid):
         "thumb_text":  meta.get("thumb_text"),
         "thumb_bg_index": 0,
         "error":       None,
+        "workspace_warning": None,
+        "workspace_restored": False,
         "started_at": None,
         "stop_requested": False,
         "upload_warning": None,
@@ -578,6 +582,8 @@ def _load_project(pid):
         state["stages"]["narration"] = "pending"
     if not plan:
         state["stages"]["visuals"] = "skipped"
+    from studio.workspace import checkpoint_workspace
+    checkpoint_workspace(rendered_kind="draft" if state.get("preview_path") else "final" if state.get("video_path") else None)
     return jsonify({"ok": True})
 
 @bp.route("/api/library/<pid>", methods=["DELETE"])

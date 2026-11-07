@@ -134,13 +134,15 @@ def test_pollinations_logo_strip_is_cropped(tmp_path):
 
 def test_page_and_every_static_file_it_references_are_served():
     import re
+    from urllib.parse import urlsplit
     client = gui.app.test_client()
     page = client.get("/", headers={"Host": "localhost:7070"})
     assert page.status_code == 200
     html = page.get_data(as_text=True)
     assets = re.findall(r'(?:src|href)="(/static/[^"]+)"', html)
-    assert "/static/app.css" in assets and "/static/js/boot.js" in assets
-    assert assets.index("/static/js/core.js") < assets.index("/static/js/boot.js")  # load order
+    asset_paths = [urlsplit(url).path for url in assets]
+    assert "/static/app.css" in asset_paths and "/static/js/boot.js" in asset_paths
+    assert asset_paths.index("/static/js/core.js") < asset_paths.index("/static/js/boot.js")  # load order
     for path in assets:
         r = client.get(path, headers={"Host": "localhost:7070"})
         assert r.status_code == 200 and r.data, path

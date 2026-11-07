@@ -47,22 +47,26 @@ def test_partial_run_after_restart_checks_saved_owner_before_starting_worker(wor
     other = channels.create_profile("Calm active channel", "asmr")
     assert channels.active_profile_id() == other["id"]
     write_project_identity(workspace, owner["id"], owner["name"])
-    (workspace / "script.json").write_text(json.dumps({
+    saved_script = {
         "title": "Saved news project",
         "sections": [{"id": 8, "narration": "This recording belongs to the news channel."}],
-    }), encoding="utf-8")
+    }
+    (workspace / "script.json").write_text(json.dumps(saved_script), encoding="utf-8")
 
     # Restart discards process memory, but keeps files and the other active profile.
     state.clear()
     state.update(fresh_project_state())
     assert state["profile_id"] is None and state["script"] is None
-    empty_state = deepcopy(state)
     saved_identity = (workspace / "project_profile.json").read_bytes()
     worker = Mock(name="pipeline_worker")
     thread_factory = Mock(name="Thread", return_value=worker)
     monkeypatch.setattr(pipeline.threading, "Thread", thread_factory)
     app = create_app()
     app.testing = True
+    assert state["profile_id"] == owner["id"] and state["profile_name"] == owner["name"]
+    assert state["script"] == saved_script and state["workspace_restored"] is True
+    assert channels.active_profile_id() == other["id"]
+    recovered_state = deepcopy(state)
     client = app.test_client()
     body = {"steps": ["visuals", "video"], "visual_mode": "motion", "preview_only": True}
 
@@ -75,7 +79,9 @@ def test_partial_run_after_restart_checks_saved_owner_before_starting_worker(wor
         assert "another channel profile" in response.json["error"]
         thread_factory.assert_not_called()
         worker.start.assert_not_called()
-        assert state == empty_state
+        assert state == recovered_state
+        assert state["profile_id"] == owner["id"]
+        assert channels.active_profile_id() == other["id"]
         assert (workspace / "project_profile.json").read_bytes() == saved_identity
 
     # An explicit matching owner can reuse this project even while Home remains

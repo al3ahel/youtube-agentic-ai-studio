@@ -1,0 +1,70 @@
+{
+  "version": 1,
+  "museum_images": [
+    {
+      "file": "met-23944.jpg",
+      "source": "The Metropolitan Museum of Art",
+      "author": "Kunz Lochner",
+      "link": "https://www.metmuseum.org/art/collection/search/23944",
+      "credit": "Armor of Emperor Ferdinand I (1503–1564) · The Met · Public domain",
+      "license": "Public domain / The Met Open Access"
+    },
+    {
+      "file": "met-26849.jpg",
+      "source": "The Metropolitan Museum of Art",
+      "author": "Bechler",
+      "link": "https://www.metmuseum.org/art/collection/search/26849",
+      "credit": "Mail Shirt · The Met · Public domain",
+      "license": "Public domain / The Met Open Access"
+    },
+    {
+      "file": "met-22318.jpg",
+      "source": "The Metropolitan Museum of Art",
+      "author": "",
+      "link": "https://www.metmuseum.org/art/collection/search/22318",
+      "credit": "Reinforcing Breastplate · The Met · Public domain",
+      "license": "Public domain / The Met Open Access"
+    }
+  ],
+  "audio": [
+    {
+      "id": "8dfed4a4f345073a2cb50069fa21f9d1",
+      "kind": "music",
+      "title": "Cylinder One — 45-second excerpt",
+      "filename": "8dfed4a4f345073a2cb50069fa21f9d1.ogg",
+      "source_url": "https://chriszabriskie.com/cylinders/",
+      "creator": "Chris Zabriskie",
+      "license_note": "CC BY 4.0; https://creativecommons.org/licenses/by/4.0/",
+      "content_id": "unknown",
+      "provider": "bundled",
+      "provider_id": "chris-zabriskie/cylinder-one/45s-v1",
+      "license": "CC BY 4.0",
+      "license_url": "https://creativecommons.org/licenses/by/4.0/",
+      "attribution": "\"Cylinder One\" by Chris Zabriskie, from Cylinders (2014), © 2014 Chris Zabriskie. https://chriszabriskie.com/cylinders/ — Licensed under Creative Commons Attribution 4.0: https://creativecommons.org/licenses/by/4.0/ Excerpted, crossfaded into a loop, level reduced and transcoded for this video. No endorsement is implied.",
+      "selection_source": "bundled_catalog",
+      "changes": "Excerpted source seconds 12–58; a 1-second linear head/tail crossfade makes a 45-second loop. Level reduced by 3 dB; resampled to 48 kHz stereo and encoded as Ogg Vorbis quality 4.",
+      "volume": 0.14,
+      "mode": "bed"
+    },
+    {
+      "id": "0decacf58988cd1dfaf662b29242091e",
+      "kind": "sfx",
+      "title": "Metal surface impact",
+      "filename": "0decacf58988cd1dfaf662b29242091e.ogg",
+      "source_url": "https://github.com/facebookincubator/Meta-open-sound/blob/251c0be57d5d1b3242b91f53e0cde62ab1cb42d9/corpora/oculus-audio-pack/index/METL.json",
+      "creator": "Oculus VR, LLC",
+      "license_note": "CC BY 4.0; https://creativecommons.org/licenses/by/4.0/",
+      "content_id": "unknown",
+      "provider": "bundled",
+      "provider_id": "oculus-audio-pack/METLImpt_MetalHitSurface_OS_01/v1",
+      "license": "CC BY 4.0",
+      "license_url": "https://creativecommons.org/licenses/by/4.0/",
+      "attribution": "\"Oculus Audio Pack 01\" by Oculus VR, LLC (https://developers.meta.com/vr/downloads/package/oculus-audio-pack-1/), licensed under CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/). Files renamed to the UCS naming convention; OGG previews transcoded from the original WAVs. Metal surface impact OGG copied without further audio changes; level and timing may be adjusted in the finished soundtrack.",
+      "selection_source": "bundled_catalog",
+      "changes": "No audio changes to the upstream Ogg preview; only the local filename changed. Generic metal-contact foley, not an authenticated recording of a gunshot or armour test.",
+      "volume": 0.22,
+      "mode": "transitions"
+    }
+  ],
+  "qualification": "Museum objects are illustrative public-domain imagery, not a claim that these exact objects were bullet-tested. The metal recording is generic contact foley, not an authenticated gunshot or armour test."
+}

@@ -1,0 +1,591 @@
+{
+  "version": 1,
+  "status": "edits_prepared",
+  "started_at": "2026-11-08T23:00:56.747108+00:00",
+  "origin": "independent_decoded_inspection_driven_editorial_repair",
+  "original_scene_plan_file_sha256": "c020c0ecb67a1e357fe9e9cc4f076f121285d546055807ed627dd3698b95ea37",
+  "original_plan_sha256": "ad544f808abf52c210d613a7449e3da0fbb017a7a209954a99700a415662ab16",
+  "protected_inputs": {
+    "script.json": "54472a2641afcbf4063c1793a194b613d82b283b47c1bc98a50f11dd6fb08a4b",
+    "narration.wav": "c76d1f3e4ec8a586b4fe12464daead2c91d29ab862900efaa80362f45646850c",
+    "narration.timings.json": "09075306225724e7e074a226d9b4c612adc1772a42c86d56309e7832f5307f0f",
+    "timeline.json": "2d85cb1fd9cbe85d473a8dfd0b54e0bb035b60aa9ab832c3f81be3deada68aef",
+    "render_audio.json": "6baf28b2ca9861e13fd6baabc07d5f5c3ad5e5893a817c13a5c97558aee9dbc6",
+    "soundtracks/5fd0c8429b054c5593f13ba1af9cf0c2.wav": "75229d2a1037bd706f0488642f6392ef5b7ef8f62a512192ed105886994e62e6"
+  },
+  "edits": [
+    {
+      "scene_id": "scene-005",
+      "instructions": "Edit only this shot: use medium framing, 3D, and an orbit camera to expose the existing steel plate's depth. Set the heading exactly to 'Harder, thicker armour'. This is a depth view, not an animation of a hardening process. Keep the current steel/reveal mechanism, actor geometry, staging, transition, and all other content. Keep the current blueprint look, brisk rhythm, and sand palette.",
+      "before_plan_sha256": "ad544f808abf52c210d613a7449e3da0fbb017a7a209954a99700a415662ab16",
+      "status": "accepted_editorial_edit",
+      "returned_last_edit": {
+        "scene_id": "scene-005",
+        "status": "ai",
+        "changes": [
+          "Updated the shot framing, technique or camera direction.",
+          "Updated the scene heading."
+        ],
+        "provider": "ollama",
+        "model": "qwen3.5:4b",
+        "finish_reason": "stop"
+      },
+      "scene_changes": [
+        {
+          "path": "/beat_timing",
+          "before": "mixed",
+          "after": "word"
+        },
+        {
+          "path": "/beats",
+          "before": [
+            {
+              "time": 0.0,
+              "target": "title",
+              "action": "reveal"
+            },
+            {
+              "time": 1.279791,
+              "target": "item-0",
+              "action": "reveal"
+            },
+            {
+              "time": 1.611791,
+              "target": "item-0",
+              "action": "highlight"
+            },
+            {
+              "time": 2.047333,
+              "target": "item-1",
+              "action": "reveal"
+            },
+            {
+              "time": 2.379333,
+              "target": "item-1",
+              "action": "highlight"
+            }
+          ],
+          "after": [
+            {
+              "time": 0.0,
+              "target": "title",
+              "action": "reveal"
+            },
+            {
+              "time": 1.279791,
+              "target": "item-0",
+              "action": "reveal"
+            },
+            {
+              "time": 1.611791,
+              "target": "item-0",
+              "action": "highlight"
+            }
+          ]
+        },
+        {
+          "path": "/items",
+          "before": [
+            {
+              "label": "thickened steel block",
+              "symbol": "building",
+              "role": "subject"
+            },
+            {
+              "label": "hardening furnace",
+              "symbol": "plant",
+              "role": "support"
+            }
+          ],
+          "after": [
+            {
+              "label": "thickened steel block",
+              "symbol": "armour",
+              "role": "subject"
+            }
+          ]
+        },
+        {
+          "path": "/shot/action",
+          "before": "Metal surface shows increased thickness and hardness.",
+          "after": "Depth view exposes metal thickness."
+        },
+        {
+          "path": "/shot/camera",
+          "before": "push",
+          "after": "orbit"
+        },
+        {
+          "path": "/shot/focus",
+          "before": "thickening steel block",
+          "after": "steel plate depth"
+        },
+        {
+          "path": "/shot/role",
+          "before": "interaction",
+          "after": "detail"
+        },
+        {
+          "path": "/shot/technique",
+          "before": "stage2d",
+          "after": "diagram3d"
+        },
+        {
+          "path": "/staging/action",
+          "before": "assemble",
+          "after": "reveal"
+        },
+        {
+          "path": "/title",
+          "before": "Hardening the metal",
+          "after": "Harder, thicker armour"
+        },
+        {
+          "path": "/visual_goal",
+          "before": "Depict the physical process of hardening and thickening steel armour against fire.",
+          "after": "Reveal the physical depth and reinforcement of steel plate armour."
+        }
+      ],
+      "rendered_changes": [
+        {
+          "path": "/shot.camera",
+          "before": "push",
+          "after": "orbit"
+        },
+        {
+          "path": "/shot.technique",
+          "before": "mechanism2d",
+          "after": "diagram3d"
+        },
+        {
+          "path": "/title",
+          "before": "Hardening the metal",
+          "after": "Harder, thicker armour"
+        }
+      ],
+      "after_plan_sha256": "67d9acdea2fe9954d8b4ffd228ea98ce16198ef4232556340a664b08a7ddfe45"
+    },
+    {
+      "scene_id": "scene-007",
+      "instructions": "Change only the heading to exactly 'A particular proof test'. It describes one narrated test, not universal protection. Keep all current items, mechanism, staging, shot role/framing/technique/camera/transition and other content identical. Keep the current blueprint look, measured rhythm, and sand palette.",
+      "before_plan_sha256": "67d9acdea2fe9954d8b4ffd228ea98ce16198ef4232556340a664b08a7ddfe45",
+      "status": "accepted_editorial_edit",
+      "returned_last_edit": {
+        "scene_id": "scene-007",
+        "status": "ai",
+        "changes": [
+          "Updated the scene heading."
+        ],
+        "provider": "ollama",
+        "model": "qwen3.5:4b",
+        "finish_reason": "stop"
+      },
+      "scene_changes": [
+        {
+          "path": "/title",
+          "before": "Dent proves steel holds",
+          "after": "A particular proof test"
+        },
+        {
+          "path": "/visual_goal",
+          "before": "Show a bullet impact leaving a clear dent on a steel plate to demonstrate proof.",
+          "after": "Show steel plate deformation under bullet impact"
+        }
+      ],
+      "rendered_changes": [
+        {
+          "path": "/title",
+          "before": "Dent proves steel holds",
+          "after": "A particular proof test"
+        }
+      ],
+      "after_plan_sha256": "39846caed1e65e6a44feeaacbfaa8e63e976e22eb4e3e238c1edf380ec6a40e0"
+    },
+    {
+      "scene_id": "scene-008",
+      "instructions": "Change only the heading to exactly 'A surviving dent'. The shot shows the settled result of the preceding contact. Keep all current items, mechanism, staging, shot role/framing/technique/camera/transition and other content identical. Do not introduce another projectile or new event. Keep the current blueprint look, measured rhythm, and sand palette.",
+      "before_plan_sha256": "39846caed1e65e6a44feeaacbfaa8e63e976e22eb4e3e238c1edf380ec6a40e0",
+      "status": "rejected_editorial_candidate",
+      "returned_last_edit": {
+        "scene_id": "scene-008",
+        "status": "ai",
+        "changes": [
+          "Updated the shot framing, technique or camera direction.",
+          "Updated the scene heading."
+        ],
+        "provider": "ollama",
+        "model": "qwen3.5:4b",
+        "finish_reason": "stop"
+      },
+      "scene_changes": [
+        {
+          "path": "/composition",
+          "before": "default",
+          "after": "focus"
+        },
+        {
+          "path": "/items",
+          "before": [
+            {
+              "label": "bulleted steel plate",
+              "symbol": "armour",
+              "role": "subject"
+            },
+            {
+              "label": "stopped bullet fragment",
+              "symbol": "document",
+              "role": "support"
+            }
+          ],
+          "after": [
+            {
+              "label": "deformed steel plate",
+              "symbol": "armour",
+              "role": "subject"
+            },
+            {
+              "label": "stopped bullet fragment",
+              "symbol": "document",
+              "role": "support"
+            }
+          ]
+        },
+        {
+          "path": "/shot/action",
+          "before": "deformed metal absorbs incoming projectile energy",
+          "after": "metal absorbs incoming projectile energy"
+        },
+        {
+          "path": "/shot/focus",
+          "before": "bulleted steel plate",
+          "after": "dented metal surface"
+        },
+        {
+          "path": "/shot/role",
+          "before": "detail",
+          "after": "payoff"
+        },
+        {
+          "path": "/title",
+          "before": "Dent absorbs the blow",
+          "after": "A surviving dent"
+        },
+        {
+          "path": "/visual_goal",
+          "before": "Illustrate how the steel plate's deformation absorbs the bullet's energy, stopping it from passing through.",
+          "after": "Show the settled result of a bullet stopping in steel plate armour"
+        }
+      ],
+      "rendered_changes": [
+        {
+          "path": "/shot.heading_size",
+          "before": "small",
+          "after": "large"
+        },
+        {
+          "path": "/title",
+          "before": "Dent absorbs the blow",
+          "after": "A surviving dent"
+        }
+      ],
+      "error": {
+        "type": "ValueError",
+        "message": "Incidental rendered changes: shot.heading_size"
+      }
+    },
+    {
+      "scene_id": "scene-010",
+      "instructions": "Correct only the two actor labels to the source nouns 'Armour' and 'Firearms', in their existing order. Remove deflection, impact, strike and other event claims from the labels and descriptive planning notes. The narration is a caveat about limits, not a new event. Keep the existing armour and firearm geometry, symbols and roles, generic/reveal/locked staging, close/locked stage2d shot, heading and every other rendered control unchanged. Keep the current editorial look, measured rhythm, and sand palette.",
+      "before_plan_sha256": "39846caed1e65e6a44feeaacbfaa8e63e976e22eb4e3e238c1edf380ec6a40e0",
+      "status": "accepted_editorial_edit",
+      "returned_last_edit": {
+        "scene_id": "scene-010",
+        "status": "ai",
+        "changes": [
+          "Updated the shot framing, technique or camera direction.",
+          "Updated the on-screen labels."
+        ],
+        "provider": "ollama",
+        "model": "qwen3.5:4b",
+        "finish_reason": "stop"
+      },
+      "scene_changes": [
+        {
+          "path": "/beat_timing",
+          "before": "distributed",
+          "after": "mixed"
+        },
+        {
+          "path": "/beats",
+          "before": [
+            {
+              "time": 0.0,
+              "target": "title",
+              "action": "reveal"
+            },
+            {
+              "time": 0.544,
+              "target": "item-0",
+              "action": "reveal"
+            },
+            {
+              "time": 1.088,
+              "target": "item-0",
+              "action": "highlight"
+            },
+            {
+              "time": 3.354666,
+              "target": "item-1",
+              "action": "reveal"
+            },
+            {
+              "time": 3.898666,
+              "target": "item-1",
+              "action": "highlight"
+            }
+          ],
+          "after": [
+            {
+              "time": 0.0,
+              "target": "title",
+              "action": "reveal"
+            },
+            {
+              "time": 0,
+              "target": "item-0",
+              "action": "reveal"
+            },
+            {
+              "time": 0,
+              "target": "item-1",
+              "action": "reveal"
+            },
+            {
+              "time": 0,
+              "target": "item-0",
+              "action": "highlight"
+            },
+            {
+              "time": 0.544,
+              "target": "item-1",
+              "action": "highlight"
+            }
+          ]
+        },
+        {
+          "path": "/items",
+          "before": [
+            {
+              "label": "steel plate deflects bullet",
+              "symbol": "armour",
+              "role": "subject"
+            },
+            {
+              "label": "bullet strikes surface",
+              "symbol": "firearm",
+              "role": "support"
+            }
+          ],
+          "after": [
+            {
+              "label": "Armour",
+              "symbol": "armour",
+              "role": "subject"
+            },
+            {
+              "label": "Firearms",
+              "symbol": "firearm",
+              "role": "support"
+            }
+          ]
+        },
+        {
+          "path": "/shot/action",
+          "before": "bullet strikes and skids off metal surface",
+          "after": "two objects sit adjacent in frame"
+        },
+        {
+          "path": "/shot/focus",
+          "before": "steel plate deflects bullet",
+          "after": "Armour and Firearms side by side"
+        },
+        {
+          "path": "/visual_goal",
+          "before": "Show that armour and firearms evolved together with inherent limits",
+          "after": "Show Armour and Firearms as co-evolving subjects with inherent constraints"
+        }
+      ],
+      "rendered_changes": [
+        {
+          "path": "/items",
+          "before": [
+            {
+              "label": "steel plate deflects bullet",
+              "symbol": "armour",
+              "role": "subject"
+            },
+            {
+              "label": "bullet strikes surface",
+              "symbol": "firearm",
+              "role": "support"
+            }
+          ],
+          "after": [
+            {
+              "label": "Armour",
+              "symbol": "armour",
+              "role": "subject"
+            },
+            {
+              "label": "Firearms",
+              "symbol": "firearm",
+              "role": "support"
+            }
+          ]
+        }
+      ],
+      "after_plan_sha256": "fcd3a87abd1f5c8e1a182a433c4845c1be97831905fc0cb375b46ba9a7311eeb"
+    },
+    {
+      "scene_id": "scene-008",
+      "instructions": "This is only a heading-text correction. Set the title exactly to 'A surviving dent'. Return shot.role='detail' exactly as it is now; the small heading size must stay unchanged. Do not change the role to payoff. Retain framing=close, technique=stage2d, camera=locked, transition=match. Keep the current mechanism, items, staging and all other content identical. Keep the current blueprint look, measured rhythm, and sand palette.",
+      "before_plan_sha256": "fcd3a87abd1f5c8e1a182a433c4845c1be97831905fc0cb375b46ba9a7311eeb",
+      "status": "accepted_editorial_edit",
+      "returned_last_edit": {
+        "scene_id": "scene-008",
+        "status": "ai",
+        "changes": [
+          "Updated the scene heading."
+        ],
+        "provider": "ollama",
+        "model": "qwen3.5:4b",
+        "finish_reason": "stop"
+      },
+      "scene_changes": [
+        {
+          "path": "/composition",
+          "before": "default",
+          "after": "focus"
+        },
+        {
+          "path": "/template",
+          "before": "explain",
+          "after": "text"
+        },
+        {
+          "path": "/title",
+          "before": "Dent absorbs the blow",
+          "after": "A surviving dent"
+        },
+        {
+          "path": "/visual_goal",
+          "before": "Illustrate how the steel plate's deformation absorbs the bullet's energy, stopping it from passing through.",
+          "after": "Show the steel plate absorbing energy with a permanent mark"
+        }
+      ],
+      "rendered_changes": [
+        {
+          "path": "/title",
+          "before": "Dent absorbs the blow",
+          "after": "A surviving dent"
+        }
+      ],
+      "after_plan_sha256": "6cc3c9fbcd3a1d2e90757d8647d85d29d41e1cbb0e0879394e85b12c7f73d8a4"
+    }
+  ],
+  "requests": [
+    {
+      "stage": "editorial_edit_scene-005",
+      "prompt_sha256": "404ac3712cea7efe5f94d9187bebb810d27f8904b8b5bd61d40abf28a6ebf01a",
+      "started_at": "2026-11-08T23:00:56.859833+00:00",
+      "schema_sha256": "4240dd045f6b22cdfc24cd73447e4b52f9979b2cc10ffb1c80bc0e0eeec80c32",
+      "finished_at": "2026-11-08T23:03:38.544549+00:00"
+    },
+    {
+      "stage": "editorial_edit_scene-007",
+      "prompt_sha256": "ce6a4325f39d3559499f3385836cbd9a40a7d74ea9bcca4f91c0dd68830c8dee",
+      "started_at": "2026-11-08T23:03:38.590854+00:00",
+      "schema_sha256": "66b419ea6620d7110ed363c185307541753b0fec218741855652e37927cb8b0d",
+      "finished_at": "2026-11-08T23:05:40.271990+00:00"
+    },
+    {
+      "stage": "editorial_edit_scene-008",
+      "prompt_sha256": "eead78be41d5b89a3fdce13030b933e7db5c648f0648fd30dcc632de06e20339",
+      "started_at": "2026-11-08T23:05:40.306692+00:00",
+      "schema_sha256": "d4e21220e91a62400fbb0730055ccd37a106cde41496a61d62e7f8f798930807",
+      "finished_at": "2026-11-08T23:07:26.437595+00:00"
+    },
+    {
+      "stage": "editorial_edit_scene-010",
+      "prompt_sha256": "b23da61e976db11b6c46705ca254ca209d5dd87d379b869c6fa3c3b5eba0095f",
+      "started_at": "2026-11-08T23:07:26.453477+00:00",
+      "schema_sha256": "a73f96da1d0d0802e9182907518e39d7ea5079d937cea90040390fa38a94cbd1",
+      "finished_at": "2026-11-08T23:09:38.220392+00:00"
+    },
+    {
+      "stage": "editorial_edit_scene-008_retry",
+      "prompt_sha256": "0cb27d556bd85b0fc38c15941aee020b37a005f46f2e31765e1e48adc3b3a9ae",
+      "started_at": "2026-11-08T23:10:16.888837+00:00",
+      "schema_sha256": "d4e21220e91a62400fbb0730055ccd37a106cde41496a61d62e7f8f798930807",
+      "finished_at": "2026-11-08T23:12:43.952351+00:00"
+    }
+  ],
+  "qualification": "Normal regenerate_scene calls consult the actual configured local model. Explicit editorial directives remain inspection-directed choices and are not counted as unsolicited model design. No plan JSON fields are manually patched.",
+  "local_runtime": {
+    "status": "installed",
+    "runtime": "ollama",
+    "runtime_version": "0.40.15",
+    "model": {
+      "id": "qwen3.5:4b",
+      "name": "qwen3.5:4b",
+      "model": "qwen3.5:4b",
+      "size": 3324173934,
+      "digest": "d8b0f5e9760cd1682034f292d7ef72ec46f432149be0df7574bf2d6e92e38c04",
+      "family": "qwen35",
+      "parameter_size": "4.2B",
+      "quantization_level": "Q4_K_M",
+      "local": true
+    },
+    "capabilities": [
+      "completion",
+      "vision",
+      "tools",
+      "thinking"
+    ],
+    "meaning": "Installed identity reported by the loopback service. Actual responding providers are recorded per stage."
+  },
+  "response_capture": {
+    "directory": "model_responses",
+    "files": [
+      "model_responses/response-0018.json",
+      "model_responses/response-0019.json",
+      "model_responses/response-0020.json",
+      "model_responses/response-0021.json"
+    ],
+    "errors": [],
+    "omitted_calls": 0,
+    "max_bytes_per_file": 2097152,
+    "max_calls_this_run": 64,
+    "response_mutation": false,
+    "request_text_and_images_saved": false
+  },
+  "accepted_count": 4,
+  "model_contribution_survives": true,
+  "final_plan_sha256": "6cc3c9fbcd3a1d2e90757d8647d85d29d41e1cbb0e0879394e85b12c7f73d8a4",
+  "finished_at": "2026-11-08T23:12:43.998126+00:00",
+  "protected_inputs_unchanged": true,
+  "retry_response_captures": [
+    {
+      "directory": "model_responses",
+      "files": [
+        "model_responses/response-0022.json"
+      ],
+      "errors": [],
+      "omitted_calls": 0,
+      "max_bytes_per_file": 2097152,
+      "max_calls_this_run": 64,
+      "response_mutation": false,
+      "request_text_and_images_saved": false
+    }
+  ]
+}

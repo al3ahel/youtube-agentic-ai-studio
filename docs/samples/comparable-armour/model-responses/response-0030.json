@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "endpoint": "/api/chat",
+  "stage": "editorial_render_review",
+  "model": "qwen3.5:4b",
+  "started_at": "2026-11-08T23:27:56.654353+00:00",
+  "native_json_schema": true,
+  "image_count": 3,
+  "status": "received",
+  "finished_at": "2026-11-08T23:29:33.104628+00:00",
+  "response_text": "{\"model\":\"qwen3.5:4b\",\"created_at\":\"2026-11-08T23:29:33.103957687Z\",\"message\":{\"role\":\"assistant\",\"content\":\"{\\n  \\\"shots\\\": [\\n    {\\n      \\\"shot_id\\\": \\\"scene-008\\\",\\n      \\\"confidence\\\": 0.95,\\n      \\\"observations\\\": [\\n        {\\n          \\\"sample_id\\\": \\\"scene-008:setup\\\",\\n          \\\"visible\\\": \\\"A single, vertically oriented steel plate is centered in the frame against a light grid background. The plate exhibits a distinct, permanent deformation—a 'dent'—that curves inward on its right side and outward on its left. No projectile or impact event is visible at this moment.\\\"\\n        },\\n        {\\n          \\\"sample_id\\\": \\\"scene-008:action\\\",\\n          \\\"visible\\\": \\\"The visual state of the steel plate remains identical to the setup frame. There is no new motion, impact, or change in the plate's position or shape.\\\"\\n        },\\n        {\\n          \\\"sample_id\\\": \\\"scene-008:result\\\",\\n          \\\"visible\\\": \\\"The visual state of the steel plate remains identical to the previous frames. The dent is still present and unchanged.\\\"\\n        }\\n      ],\\n      \\\"assessments\\\": {\\n        \\\"subject_relevance\\\": \\\"fail\\\",\\n        \\\"composition\\\": \\\"pass\\\",\\n        \\\"motion\\\": \\\"fail\\\"\\n      },\\n      \\\"issues\\\": [\\n        {\\n          \\\"category\\\": \\\"motion\\\",\\n          \\\"severity\\\": \\\"error\\\",\\n          \\\"message\\\": \\\"The source narration describes a physical event ('a particular shot had stopped'), but the visual evidence across all three sampled frames shows no action or impact. The plate is static in every frame, failing to depict the 'action' of absorbing energy or the 'result' of the projectile stopping.\\\",\\\"samples\\\": [\\n            \\\"scene-008:setup\\\",\\n            \\\"scene-008:action\\\",\\n            \\\"scene-008:result\\\"\\n          ],\\\"repair\\\": \\\"none\\\"\\n        }\\n      ]\\n    }\\n  ]\\n}\"},\"done\":true,\"done_reason\":\"stop\",\"total_duration\":96444139192,\"load_duration\":1910666,\"prompt_eval_count\":1653,\"prompt_eval_cached_count\":0,\"prompt_eval_duration\":34226682999,\"eval_count\":424,\"eval_duration\":61995498000}",
+  "redacted": true,
+  "truncated": false,
+  "redacted_response_json_sha256": "c70fbae12501d3858bcb56b78af4266ff407426db220ce0d0d32dea1d16a1725"
+}

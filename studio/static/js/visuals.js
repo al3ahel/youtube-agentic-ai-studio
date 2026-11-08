@@ -106,10 +106,22 @@ function showScene(id, { preserveEditor = false } = {}) {
     button.setAttribute("aria-pressed", String(selected));
   });
   const look = scene.look || storyboardData?.plan?.visual_direction?.look;
-  const styleTags = [scene.template || "motion", look, scene.staging?.camera,
+  const styleTags = [scene.shot?.role, scene.shot?.technique, scene.shot?.framing, scene.template || "motion", look, scene.shot?.camera || scene.staging?.camera,
     scene.composition && scene.composition !== "default" ? scene.composition : null].filter(Boolean);
   $("#scene-details").innerHTML = `${styleTags.map(tag => `<span class="tag">${esc(String(tag).replaceAll("_", " "))}</span>`).join(" ")}<h3>${esc(scene.title || "Scene")}</h3><p>${esc(scene.goal || scene.visual_goal || "Explain this part of the narration.")}</p>`;
-  if (scene.staging && !scene.footage && !scene.image) {
+  if (scene.shot) {
+    const note = document.createElement("p");
+    note.className = "hint";
+    note.textContent = `${Number(scene.start).toFixed(2)}–${(Number(scene.start) + Number(scene.duration)).toFixed(2)}s · Section ${scene.section_id} · ${scene.shot.action}`;
+    $("#scene-details").append(note);
+  }
+  if (scene.mechanism && !scene.footage && !scene.image) {
+    const materials = {steel: "Steel", mail: "Linked mail", ceramic: "Ceramic", fiber: "Fiber", mixed: "Combined materials"};
+    const actions = {reveal: "Subject detail", approach: "Approaching projectile", impact: "Contact and reaction", deflect: "Deflection", penetrate: "Penetration", separate: "Separated layers", absorb: "Impact absorption", compare: "Material views"};
+    const note = document.createElement("p"); note.className = "hint";
+    note.textContent = `${materials[scene.mechanism.material] || "Material"} · ${actions[scene.mechanism.action] || "Illustrative mechanism"}`;
+    $("#scene-details").append(note);
+  } else if (scene.staging && !scene.footage && !scene.image) {
     const actions = { rise: "Rising water", adapt: "Adapting to rising water", float: "Homes rising with water", record: "Recording people", gap: "Revealing a recording gap",
       extract: "Extracting material", transfer: "Moving material", reveal: "Revealing the subject", assemble: "Assembling the parts",
       connect: "Connecting the parts", compare: "Comparing the subjects" };
@@ -167,11 +179,11 @@ async function loadStoryboard(st = status, { data = null, preserveEditor = false
   $("#film-direction").textContent = brief ? [brief.theme, brief.premise, brief.palette ? `Palette: ${brief.palette}.` : ""].filter(item => typeof item === "string").join(" · ") : "";
   const directionReport = data.plan?.direction_report;
   $("#direction-check-note").hidden = !directionReport?.summary;
-  $("#direction-check-note").textContent = directionReport?.summary ? `${directionReport.summary} These are source and staging checks; inspect the preview for visual quality.` : "";
+  $("#direction-check-note").textContent = directionReport?.summary ? `${data.plan?.shot_report?.summary || ""} ${directionReport.summary} These are planning checks; encoded review appears below.`.trim() : "";
   $("#rv-storyboard").hidden = !visible;
   $("#storyboard-nav").hidden = !visible;
   if (!visible) { $("#motion-preview").removeAttribute("src"); return true; }
-  $("#scene-list").innerHTML = scenes.map((scene, index) => `<button class="scene-choice" type="button" data-scene="${esc(scene.id)}" aria-pressed="false"><span class="scene-number">${String(index + 1).padStart(2, "0")}</span><span><b>${esc(scene.title || `Scene ${index + 1}`)}</b><small>${esc(String(scene.template || "motion").replaceAll("_", " "))}</small></span></button>`).join("");
+  $("#scene-list").innerHTML = scenes.map((scene, index) => `<button class="scene-choice" type="button" data-scene="${esc(scene.id)}" aria-pressed="false"><span class="scene-number">${String(index + 1).padStart(2, "0")}</span><span><b>${esc(scene.title || `Scene ${index + 1}`)}</b><small>${esc(scene.shot ? `${scene.shot.role} · ${scene.shot.framing} · ${Number(scene.duration).toFixed(1)}s` : String(scene.template || "motion").replaceAll("_", " "))}</small></span></button>`).join("");
   $$("#scene-list button").forEach(button => button.onclick = () => showScene(button.dataset.scene));
   showScene(scenes.some(scene => String(scene.id) === selectedScene) ? selectedScene : scenes[0].id, { preserveEditor });
   const frame = $("#motion-preview");
@@ -210,6 +222,16 @@ async function loadStoryboard(st = status, { data = null, preserveEditor = false
   const issues = qa && (qa.issues || qa.warnings || []);
   const notes = Array.isArray(issues) ? issues.map(issue => typeof issue === "string" ? issue : issue.message || issue.description || "").filter(Boolean).slice(0, 8) : [];
   $("#visual-qa").textContent = qa?.summary || qa?.message || (notes.length ? notes.join(" · ") : qa?.status === "unavailable" ? "AI frame review was unavailable for this render. Review the preview before publishing." : qa?.status === "disabled" ? "AI frame review is off. You can enable it in Motion studio settings." : "Visual review results appear here after rendering.");
+  if (qa?.summary && notes.length) {
+    const list = document.createElement("ul");
+    notes.forEach(note => { const item = document.createElement("li"); item.textContent = note; list.append(item); });
+    $("#visual-qa").append(list);
+  }
+  if (Array.isArray(qa?.repair_history) && qa.repair_history.length) {
+    const detail = document.createElement("p");
+    detail.textContent = `Repair attempts: ${qa.repair_history.length}. Applied changes: ${Number(qa.repairs_applied) || 0}. Earlier render evidence is retained.`;
+    $("#visual-qa").append(detail);
+  }
   updateVisualControls(st);
   return true;
 }

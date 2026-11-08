@@ -153,6 +153,83 @@ def test_portable_photo_paths_and_individual_credits_survive_archive_roundtrip(w
     assert [len(persisted[key]) for key in ("1", "2")] == [2, 1]
 
 
+def _collage_project(output, profile):
+    script, credits, originals = _completed_project(output, profile)
+    scene = state["visual_plan"]["scenes"][0]
+    scene["shot"] = {"version": 1, "role": "detail", "framing": "wide", "technique": "collage",
+                     "camera": "locked", "transition": "cut", "focus": "River banks", "action": "Compare river pictures"}
+    scene["media_layers"] = [{"path": path, "source": "Openverse", "source_url": credit["link"],
+                              "credit": credit["author"], "license": credit["license"]}
+                             for path, credit in zip(originals, credits)]
+    return script, deepcopy(scene["media_layers"]), originals
+
+
+def test_all_collage_layers_and_their_original_binding_survive_archive_load(workspace):
+    from studio.visual_assets import validate_binding
+    output, client = workspace
+    profile = channels.create_profile("River pictures", "news")
+    script, original_layers, originals = _collage_project(output, profile)
+    pid = library.archive_project()
+    archive = Path(library.lib_path(pid))
+    saved = json.loads((archive / "scene_plan.json").read_text())["scenes"][0]
+    for before, layer in zip(original_layers, saved["media_layers"]):
+        assert not Path(layer["path"]).is_absolute()
+        assert (archive / layer["path"]).read_bytes() == originals[before["path"]]
+        assert {key: value for key, value in layer.items() if key != "path"} == {key: value for key, value in before.items() if key != "path"}
+    assert saved["image"]["path"] == saved["media_layers"][0]["path"]
+    shutil.rmtree(output / "images")
+    response = client.post(f"/api/library/{pid}/load", json={})
+    assert response.json == {"ok": True}
+    for before, layer in zip(original_layers, state["visual_plan"]["scenes"][0]["media_layers"]):
+        assert Path(layer["path"]).is_relative_to(output)
+        assert Path(layer["path"]).read_bytes() == originals[before["path"]]
+        assert layer["license"] == before["license"] and layer["credit"] == before["credit"]
+    assert [len(state["image_map"][key]) for key in ("1", "2")] == [2, 1]
+    assert validate_binding(output, state["image_map"], script, profile["id"]) is True
+    from studio.description import load_credits
+    restored_credits = load_credits()
+    for layer in original_layers:
+        assert any(credit.get("author") == layer["credit"] and credit.get("license") == layer["license"]
+                   and credit.get("link") == layer["source_url"] for credit in restored_credits)
+
+
+def test_legacy_collage_without_a_photo_map_recovers_every_exact_layer(workspace):
+    from studio.visual_assets import validate_binding
+    output, client = workspace
+    profile = channels.create_profile("Older collage", "news")
+    script, original_layers, originals = _collage_project(output, profile)
+    pid = library.archive_project()
+    archive = Path(library.lib_path(pid))
+    for name in ("image_map.json", "image_binding.json"):
+        (archive / name).unlink()
+    meta = library.read_meta(pid)
+    meta["files"].pop("image_map")
+    meta["files"].pop("image_binding")
+    library.write_meta(pid, meta)
+    response = client.post(f"/api/library/{pid}/load", json={})
+    assert response.json == {"ok": True}
+    assert set(state["image_map"]) == {"1"} and len(state["image_map"]["1"]) == 2
+    assert [Path(value).read_bytes() for value in state["image_map"]["1"]] == list(originals.values())
+    assert validate_binding(output, state["image_map"], script, profile["id"]) is True
+
+
+def test_escaping_collage_layer_cannot_replace_the_current_project(workspace):
+    output, client = workspace
+    profile = channels.create_profile("Protected collage", "news")
+    _collage_project(output, profile)
+    pid = library.archive_project()
+    archive = Path(library.lib_path(pid))
+    stored = json.loads((archive / "scene_plan.json").read_text())
+    stored["scenes"][0]["media_layers"][1]["path"] = "../../outside.png"
+    _json(archive / "scene_plan.json", stored)
+    current_state = deepcopy(state)
+    _json(output / "script.json", {"title": "Current unsaved work"})
+    response = client.post(f"/api/library/{pid}/load", json={})
+    assert response.json["ok"] is False
+    assert state == current_state
+    assert json.loads((output / "script.json").read_text())["title"] == "Current unsaved work"
+
+
 def test_legacy_mp4_recovers_soundtrack_and_photos_without_narration_file(workspace):
     output, client = workspace
     ffmpeg = shutil.which("ffmpeg")

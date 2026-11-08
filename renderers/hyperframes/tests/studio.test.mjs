@@ -152,6 +152,18 @@ async function fill(page, selector, value) {
 async function openStudio(onRequest = null) {
   const page = await browser.newPage(), errors = [];
   page.on("pageerror", error => errors.push(error.message));
+  page.on("response", async response => {
+    // A development edit during this real Flask suite intentionally invalidates
+    // the server fingerprint. Preserve that 409 evidence instead of reporting
+    // only the downstream UI timeout; the guard itself remains fully enabled.
+    if (response.status() !== 409 || !response.url().startsWith(origin)) return;
+    try {
+      const payload = await response.json();
+      if (String(payload.error || "").includes("project code changed")) {
+        console.error(`Studio restart guard: HTTP 409 ${new URL(response.url()).pathname}: ${payload.error}`);
+      }
+    } catch {}
+  });
   await page.setRequestInterception(true);
   page.on("request", request => {
     if (!request.url().startsWith(origin)) return request.abort();
@@ -324,7 +336,23 @@ test("studio: settings and quick preferences stay with their channel across anot
   await page.close();
 });
 
-test("studio: visible Sound design routes save and undo real per-channel mastering preferences", {skip: skipped, timeout: 60000}, async () => {
+test("studio: visible Sound design routes save and undo real per-channel mastering preferences", {skip: skipped, timeout: 180000}, async t => {
+  // This is a multi-profile desktop/mobile workflow, not a UI latency target.
+  // A concurrent CPU model can take it past 60s; each awaited UI condition keeps
+  // its own bounded timeout and every functional assertion remains in place.
+  let pending = "create the isolated channel profiles", currentPage;
+  t.after(async () => {
+    if (currentPage && !currentPage.isClosed()) {
+      if (pending !== "complete") {
+        const state = await currentPage.evaluate(() => ({hash: location.hash, profile: settingsProfileId,
+          saving: settingsSavePending, dirty: settingsDirty(), section: pendingSettingsSection,
+          toasts: [...document.querySelectorAll(".toast")].map(node => node.textContent),
+          buildWarning: document.querySelector("#build-warning").textContent})).catch(error => ({error: error.message}));
+        t.diagnostic(`Pending Sound settings action: ${pending}; page: ${JSON.stringify(state)}`);
+      }
+      await currentPage.close();
+    }
+  });
   const create = async name => (await (await fetch(`${origin}/api/channels`, {
     method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({name}),
   })).json()).profile;
@@ -336,29 +364,36 @@ test("studio: visible Sound design routes save and undo real per-channel masteri
     if (request.method() === "POST") writes.push({path: url.pathname, profile: url.searchParams.get("profile_id"), body: JSON.parse(request.postData() || "{}")});
     return false; // Settings, profiles, saves and build information use the actual Flask app.
   });
+  currentPage = page;
   const waitForSection = async section => {
+    pending = `wait for Settings/${section} in the selected profile`;
     await page.waitForFunction(({section, profile}) => location.hash === `#settings/${section}`
       && settingsProfileId === profile && document.querySelector("#view-settings").classList.contains("active")
       && !pendingSettingsSection, {}, {section, profile: selected.id});
   };
   const openSection = async section => {
+    pending = `open Settings/${section}`;
     await page.$eval("#settings-guide", node => node.scrollIntoView({block: "start", behavior: "instant"}));
     await page.click(`#settings-sections [data-section="${section}"]`);
     await waitForSection(section);
   };
   const save = async () => {
+    pending = "wait for the settings save bar to enter the viewport";
     await page.waitForFunction(() => {
       const r = document.querySelector("#savebar-save").getBoundingClientRect();
       return document.querySelector("#savebar").classList.contains("show") && r.top > 0 && r.bottom < innerHeight
         && Number(getComputedStyle(document.querySelector("#savebar")).opacity) > .99;
     });
+    pending = "save the selected profile through the real settings endpoint";
     const [response] = await Promise.all([
       page.waitForResponse(response => new URL(response.url()).pathname === "/api/save-settings"),
       page.click("#savebar-save"),
     ]);
     assert.equal(response.status(), 200, await response.text());
+    pending = "wait for the saved settings form to become clean";
     await page.waitForFunction(() => !settingsSavePending && !settingsDirty());
   };
+  pending = "open Sound settings from Home";
   await page.click("#home-sound-settings");
   await waitForSection("audio");
   await page.waitForFunction(() => Number(getComputedStyle(document.querySelector("#settings-audio")).opacity) > .99);
@@ -383,6 +418,7 @@ test("studio: visible Sound design routes save and undo real per-channel masteri
   await openSection("audio");
   await page.select("#s-sound_mode", "auto");
   await page.click('label:has(#s-audio_mastering)');
+  pending = "undo unsaved sound and mastering changes";
   await page.waitForFunction(() => document.querySelector("#savebar-undo").getBoundingClientRect().bottom < innerHeight);
   await page.click("#savebar-undo");
   await page.waitForFunction(() => !settingsDirty() && document.querySelector("#s-sound_mode").value === "off" && !document.querySelector("#s-audio_mastering").checked);
@@ -390,14 +426,17 @@ test("studio: visible Sound design routes save and undo real per-channel masteri
   await page.select("#s-sound_intensity", "balanced");
   await page.click('label:has(#s-audio_mastering)');
   await save();
+  pending = "reload and verify persisted sound settings";
   await page.reload({waitUntil: "domcontentloaded"});
   await waitForSection("audio");
   await page.waitForFunction(() => document.querySelector("#s-sound_mode").value === "auto" && document.querySelector("#s-sound_intensity").value === "balanced" && document.querySelector("#s-audio_mastering").checked);
   await page.waitForFunction(() => Number(getComputedStyle(document.querySelector("#settings-audio")).opacity) > .99 && document.querySelector("#build-warning").hidden);
   assert.equal(await page.evaluate(() => isSettingsView()), true);
   assert.match(await page.$eval("#settings-channel-note", node => node.textContent), /Sound design channel/);
+  pending = "capture the desktop Sound settings screen";
   await page.screenshot({path: path.join(screenshots, "settings-sound-desktop.png")});
 
+  pending = "verify the running build and its diagnostics dialog";
   const running = await (await fetch(`${origin}/api/build`)).json();
   assert.equal(running.status, "current"); assert.equal(running.diagnostics, undefined);
   await page.click("#build-info");
@@ -406,6 +445,7 @@ test("studio: visible Sound design routes save and undo real per-channel masteri
   assert.ok((await page.$eval("#build-details", node => node.textContent)).includes(root));
   await page.click('#build-dialog [data-close-dialog="build-dialog"]');
 
+  pending = "open and inspect Sound settings on a narrow viewport";
   await page.setViewport({width: 390, height: 844});
   await page.click('#tabs a[data-view="home"]');
   await page.click("#settings-btn");
@@ -415,14 +455,17 @@ test("studio: visible Sound design routes save and undo real per-channel masteri
   await openSection("audio");
   await page.waitForFunction(() => Number(getComputedStyle(document.querySelector("#settings-audio")).opacity) > .99);
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
+  pending = "capture the mobile Sound settings screen";
   await page.screenshot({path: path.join(screenshots, "settings-sound-mobile.png")});
 
+  pending = "verify both channels persisted separately and no generation ran";
   const [first, second] = await Promise.all([selected, other].map(async profile => (await fetch(`${origin}/api/settings?profile_id=${profile.id}`)).json()));
   assert.deepEqual([first.sound_mode, first.sound_intensity, first.audio_mastering], ["auto", "balanced", true]);
   assert.deepEqual([second.sound_mode, second.sound_intensity, second.audio_mastering], ["auto", "low", true]);
   assert.equal(writes.filter(item => item.path === "/api/run").length, 0);
   assert.ok(writes.every(item => item.path === "/api/save-settings"), JSON.stringify(writes.map(item => item.path)));
   assert.deepEqual(errors, []);
+  pending = "complete";
   await page.close();
 });
 
@@ -889,7 +932,16 @@ function setFixtureGraphicsVersion(plan, version) {
   }
 }
 
-async function openSceneReview({visualMode = "hybrid", useProjectPhotos, legacyImage = false, graphicsVersion, soundMode = "auto"} = {}) {
+function setFixtureShots(plan) {
+  plan.scenes.forEach((scene, index) => {
+    scene.section_id = `section-${index}`;
+    scene.shot = {version: 1, role: index ? "payoff" : "establish", framing: index ? "close" : "wide",
+      technique: scene.template === "footage" ? "footage" : "stage2d", camera: "locked", transition: "cut",
+      focus: scene.title, action: "Show the narrated subject in its measured shot."};
+  });
+}
+
+async function openSceneReview({visualMode = "hybrid", useProjectPhotos, legacyImage = false, graphicsVersion, currentShots = false, soundMode = "auto"} = {}) {
   let profiles = await (await fetch(`${origin}/api/channels`)).json();
   let project = profiles.profiles.find(profile => profile.name === "Review fixture");
   if (!project) project = (await (await fetch(`${origin}/api/channels`, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({name: "Review fixture"})})).json()).profile;
@@ -901,6 +953,7 @@ async function openSceneReview({visualMode = "hybrid", useProjectPhotos, legacyI
   if (useProjectPhotos !== undefined) plan.use_project_photos = useProjectPhotos;
   if (legacyImage) plan.scenes[1].image = {path: "images/previous-photo.jpg"};
   if (graphicsVersion !== undefined) setFixtureGraphicsVersion(plan, graphicsVersion);
+  if (currentShots) setFixtureShots(plan);
   const st = {running: false, stages: {}, profile_id: project.id, profile_name: project.name,
     active_profile_id: "default", video_type: "shorts", visual_mode: visualMode, preview_only: true,
     has_preview: true, has_storyboard: true, has_audio: true, has_script: true, has_thumb: false,
@@ -1006,6 +1059,7 @@ test("studio: applying saved audio and both retry paths keep the narration, scen
 
 test("studio: Review renders preserve graphics-only and legacy photo policies", {skip: skipped}, async () => {
   for (const options of [
+    {visualMode: "motion", useProjectPhotos: false, graphicsVersion: 2, currentShots: true},
     {visualMode: "motion", useProjectPhotos: false, graphicsVersion: 2},
     {visualMode: "motion", useProjectPhotos: false, graphicsVersion: 1},
     {visualMode: "motion", legacyImage: true},
@@ -1015,7 +1069,7 @@ test("studio: Review renders preserve graphics-only and legacy photo policies", 
     const photos = options.useProjectPhotos ?? true;
     assert.equal(await page.$eval("#replace-scene-image", node => node.closest("label").hidden), !photos);
     assert.equal(await page.$eval("#replace-scene-image", node => node.disabled), !photos);
-    const oldGraphics = options.graphicsVersion !== 2;
+    const oldGraphics = !options.currentShots || options.graphicsVersion !== 2;
     assert.equal(await page.$eval("#legacy-motion-card", node => node.hidden), !(photos || oldGraphics));
     assert.equal(await page.$eval("#rebuild-motion-and-sound", node => node.hidden), !oldGraphics);
     assert.equal(await page.$eval("#animate-legacy", node => node.hidden), !photos);
@@ -1092,8 +1146,8 @@ test("studio: sound report separates an omitted music proposal from applied effe
   await page.close();
 });
 
-test("studio: older Motion card and v1 object drafts offer guarded rebuild until current v2 scenes are loaded", {skip: skipped}, async () => {
-  for (const graphicsVersion of [undefined, 1]) {
+test("studio: older Motion, v1 and section-level v2 drafts offer guarded rebuild until current shots are loaded", {skip: skipped}, async () => {
+  for (const graphicsVersion of [undefined, 1, 2]) {
     const fixture = await openSceneReview({visualMode: "motion", useProjectPhotos: false, graphicsVersion}), {page, errors} = fixture;
     assert.equal(await page.$eval("#legacy-motion-card", node => node.hidden), false);
     assert.equal(await page.$eval("#rebuild-motion-and-sound", node => node.hidden), false);
@@ -1111,6 +1165,9 @@ test("studio: older Motion card and v1 object drafts offer guarded rebuild until
     assert.equal(fixture.runs[0].preview_only, true);
     await fixture.finish();
     setFixtureGraphicsVersion(fixture.plan, 2);
+    await page.evaluate(() => loadReview({preserveEdits: true}));
+    assert.equal(await page.$eval("#rebuild-motion-and-sound", node => node.hidden), false, "Section-level v2 graphics still need shot planning");
+    setFixtureShots(fixture.plan);
     await page.evaluate(() => loadReview({preserveEdits: true}));
     assert.equal(await page.$eval("#legacy-motion-card", node => node.hidden), true);
     assert.equal(await page.$eval("#rebuild-motion-and-sound", node => node.hidden), true);

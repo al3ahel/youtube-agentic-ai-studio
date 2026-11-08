@@ -1,0 +1,2434 @@
+{
+  "version": 1,
+  "title": "Could old armour stop a bullet?",
+  "mode": "hybrid",
+  "use_project_photos": true,
+  "profile_id": "default",
+  "script_signature": "6376a718b8b1d76e8ed4c754e0ef5cfb772630dcccadef4a7df04a8e2cdcad71",
+  "caption_style": "highlight",
+  "visual_direction": {
+    "version": 1,
+    "look": "editorial",
+    "rhythm": "measured",
+    "rationale": "Maintain a consistent narrative flow where each scene isolates a specific variable (question, armour type, weapon type) to explain the conditional nature of protection without inventing unrelated events."
+  },
+  "creative_brief": {
+    "version": 1,
+    "theme": "Could old armour stop a bullet?",
+    "premise": "Could old armour stop a bullet? Sometimes. The answer depends on the armour and the weapon. Mail armour uses linked rings. Steel plate armour can deflect some blows away from the body. When firearms spread, steel armour was hardened, thickened, or given a reinforcing layer over the breastplate.",
+    "continuity": "Keep the subject and palette consistent. Show each narrated change through the actors, their relationship and the camera, rather than repeating an unrelated icon.",
+    "palette": "sand"
+  },
+  "fps": 30,
+  "width": 1080,
+  "height": 1920,
+  "duration": 29.5,
+  "sections": [
+    {
+      "id": "question",
+      "start": 0.0,
+      "duration": 4.6,
+      "narration": "Could old armour stop a bullet? Sometimes. The answer depends on the armour and the weapon.",
+      "speech_start": 0.0,
+      "speech_end": 4.584,
+      "caption_timing": "word"
+    },
+    {
+      "id": "construction",
+      "start": 4.6,
+      "duration": 4.966667,
+      "narration": "Mail armour uses linked rings. Steel plate armour can deflect some blows away from the body.",
+      "speech_start": 4.584,
+      "speech_end": 9.552,
+      "caption_timing": "word"
+    },
+    {
+      "id": "reinforcement",
+      "start": 9.566667,
+      "duration": 6.166667,
+      "narration": "When firearms spread, steel armour was hardened, thickened, or given a reinforcing layer over the breastplate.",
+      "speech_start": 9.552,
+      "speech_end": 15.719999999999999,
+      "caption_timing": "word"
+    },
+    {
+      "id": "proof",
+      "start": 15.733333,
+      "duration": 5.833333,
+      "narration": "In proof tests, bullets hit some steel breastplates. A surviving dent showed that particular shot had stopped.",
+      "speech_start": 15.72,
+      "speech_end": 21.552,
+      "caption_timing": "word"
+    },
+    {
+      "id": "answer",
+      "start": 21.566667,
+      "duration": 7.933333,
+      "narration": "But one successful test was no universal guarantee. Armour and firearms evolved together for centuries; protection always had limits.",
+      "speech_start": 21.552,
+      "speech_end": 29.5,
+      "caption_timing": "word"
+    }
+  ],
+  "captions": [
+    {
+      "start": 0.088,
+      "end": 0.91,
+      "text": "Could old armour stop a"
+    },
+    {
+      "start": 0.921,
+      "end": 3.136,
+      "text": "bullet Sometimes The answer depends"
+    },
+    {
+      "start": 3.147,
+      "end": 3.936,
+      "text": "on the armour and the"
+    },
+    {
+      "start": 3.947,
+      "end": 4.254,
+      "text": "weapon"
+    },
+    {
+      "start": 4.672,
+      "end": 6.13,
+      "text": "Mail armour uses linked rings"
+    },
+    {
+      "start": 6.503,
+      "end": 7.83,
+      "text": "Steel plate armour can deflect"
+    },
+    {
+      "start": 7.841,
+      "end": 8.882,
+      "text": "some blows away from the"
+    },
+    {
+      "start": 8.893,
+      "end": 9.211,
+      "text": "body"
+    },
+    {
+      "start": 9.64,
+      "end": 11.591,
+      "text": "When firearms spread steel armour"
+    },
+    {
+      "start": 11.602,
+      "end": 13.423,
+      "text": "was hardened thickened or given"
+    },
+    {
+      "start": 13.434,
+      "end": 14.859,
+      "text": "a reinforcing layer over the"
+    },
+    {
+      "start": 14.87,
+      "end": 15.396,
+      "text": "breastplate"
+    },
+    {
+      "start": 15.808,
+      "end": 17.299,
+      "text": "In proof tests bullets hit"
+    },
+    {
+      "start": 17.31,
+      "end": 19.338,
+      "text": "some steel breastplates A surviving"
+    },
+    {
+      "start": 19.349,
+      "end": 20.654,
+      "text": "dent showed that particular shot"
+    },
+    {
+      "start": 20.665,
+      "end": 21.224,
+      "text": "had stopped"
+    },
+    {
+      "start": 21.651,
+      "end": 22.912,
+      "text": "But one successful test was"
+    },
+    {
+      "start": 22.923,
+      "end": 24.973,
+      "text": "no universal guarantee Armour and"
+    },
+    {
+      "start": 24.984,
+      "end": 27.067,
+      "text": "firearms evolved together for centuries"
+    },
+    {
+      "start": 27.265,
+      "end": 28.887,
+      "text": "protection always had limits"
+    }
+  ],
+  "words": [
+    {
+      "word": "Could",
+      "start": 0.087708,
+      "end": 0.18637399999999998,
+      "section_id": "question"
+    },
+    {
+      "word": "old",
+      "start": 0.197375,
+      "end": 0.37283299999999997,
+      "section_id": "question"
+    },
+    {
+      "word": "armour",
+      "start": 0.383791,
+      "end": 0.614041,
+      "section_id": "question"
+    },
+    {
+      "word": "stop",
+      "start": 0.625,
+      "end": 0.85525,
+      "section_id": "question"
+    },
+    {
+      "word": "a",
+      "start": 0.866208,
+      "end": 0.910083,
+      "section_id": "question"
+    },
+    {
+      "word": "bullet",
+      "start": 0.921041,
+      "end": 1.260957,
+      "section_id": "question"
+    },
+    {
+      "word": "Sometimes",
+      "start": 1.6227909999999999,
+      "end": 2.1271660000000003,
+      "section_id": "question"
+    },
+    {
+      "word": "The",
+      "start": 2.5,
+      "end": 2.5657910000000004,
+      "section_id": "question"
+    },
+    {
+      "word": "answer",
+      "start": 2.57675,
+      "end": 2.817958,
+      "section_id": "question"
+    },
+    {
+      "word": "depends",
+      "start": 2.828958,
+      "end": 3.135958,
+      "section_id": "question"
+    },
+    {
+      "word": "on",
+      "start": 3.146916,
+      "end": 3.223666,
+      "section_id": "question"
+    },
+    {
+      "word": "the",
+      "start": 3.2346660000000003,
+      "end": 3.3114160000000004,
+      "section_id": "question"
+    },
+    {
+      "word": "armour",
+      "start": 3.322375,
+      "end": 3.706166,
+      "section_id": "question"
+    },
+    {
+      "word": "and",
+      "start": 3.8157910000000004,
+      "end": 3.8596660000000003,
+      "section_id": "question"
+    },
+    {
+      "word": "the",
+      "start": 3.870625,
+      "end": 3.9364160000000004,
+      "section_id": "question"
+    },
+    {
+      "word": "weapon",
+      "start": 3.947375,
+      "end": 4.254375,
+      "section_id": "question"
+    },
+    {
+      "word": "Mail",
+      "start": 4.671708,
+      "end": 4.912915999999999,
+      "section_id": "construction"
+    },
+    {
+      "word": "armour",
+      "start": 4.923915999999999,
+      "end": 5.154166,
+      "section_id": "construction"
+    },
+    {
+      "word": "uses",
+      "start": 5.165125,
+      "end": 5.450208,
+      "section_id": "construction"
+    },
+    {
+      "word": "linked",
+      "start": 5.461207999999999,
+      "end": 5.691458,
+      "section_id": "construction"
+    },
+    {
+      "word": "rings",
+      "start": 5.7024159999999995,
+      "end": 6.130040999999999,
+      "section_id": "construction"
+    },
+    {
+      "word": "Steel",
+      "start": 6.5028749999999995,
+      "end": 6.755082999999999,
+      "section_id": "construction"
+    },
+    {
+      "word": "plate",
+      "start": 6.766,
+      "end": 6.974333,
+      "section_id": "construction"
+    },
+    {
+      "word": "armour",
+      "start": 6.985333,
+      "end": 7.314291,
+      "section_id": "construction"
+    },
+    {
+      "word": "can",
+      "start": 7.325208,
+      "end": 7.445833,
+      "section_id": "construction"
+    },
+    {
+      "word": "deflect",
+      "start": 7.456791,
+      "end": 7.829582,
+      "section_id": "construction"
+    },
+    {
+      "word": "some",
+      "start": 7.840583,
+      "end": 8.005041,
+      "section_id": "construction"
+    },
+    {
+      "word": "blows",
+      "start": 8.016,
+      "end": 8.388791,
+      "section_id": "construction"
+    },
+    {
+      "word": "away",
+      "start": 8.399791,
+      "end": 8.640999,
+      "section_id": "construction"
+    },
+    {
+      "word": "from",
+      "start": 8.652,
+      "end": 8.816457999999999,
+      "section_id": "construction"
+    },
+    {
+      "word": "the",
+      "start": 8.827416,
+      "end": 8.882249,
+      "section_id": "construction"
+    },
+    {
+      "word": "body",
+      "start": 8.893208,
+      "end": 9.211208,
+      "section_id": "construction"
+    },
+    {
+      "word": "When",
+      "start": 9.639707999999999,
+      "end": 9.738374,
+      "section_id": "reinforcement"
+    },
+    {
+      "word": "firearms",
+      "start": 9.749374999999999,
+      "end": 10.286666,
+      "section_id": "reinforcement"
+    },
+    {
+      "word": "spread",
+      "start": 10.297625,
+      "end": 10.714291,
+      "section_id": "reinforcement"
+    },
+    {
+      "word": "steel",
+      "start": 10.966458,
+      "end": 11.284457999999999,
+      "section_id": "reinforcement"
+    },
+    {
+      "word": "armour",
+      "start": 11.295416,
+      "end": 11.591457,
+      "section_id": "reinforcement"
+    },
+    {
+      "word": "was",
+      "start": 11.602457999999999,
+      "end": 11.723082999999999,
+      "section_id": "reinforcement"
+    },
+    {
+      "word": "hardened",
+      "start": 11.734,
+      "end": 12.172583,
+      "section_id": "reinforcement"
+    },
+    {
+      "word": "thickened",
+      "start": 12.490582999999999,
+      "end": 12.852416,
+      "section_id": "reinforcement"
+    },
+    {
+      "word": "or",
+      "start": 13.137540999999999,
+      "end": 13.214291,
+      "section_id": "reinforcement"
+    },
+    {
+      "word": "given",
+      "start": 13.225249999999999,
+      "end": 13.422625,
+      "section_id": "reinforcement"
+    },
+    {
+      "word": "a",
+      "start": 13.433582999999999,
+      "end": 13.510333,
+      "section_id": "reinforcement"
+    },
+    {
+      "word": "reinforcing",
+      "start": 13.521291,
+      "end": 14.244957,
+      "section_id": "reinforcement"
+    },
+    {
+      "word": "layer",
+      "start": 14.255958,
+      "end": 14.595873999999998,
+      "section_id": "reinforcement"
+    },
+    {
+      "word": "over",
+      "start": 14.672625,
+      "end": 14.782291,
+      "section_id": "reinforcement"
+    },
+    {
+      "word": "the",
+      "start": 14.793208,
+      "end": 14.858998999999999,
+      "section_id": "reinforcement"
+    },
+    {
+      "word": "breastplate",
+      "start": 14.87,
+      "end": 15.396332999999998,
+      "section_id": "reinforcement"
+    },
+    {
+      "word": "In",
+      "start": 15.807708,
+      "end": 15.895416,
+      "section_id": "proof"
+    },
+    {
+      "word": "proof",
+      "start": 15.906416,
+      "end": 16.158624,
+      "section_id": "proof"
+    },
+    {
+      "word": "tests",
+      "start": 16.169541000000002,
+      "end": 16.662957000000002,
+      "section_id": "proof"
+    },
+    {
+      "word": "bullets",
+      "start": 16.805541,
+      "end": 17.123541,
+      "section_id": "proof"
+    },
+    {
+      "word": "hit",
+      "start": 17.134458000000002,
+      "end": 17.298916000000002,
+      "section_id": "proof"
+    },
+    {
+      "word": "some",
+      "start": 17.309916,
+      "end": 17.441499,
+      "section_id": "proof"
+    },
+    {
+      "word": "steel",
+      "start": 17.452458,
+      "end": 17.737541,
+      "section_id": "proof"
+    },
+    {
+      "word": "breastplates",
+      "start": 17.7485,
+      "end": 18.384458000000002,
+      "section_id": "proof"
+    },
+    {
+      "word": "A",
+      "start": 18.746333,
+      "end": 18.790208,
+      "section_id": "proof"
+    },
+    {
+      "word": "surviving",
+      "start": 18.801125,
+      "end": 19.338416000000002,
+      "section_id": "proof"
+    },
+    {
+      "word": "dent",
+      "start": 19.349375000000002,
+      "end": 19.54675,
+      "section_id": "proof"
+    },
+    {
+      "word": "showed",
+      "start": 19.557708,
+      "end": 19.831833000000003,
+      "section_id": "proof"
+    },
+    {
+      "word": "that",
+      "start": 19.842791000000002,
+      "end": 19.941457,
+      "section_id": "proof"
+    },
+    {
+      "word": "particular",
+      "start": 19.952458,
+      "end": 20.391041,
+      "section_id": "proof"
+    },
+    {
+      "word": "shot",
+      "start": 20.402,
+      "end": 20.654208,
+      "section_id": "proof"
+    },
+    {
+      "word": "had",
+      "start": 20.665166,
+      "end": 20.785791,
+      "section_id": "proof"
+    },
+    {
+      "word": "stopped",
+      "start": 20.79675,
+      "end": 21.224375000000002,
+      "section_id": "proof"
+    },
+    {
+      "word": "But",
+      "start": 21.650666,
+      "end": 21.727415999999998,
+      "section_id": "answer"
+    },
+    {
+      "word": "one",
+      "start": 21.738416,
+      "end": 21.902874,
+      "section_id": "answer"
+    },
+    {
+      "word": "successful",
+      "start": 21.913833,
+      "end": 22.429166,
+      "section_id": "answer"
+    },
+    {
+      "word": "test",
+      "start": 22.440165999999998,
+      "end": 22.769123999999998,
+      "section_id": "answer"
+    },
+    {
+      "word": "was",
+      "start": 22.780083,
+      "end": 22.911666,
+      "section_id": "answer"
+    },
+    {
+      "word": "no",
+      "start": 22.922625,
+      "end": 23.141916,
+      "section_id": "answer"
+    },
+    {
+      "word": "universal",
+      "start": 23.152874999999998,
+      "end": 23.679208,
+      "section_id": "answer"
+    },
+    {
+      "word": "guarantee",
+      "start": 23.690165999999998,
+      "end": 24.172624,
+      "section_id": "answer"
+    },
+    {
+      "word": "Armour",
+      "start": 24.534458,
+      "end": 24.896290999999998,
+      "section_id": "answer"
+    },
+    {
+      "word": "and",
+      "start": 24.907249999999998,
+      "end": 24.973041,
+      "section_id": "answer"
+    },
+    {
+      "word": "firearms",
+      "start": 24.983999999999998,
+      "end": 25.576124999999998,
+      "section_id": "answer"
+    },
+    {
+      "word": "evolved",
+      "start": 25.587083,
+      "end": 25.970874,
+      "section_id": "answer"
+    },
+    {
+      "word": "together",
+      "start": 25.981832999999998,
+      "end": 26.332708,
+      "section_id": "answer"
+    },
+    {
+      "word": "for",
+      "start": 26.343666,
+      "end": 26.464291,
+      "section_id": "answer"
+    },
+    {
+      "word": "centuries",
+      "start": 26.47525,
+      "end": 27.067375,
+      "section_id": "answer"
+    },
+    {
+      "word": "protection",
+      "start": 27.264708,
+      "end": 27.834874,
+      "section_id": "answer"
+    },
+    {
+      "word": "always",
+      "start": 27.933583,
+      "end": 28.262541,
+      "section_id": "answer"
+    },
+    {
+      "word": "had",
+      "start": 28.2735,
+      "end": 28.427,
+      "section_id": "answer"
+    },
+    {
+      "word": "limits",
+      "start": 28.437958,
+      "end": 28.887499,
+      "section_id": "answer"
+    }
+  ],
+  "timing_source": "measured_sections",
+  "timeline_signature": "bdc2eed078ba9805b5ccd6d3649fde5024e299db0cd950155c479b54ec62ab95",
+  "audio_duration": 29.5,
+  "warnings": [
+    "scene-001 kept local scene direction: The selected action is not supported by this scene's narration. A depicted actor is not supported by this scene's narration.",
+    "scene-002 kept its local design because AI supplied invalid actor roles/count or an unsupported setting/action pair.",
+    "scene-004 kept its source-grounded mechanism: The contact animation requires a source-supported projectile.",
+    "scene-005 kept its source-grounded mechanism: The shot changed the source material or subject.",
+    "scene-009 kept local scene direction: The selected action is not supported by this scene's narration. A depicted actor is not supported by this scene's narration.",
+    "scene-010 kept its source-grounded mechanism: The shot's source does not support this material mechanism.",
+    "Stock footage is unavailable; these scenes use animated graphics.",
+    "Some motion beats follow subtitle cues or approximate positions within narration sections; they are not exact word timings."
+  ],
+  "scenes": [
+    {
+      "id": "scene-001",
+      "section_id": "question",
+      "template": "explain",
+      "start": 0.0,
+      "duration": 2.266667,
+      "title": "Could armour stop a bullet?",
+      "visual_goal": "Explain: Could old armour stop a bullet Sometimes The answer depends",
+      "items": [
+        {
+          "label": "Armour"
+        }
+      ],
+      "composition": "split",
+      "shot": {
+        "version": 1,
+        "role": "establish",
+        "framing": "wide",
+        "technique": "collage",
+        "camera": "locked",
+        "transition": "cut",
+        "focus": "Could armour stop a bullet?",
+        "action": "Could old armour stop a bullet Sometimes The answer depends"
+      },
+      "beats": [
+        {
+          "time": 0.0,
+          "target": "title",
+          "action": "reveal"
+        },
+        {
+          "time": 0.263791,
+          "target": "item-0",
+          "action": "reveal"
+        },
+        {
+          "time": 0.535791,
+          "target": "item-0",
+          "action": "highlight"
+        }
+      ],
+      "beat_timing": "word",
+      "image": {
+        "path": "images/met-23944.jpg",
+        "source": "The Metropolitan Museum of Art",
+        "credit": "Armor of Emperor Ferdinand I (1503–1564) · The Met · Public domain",
+        "source_url": "https://www.metmuseum.org/art/collection/search/23944",
+        "license": "Public domain / The Met Open Access"
+      },
+      "media_layers": [
+        {
+          "path": "images/met-23944.jpg",
+          "source": "The Metropolitan Museum of Art",
+          "credit": "Armor of Emperor Ferdinand I (1503–1564) · The Met · Public domain",
+          "source_url": "https://www.metmuseum.org/art/collection/search/23944",
+          "license": "Public domain / The Met Open Access"
+        },
+        {
+          "path": "images/met-26849.jpg",
+          "source": "The Metropolitan Museum of Art",
+          "credit": "Mail Shirt · The Met · Public domain",
+          "source_url": "https://www.metmuseum.org/art/collection/search/26849",
+          "license": "Public domain / The Met Open Access"
+        },
+        {
+          "path": "images/met-22318.jpg",
+          "source": "The Metropolitan Museum of Art",
+          "credit": "Reinforcing Breastplate · The Met · Public domain",
+          "source_url": "https://www.metmuseum.org/art/collection/search/22318",
+          "license": "Public domain / The Met Open Access"
+        }
+      ]
+    },
+    {
+      "id": "scene-002",
+      "section_id": "question",
+      "template": "explain",
+      "start": 2.266667,
+      "duration": 2.333333,
+      "title": "Could armour stop a bullet?",
+      "visual_goal": "Explain: bullet Sometimes The answer depends on the armour and the weapon",
+      "items": [
+        {
+          "label": "Armour"
+        }
+      ],
+      "composition": "stack",
+      "shot": {
+        "version": 1,
+        "role": "interaction",
+        "framing": "medium",
+        "technique": "collage",
+        "camera": "track",
+        "transition": "match",
+        "focus": "Could armour stop a bullet?",
+        "action": "bullet Sometimes The answer depends on the armour and the weapon"
+      },
+      "beats": [
+        {
+          "time": 0.0,
+          "target": "title",
+          "action": "reveal"
+        },
+        {
+          "time": 0.935708,
+          "target": "item-0",
+          "action": "reveal"
+        },
+        {
+          "time": 1.215708,
+          "target": "item-0",
+          "action": "highlight"
+        }
+      ],
+      "beat_timing": "word",
+      "image": {
+        "path": "images/met-26849.jpg",
+        "source": "The Metropolitan Museum of Art",
+        "credit": "Mail Shirt · The Met · Public domain",
+        "source_url": "https://www.metmuseum.org/art/collection/search/26849",
+        "license": "Public domain / The Met Open Access"
+      },
+      "media_layers": [
+        {
+          "path": "images/met-26849.jpg",
+          "source": "The Metropolitan Museum of Art",
+          "credit": "Mail Shirt · The Met · Public domain",
+          "source_url": "https://www.metmuseum.org/art/collection/search/26849",
+          "license": "Public domain / The Met Open Access"
+        },
+        {
+          "path": "images/met-22318.jpg",
+          "source": "The Metropolitan Museum of Art",
+          "credit": "Reinforcing Breastplate · The Met · Public domain",
+          "source_url": "https://www.metmuseum.org/art/collection/search/22318",
+          "license": "Public domain / The Met Open Access"
+        },
+        {
+          "path": "images/met-23944.jpg",
+          "source": "The Metropolitan Museum of Art",
+          "credit": "Armor of Emperor Ferdinand I (1503–1564) · The Met · Public domain",
+          "source_url": "https://www.metmuseum.org/art/collection/search/23944",
+          "license": "Public domain / The Met Open Access"
+        }
+      ]
+    },
+    {
+      "id": "scene-003",
+      "section_id": "construction",
+      "template": "explain",
+      "start": 4.6,
+      "duration": 1.666667,
+      "title": "Mail armour uses linked rings",
+      "visual_goal": "Reveal the specific construction of mail armour",
+      "items": [
+        {
+          "label": "linked rings",
+          "symbol": "circuit",
+          "role": "subject"
+        },
+        {
+          "label": "breastplate cross",
+          "symbol": "armour",
+          "role": "support"
+        }
+      ],
+      "composition": "focus",
+      "graphics_version": 2,
+      "staging": {
+        "version": 1,
+        "world": "generic",
+        "action": "reveal",
+        "camera": "detail"
+      },
+      "shot": {
+        "role": "detail",
+        "framing": "macro",
+        "technique": "stage2d",
+        "camera": "locked",
+        "transition": "cut",
+        "version": 1,
+        "focus": "linked rings",
+        "action": "zoom in"
+      },
+      "mechanism": {
+        "version": 1,
+        "kind": "armour",
+        "material": "mail",
+        "action": "reveal"
+      },
+      "beats": [
+        {
+          "time": 0.0,
+          "target": "title",
+          "action": "reveal"
+        },
+        {
+          "time": 0.741208,
+          "target": "item-0",
+          "action": "reveal"
+        },
+        {
+          "time": 0.941208,
+          "target": "item-0",
+          "action": "highlight"
+        },
+        {
+          "time": 1.233334,
+          "target": "item-1",
+          "action": "reveal"
+        },
+        {
+          "time": 1.4,
+          "target": "item-1",
+          "action": "highlight"
+        }
+      ],
+      "beat_timing": "mixed",
+      "look": "studio",
+      "rhythm": "calm",
+      "palette": "sand"
+    },
+    {
+      "id": "scene-004",
+      "section_id": "construction",
+      "template": "explain",
+      "start": 6.266667,
+      "duration": 3.3,
+      "title": "Rings and solid steel",
+      "visual_goal": "Show how mail and plate armour both deflect blows differently using linked rings versus solid surface.",
+      "items": [
+        {
+          "label": "linked iron rings",
+          "symbol": "armour",
+          "role": "subject"
+        },
+        {
+          "label": "solid steel plate",
+          "symbol": "armour",
+          "role": "support"
+        }
+      ],
+      "composition": "default",
+      "graphics_version": 2,
+      "staging": {
+        "version": 1,
+        "world": "generic",
+        "action": "reveal",
+        "camera": "locked"
+      },
+      "shot": {
+        "role": "detail",
+        "framing": "close",
+        "technique": "stage2d",
+        "camera": "locked",
+        "transition": "cut",
+        "version": 1,
+        "focus": "linked rings and steel plate",
+        "action": "Two textures show different impact resistance."
+      },
+      "mechanism": {
+        "version": 1,
+        "kind": "armour",
+        "material": "steel",
+        "action": "reveal"
+      },
+      "beats": [
+        {
+          "time": 0.0,
+          "target": "title",
+          "action": "reveal"
+        },
+        {
+          "time": 0.116208,
+          "target": "item-1",
+          "action": "reveal"
+        },
+        {
+          "time": 0.396,
+          "target": "item-0",
+          "action": "reveal"
+        },
+        {
+          "time": 0.396,
+          "target": "item-0",
+          "action": "highlight"
+        },
+        {
+          "time": 0.512208,
+          "target": "item-1",
+          "action": "highlight"
+        }
+      ],
+      "beat_timing": "mixed",
+      "look": "blueprint",
+      "rhythm": "measured",
+      "palette": "sand"
+    },
+    {
+      "id": "scene-005",
+      "section_id": "reinforcement",
+      "template": "explain",
+      "start": 9.566667,
+      "duration": 2.766666,
+      "title": "Harder, thicker armour",
+      "visual_goal": "Reveal the physical depth and reinforcement of steel plate armour.",
+      "items": [
+        {
+          "label": "thickened steel block",
+          "symbol": "armour",
+          "role": "subject"
+        }
+      ],
+      "composition": "split",
+      "graphics_version": 2,
+      "staging": {
+        "version": 1,
+        "world": "generic",
+        "action": "reveal",
+        "camera": "follow"
+      },
+      "shot": {
+        "role": "detail",
+        "framing": "medium",
+        "technique": "diagram3d",
+        "camera": "orbit",
+        "transition": "match",
+        "version": 1,
+        "focus": "steel plate depth",
+        "action": "Depth view exposes metal thickness."
+      },
+      "mechanism": {
+        "version": 1,
+        "kind": "armour",
+        "material": "steel",
+        "action": "reveal"
+      },
+      "beats": [
+        {
+          "time": 0.0,
+          "target": "title",
+          "action": "reveal"
+        },
+        {
+          "time": 1.279791,
+          "target": "item-0",
+          "action": "reveal"
+        },
+        {
+          "time": 1.611791,
+          "target": "item-0",
+          "action": "highlight"
+        }
+      ],
+      "beat_timing": "word",
+      "look": "blueprint",
+      "rhythm": "brisk",
+      "palette": "sand"
+    },
+    {
+      "id": "scene-006",
+      "section_id": "reinforcement",
+      "template": "explain",
+      "start": 12.333333,
+      "duration": 3.400001,
+      "title": "Adding a reinforcing layer",
+      "visual_goal": "Illustrate the addition of a second protective layer over the existing breastplate.",
+      "items": [
+        {
+          "label": "original breastplate",
+          "symbol": "armour",
+          "role": "subject"
+        },
+        {
+          "label": "reinforcing layer",
+          "symbol": "armour",
+          "role": "support"
+        }
+      ],
+      "composition": "stack",
+      "graphics_version": 2,
+      "staging": {
+        "version": 1,
+        "world": "generic",
+        "action": "compare",
+        "camera": "locked"
+      },
+      "shot": {
+        "role": "detail",
+        "framing": "close",
+        "technique": "diagram3d",
+        "camera": "locked",
+        "transition": "dissolve",
+        "version": 1,
+        "focus": "double layer armor stack",
+        "action": "A second steel layer sits atop the first plate."
+      },
+      "mechanism": {
+        "version": 1,
+        "kind": "layers",
+        "material": "steel",
+        "action": "separate"
+      },
+      "beats": [
+        {
+          "time": 0.0,
+          "target": "title",
+          "action": "reveal"
+        },
+        {
+          "time": 1.067958,
+          "target": "item-1",
+          "action": "reveal"
+        },
+        {
+          "time": 1.475958,
+          "target": "item-1",
+          "action": "highlight"
+        },
+        {
+          "time": 2.416667,
+          "target": "item-0",
+          "action": "reveal"
+        },
+        {
+          "time": 2.416667,
+          "target": "item-0",
+          "action": "highlight"
+        }
+      ],
+      "beat_timing": "word",
+      "look": "blueprint",
+      "rhythm": "calm",
+      "palette": "sand"
+    },
+    {
+      "id": "scene-007",
+      "section_id": "proof",
+      "template": "explain",
+      "start": 15.733333,
+      "duration": 2.8,
+      "title": "A particular proof test",
+      "visual_goal": "Show steel plate deformation under bullet impact",
+      "items": [
+        {
+          "label": "steel plate deformed",
+          "symbol": "armour",
+          "role": "subject"
+        },
+        {
+          "label": "concrete bullet dent",
+          "symbol": "document",
+          "role": "support"
+        }
+      ],
+      "composition": "focus",
+      "graphics_version": 2,
+      "staging": {
+        "version": 1,
+        "world": "generic",
+        "action": "reveal",
+        "camera": "detail"
+      },
+      "shot": {
+        "role": "detail",
+        "framing": "close",
+        "technique": "stage2d",
+        "camera": "locked",
+        "transition": "cut",
+        "version": 1,
+        "focus": "steel plate deformed",
+        "action": "bullet impacts surface leaving dent"
+      },
+      "mechanism": {
+        "version": 1,
+        "kind": "armour",
+        "material": "steel",
+        "action": "impact"
+      },
+      "beats": [
+        {
+          "time": 0.0,
+          "target": "title",
+          "action": "reveal"
+        },
+        {
+          "time": 1.401125,
+          "target": "scene",
+          "action": "highlight"
+        },
+        {
+          "time": 1.599125,
+          "target": "item-0",
+          "action": "reveal"
+        },
+        {
+          "time": 1.935125,
+          "target": "item-0",
+          "action": "highlight"
+        },
+        {
+          "time": 2.072,
+          "target": "item-1",
+          "action": "reveal"
+        },
+        {
+          "time": 2.408,
+          "target": "item-1",
+          "action": "highlight"
+        }
+      ],
+      "beat_timing": "mixed",
+      "look": "blueprint",
+      "rhythm": "measured",
+      "palette": "sand"
+    },
+    {
+      "id": "scene-008",
+      "section_id": "proof",
+      "template": "text",
+      "start": 18.533333,
+      "duration": 3.033333,
+      "title": "A surviving dent",
+      "visual_goal": "Show the steel plate absorbing energy with a permanent mark",
+      "items": [
+        {
+          "label": "bulleted steel plate",
+          "symbol": "armour",
+          "role": "subject"
+        },
+        {
+          "label": "stopped bullet fragment",
+          "symbol": "document",
+          "role": "support"
+        }
+      ],
+      "composition": "focus",
+      "graphics_version": 2,
+      "staging": {
+        "version": 1,
+        "world": "generic",
+        "action": "reveal",
+        "camera": "detail"
+      },
+      "shot": {
+        "role": "detail",
+        "framing": "close",
+        "technique": "stage2d",
+        "camera": "locked",
+        "transition": "match",
+        "version": 1,
+        "focus": "bulleted steel plate",
+        "action": "deformed metal absorbs incoming projectile energy"
+      },
+      "mechanism": {
+        "version": 1,
+        "kind": "armour",
+        "material": "steel",
+        "action": "absorb"
+      },
+      "beats": [
+        {
+          "time": 0.0,
+          "target": "title",
+          "action": "reveal"
+        },
+        {
+          "time": 0,
+          "target": "item-0",
+          "action": "reveal"
+        },
+        {
+          "time": 0.364,
+          "target": "item-0",
+          "action": "highlight"
+        },
+        {
+          "time": 2.143417,
+          "target": "item-1",
+          "action": "reveal"
+        },
+        {
+          "time": 2.263417,
+          "target": "scene",
+          "action": "highlight"
+        },
+        {
+          "time": 2.507417,
+          "target": "item-1",
+          "action": "highlight"
+        }
+      ],
+      "beat_timing": "mixed",
+      "look": "blueprint",
+      "rhythm": "measured",
+      "palette": "sand"
+    },
+    {
+      "id": "scene-009",
+      "section_id": "answer",
+      "template": "explain",
+      "start": 21.566667,
+      "duration": 3.4,
+      "title": "Protection had limits",
+      "visual_goal": "Explain: But one successful test was no universal guarantee Armour and",
+      "items": [
+        {
+          "label": "Armour",
+          "symbol": "armour",
+          "role": "subject"
+        }
+      ],
+      "composition": "split",
+      "graphics_version": 2,
+      "staging": {
+        "version": 1,
+        "world": "generic",
+        "action": "reveal",
+        "camera": "wide"
+      },
+      "shot": {
+        "version": 1,
+        "role": "detail",
+        "framing": "macro",
+        "technique": "stage2d",
+        "camera": "push",
+        "transition": "cut",
+        "focus": "Protection had limits",
+        "action": "But one successful test was no universal guarantee Armour and"
+      },
+      "beats": [
+        {
+          "time": 0.0,
+          "target": "title",
+          "action": "reveal"
+        },
+        {
+          "time": 2.847791,
+          "target": "item-0",
+          "action": "reveal"
+        },
+        {
+          "time": 2.96,
+          "target": "item-0",
+          "action": "highlight"
+        }
+      ],
+      "beat_timing": "word"
+    },
+    {
+      "id": "scene-010",
+      "section_id": "answer",
+      "template": "explain",
+      "start": 24.966667,
+      "duration": 4.533333,
+      "title": "Protection had limits",
+      "visual_goal": "Show Armour and Firearms as co-evolving subjects with inherent constraints",
+      "items": [
+        {
+          "label": "Armour",
+          "symbol": "armour",
+          "role": "subject"
+        },
+        {
+          "label": "Firearms",
+          "symbol": "firearm",
+          "role": "support"
+        }
+      ],
+      "composition": "stack",
+      "graphics_version": 2,
+      "staging": {
+        "version": 1,
+        "world": "generic",
+        "action": "reveal",
+        "camera": "locked"
+      },
+      "shot": {
+        "role": "detail",
+        "framing": "close",
+        "technique": "stage2d",
+        "camera": "locked",
+        "transition": "cut",
+        "version": 1,
+        "focus": "Armour and Firearms side by side",
+        "action": "two objects sit adjacent in frame"
+      },
+      "beats": [
+        {
+          "time": 0.0,
+          "target": "title",
+          "action": "reveal"
+        },
+        {
+          "time": 0,
+          "target": "item-0",
+          "action": "reveal"
+        },
+        {
+          "time": 0,
+          "target": "item-1",
+          "action": "reveal"
+        },
+        {
+          "time": 0,
+          "target": "item-0",
+          "action": "highlight"
+        },
+        {
+          "time": 0.544,
+          "target": "item-1",
+          "action": "highlight"
+        }
+      ],
+      "beat_timing": "mixed",
+      "look": "editorial",
+      "rhythm": "measured",
+      "palette": "sand"
+    }
+  ],
+  "ai_status": {
+    "status": "planned",
+    "provider": "ollama",
+    "model": "qwen3.5:4b",
+    "finish_reason": "stop",
+    "batches": 4,
+    "batch_providers": [
+      {
+        "provider": "ollama",
+        "model": "qwen3.5:4b",
+        "finish_reason": "stop"
+      },
+      {
+        "provider": "ollama",
+        "model": "qwen3.5:4b",
+        "finish_reason": "stop"
+      },
+      {
+        "provider": "ollama",
+        "model": "qwen3.5:4b",
+        "finish_reason": "stop"
+      },
+      {
+        "provider": "ollama",
+        "model": "qwen3.5:4b",
+        "finish_reason": "stop"
+      }
+    ],
+    "provenance": {
+      "version": 1,
+      "method": "accepted_decision_journal",
+      "generated_scene_count": 10,
+      "scenes": [
+        {
+          "scene_id": "scene-001",
+          "status": "rejected",
+          "changes": [],
+          "local_fallback_fields": [],
+          "rejected_fields": {},
+          "reason": "unsupported_actors_or_action",
+          "rendered_fields": [],
+          "rendered_nontext_fields": []
+        },
+        {
+          "scene_id": "scene-002",
+          "status": "rejected",
+          "changes": [],
+          "local_fallback_fields": [],
+          "rejected_fields": {},
+          "reason": "invalid_actor_or_staging_structure",
+          "rendered_fields": [],
+          "rendered_nontext_fields": []
+        },
+        {
+          "scene_id": "scene-003",
+          "status": "accepted",
+          "changes": [
+            {
+              "field": "title",
+              "before": "Rings and solid steel",
+              "accepted": "Mail armour uses linked rings"
+            },
+            {
+              "field": "visual_goal",
+              "before": "Explain: Mail armour uses linked rings",
+              "accepted": "Reveal the specific construction of mail armour"
+            },
+            {
+              "field": "rhythm",
+              "before": "brisk",
+              "accepted": "calm"
+            },
+            {
+              "field": "items.labels",
+              "before": [
+                "Armour"
+              ],
+              "accepted": [
+                "linked rings",
+                "breastplate cross"
+              ]
+            },
+            {
+              "field": "items.values",
+              "before": [
+                null
+              ],
+              "accepted": [
+                null,
+                null
+              ]
+            },
+            {
+              "field": "items.actors",
+              "before": [
+                [
+                  "armour",
+                  "subject"
+                ]
+              ],
+              "accepted": [
+                [
+                  "circuit",
+                  "subject"
+                ],
+                [
+                  "armour",
+                  "support"
+                ]
+              ]
+            },
+            {
+              "field": "staging.action",
+              "before": "connect",
+              "accepted": "reveal"
+            },
+            {
+              "field": "staging.camera",
+              "before": "follow",
+              "accepted": "detail"
+            },
+            {
+              "field": "shot.camera",
+              "before": "push",
+              "accepted": "locked"
+            },
+            {
+              "field": "shot.focus",
+              "before": "Rings and solid steel",
+              "accepted": "linked rings"
+            },
+            {
+              "field": "shot.action",
+              "before": "Mail armour uses linked rings",
+              "accepted": "zoom in"
+            }
+          ],
+          "local_fallback_fields": [],
+          "rejected_fields": {},
+          "rendered_fields": [
+            "title",
+            "shot.camera"
+          ],
+          "rendered_nontext_fields": [
+            "shot.camera"
+          ]
+        },
+        {
+          "scene_id": "scene-004",
+          "status": "accepted",
+          "changes": [
+            {
+              "field": "visual_goal",
+              "before": "Explain: Steel plate armour can deflect some blows away from the body",
+              "accepted": "Show how mail and plate armour both deflect blows differently using linked rings versus solid surface."
+            },
+            {
+              "field": "look",
+              "before": "studio",
+              "accepted": "blueprint"
+            },
+            {
+              "field": "rhythm",
+              "before": "brisk",
+              "accepted": "measured"
+            },
+            {
+              "field": "items.labels",
+              "before": [
+                "Armour"
+              ],
+              "accepted": [
+                "linked iron rings",
+                "solid steel plate"
+              ]
+            },
+            {
+              "field": "items.values",
+              "before": [
+                null
+              ],
+              "accepted": [
+                null,
+                null
+              ]
+            },
+            {
+              "field": "items.actors",
+              "before": [
+                [
+                  "armour",
+                  "subject"
+                ]
+              ],
+              "accepted": [
+                [
+                  "armour",
+                  "subject"
+                ],
+                [
+                  "armour",
+                  "support"
+                ]
+              ]
+            },
+            {
+              "field": "staging.camera",
+              "before": "wide",
+              "accepted": "locked"
+            },
+            {
+              "field": "shot.role",
+              "before": "interaction",
+              "accepted": "detail"
+            },
+            {
+              "field": "shot.framing",
+              "before": "medium",
+              "accepted": "close"
+            },
+            {
+              "field": "shot.camera",
+              "before": "track",
+              "accepted": "locked"
+            },
+            {
+              "field": "shot.transition",
+              "before": "match",
+              "accepted": "cut"
+            },
+            {
+              "field": "shot.focus",
+              "before": "Rings and solid steel",
+              "accepted": "linked rings and steel plate"
+            },
+            {
+              "field": "shot.action",
+              "before": "Steel plate armour can deflect some blows away from the body",
+              "accepted": "Two textures show different impact resistance."
+            }
+          ],
+          "local_fallback_fields": [],
+          "rejected_fields": {
+            "mechanism": "unsupported_source_mechanism"
+          },
+          "rendered_fields": [
+            "shot.framing",
+            "shot.camera"
+          ],
+          "rendered_nontext_fields": [
+            "shot.framing",
+            "shot.camera"
+          ]
+        },
+        {
+          "scene_id": "scene-005",
+          "status": "accepted",
+          "changes": [
+            {
+              "field": "title",
+              "before": "Adding another layer",
+              "accepted": "Hardening the metal"
+            },
+            {
+              "field": "visual_goal",
+              "before": "Explain: When firearms spread steel armour was hardened thickened or given",
+              "accepted": "Depict the physical process of hardening and thickening steel armour against fire."
+            },
+            {
+              "field": "look",
+              "before": "studio",
+              "accepted": "blueprint"
+            },
+            {
+              "field": "items.labels",
+              "before": [
+                "Armour",
+                "Firearms"
+              ],
+              "accepted": [
+                "thickened steel block",
+                "hardening furnace"
+              ]
+            },
+            {
+              "field": "items.actors",
+              "before": [
+                [
+                  "armour",
+                  "subject"
+                ],
+                [
+                  "firearm",
+                  "support"
+                ]
+              ],
+              "accepted": [
+                [
+                  "building",
+                  "subject"
+                ],
+                [
+                  "plant",
+                  "support"
+                ]
+              ]
+            },
+            {
+              "field": "staging.action",
+              "before": "reveal",
+              "accepted": "assemble"
+            },
+            {
+              "field": "staging.camera",
+              "before": "wide",
+              "accepted": "follow"
+            },
+            {
+              "field": "shot.role",
+              "before": "detail",
+              "accepted": "interaction"
+            },
+            {
+              "field": "shot.framing",
+              "before": "macro",
+              "accepted": "medium"
+            },
+            {
+              "field": "shot.transition",
+              "before": "cut",
+              "accepted": "match"
+            },
+            {
+              "field": "shot.focus",
+              "before": "Adding another layer",
+              "accepted": "thickening steel block"
+            },
+            {
+              "field": "shot.action",
+              "before": "When firearms spread steel armour was hardened thickened or given",
+              "accepted": "Metal surface shows increased thickness and hardness."
+            }
+          ],
+          "local_fallback_fields": [],
+          "rejected_fields": {
+            "mechanism": "unsupported_source_mechanism"
+          },
+          "rendered_fields": [
+            "shot.framing"
+          ],
+          "rendered_nontext_fields": [
+            "shot.framing"
+          ]
+        },
+        {
+          "scene_id": "scene-006",
+          "status": "accepted",
+          "changes": [
+            {
+              "field": "title",
+              "before": "Adding another layer",
+              "accepted": "Adding a reinforcing layer"
+            },
+            {
+              "field": "visual_goal",
+              "before": "Explain: was hardened thickened or given a reinforcing layer over the breastplate",
+              "accepted": "Illustrate the addition of a second protective layer over the existing breastplate."
+            },
+            {
+              "field": "look",
+              "before": "studio",
+              "accepted": "blueprint"
+            },
+            {
+              "field": "rhythm",
+              "before": "brisk",
+              "accepted": "calm"
+            },
+            {
+              "field": "items.labels",
+              "before": [
+                "Breastplate"
+              ],
+              "accepted": [
+                "original breastplate",
+                "reinforcing layer"
+              ]
+            },
+            {
+              "field": "items.values",
+              "before": [
+                null
+              ],
+              "accepted": [
+                null,
+                null
+              ]
+            },
+            {
+              "field": "items.actors",
+              "before": [
+                [
+                  "armour",
+                  "subject"
+                ]
+              ],
+              "accepted": [
+                [
+                  "armour",
+                  "subject"
+                ],
+                [
+                  "armour",
+                  "support"
+                ]
+              ]
+            },
+            {
+              "field": "staging.action",
+              "before": "reveal",
+              "accepted": "compare"
+            },
+            {
+              "field": "staging.camera",
+              "before": "wide",
+              "accepted": "locked"
+            },
+            {
+              "field": "shot.role",
+              "before": "interaction",
+              "accepted": "detail"
+            },
+            {
+              "field": "shot.framing",
+              "before": "medium",
+              "accepted": "close"
+            },
+            {
+              "field": "shot.camera",
+              "before": "track",
+              "accepted": "locked"
+            },
+            {
+              "field": "shot.transition",
+              "before": "match",
+              "accepted": "dissolve"
+            },
+            {
+              "field": "shot.focus",
+              "before": "Adding another layer",
+              "accepted": "double layer armor stack"
+            },
+            {
+              "field": "shot.action",
+              "before": "was hardened thickened or given a reinforcing layer over the breastplate",
+              "accepted": "A second steel layer sits atop the first plate."
+            }
+          ],
+          "local_fallback_fields": [],
+          "rejected_fields": {},
+          "rendered_fields": [
+            "title",
+            "items.labels",
+            "shot.framing",
+            "shot.camera",
+            "shot.transition"
+          ],
+          "rendered_nontext_fields": [
+            "shot.framing",
+            "shot.camera",
+            "shot.transition"
+          ]
+        },
+        {
+          "scene_id": "scene-007",
+          "status": "accepted",
+          "changes": [
+            {
+              "field": "title",
+              "before": "The proof was a dent",
+              "accepted": "Dent proves steel holds"
+            },
+            {
+              "field": "visual_goal",
+              "before": "Explain: In proof tests bullets hit some steel breastplates A surviving",
+              "accepted": "Show a bullet impact leaving a clear dent on a steel plate to demonstrate proof."
+            },
+            {
+              "field": "look",
+              "before": "studio",
+              "accepted": "blueprint"
+            },
+            {
+              "field": "rhythm",
+              "before": "brisk",
+              "accepted": "measured"
+            },
+            {
+              "field": "items.labels",
+              "before": [
+                "Breastplates"
+              ],
+              "accepted": [
+                "steel plate deformed",
+                "concrete bullet dent"
+              ]
+            },
+            {
+              "field": "items.values",
+              "before": [
+                null
+              ],
+              "accepted": [
+                null,
+                null
+              ]
+            },
+            {
+              "field": "items.actors",
+              "before": [
+                [
+                  "armour",
+                  "subject"
+                ]
+              ],
+              "accepted": [
+                [
+                  "armour",
+                  "subject"
+                ],
+                [
+                  "document",
+                  "support"
+                ]
+              ]
+            },
+            {
+              "field": "staging.camera",
+              "before": "wide",
+              "accepted": "detail"
+            },
+            {
+              "field": "shot.framing",
+              "before": "macro",
+              "accepted": "close"
+            },
+            {
+              "field": "shot.technique",
+              "before": "diagram3d",
+              "accepted": "stage2d"
+            },
+            {
+              "field": "shot.camera",
+              "before": "orbit",
+              "accepted": "locked"
+            },
+            {
+              "field": "shot.focus",
+              "before": "The proof was a dent",
+              "accepted": "steel plate deformed"
+            },
+            {
+              "field": "shot.action",
+              "before": "In proof tests bullets hit some steel breastplates A surviving",
+              "accepted": "bullet impacts surface leaving dent"
+            }
+          ],
+          "local_fallback_fields": [],
+          "rejected_fields": {},
+          "rendered_fields": [
+            "shot.framing",
+            "shot.technique",
+            "shot.camera"
+          ],
+          "rendered_nontext_fields": [
+            "shot.framing",
+            "shot.technique",
+            "shot.camera"
+          ]
+        },
+        {
+          "scene_id": "scene-008",
+          "status": "accepted",
+          "changes": [
+            {
+              "field": "title",
+              "before": "The proof was a dent",
+              "accepted": "Dent absorbs the blow"
+            },
+            {
+              "field": "visual_goal",
+              "before": "Explain: some steel breastplates A surviving dent showed that particular shot had stopped",
+              "accepted": "Illustrate how the steel plate's deformation absorbs the bullet's energy, stopping it from passing through."
+            },
+            {
+              "field": "look",
+              "before": "studio",
+              "accepted": "blueprint"
+            },
+            {
+              "field": "rhythm",
+              "before": "brisk",
+              "accepted": "measured"
+            },
+            {
+              "field": "items.labels",
+              "before": [
+                "Breastplates"
+              ],
+              "accepted": [
+                "bulleted steel plate",
+                "stopped bullet fragment"
+              ]
+            },
+            {
+              "field": "items.values",
+              "before": [
+                null
+              ],
+              "accepted": [
+                null,
+                null
+              ]
+            },
+            {
+              "field": "items.actors",
+              "before": [
+                [
+                  "armour",
+                  "subject"
+                ]
+              ],
+              "accepted": [
+                [
+                  "armour",
+                  "subject"
+                ],
+                [
+                  "document",
+                  "support"
+                ]
+              ]
+            },
+            {
+              "field": "staging.camera",
+              "before": "wide",
+              "accepted": "detail"
+            },
+            {
+              "field": "shot.role",
+              "before": "interaction",
+              "accepted": "detail"
+            },
+            {
+              "field": "shot.framing",
+              "before": "medium",
+              "accepted": "close"
+            },
+            {
+              "field": "shot.technique",
+              "before": "diagram3d",
+              "accepted": "stage2d"
+            },
+            {
+              "field": "shot.camera",
+              "before": "track",
+              "accepted": "locked"
+            },
+            {
+              "field": "shot.focus",
+              "before": "The proof was a dent",
+              "accepted": "bulleted steel plate"
+            },
+            {
+              "field": "shot.action",
+              "before": "some steel breastplates A surviving dent showed that particular shot had stopped",
+              "accepted": "deformed metal absorbs incoming projectile energy"
+            }
+          ],
+          "local_fallback_fields": [],
+          "rejected_fields": {},
+          "rendered_fields": [
+            "shot.framing",
+            "shot.technique",
+            "shot.camera"
+          ],
+          "rendered_nontext_fields": [
+            "shot.framing",
+            "shot.technique",
+            "shot.camera"
+          ]
+        },
+        {
+          "scene_id": "scene-009",
+          "status": "rejected",
+          "changes": [],
+          "local_fallback_fields": [],
+          "rejected_fields": {},
+          "reason": "unsupported_actors_or_action",
+          "rendered_fields": [],
+          "rendered_nontext_fields": []
+        },
+        {
+          "scene_id": "scene-010",
+          "status": "accepted",
+          "changes": [
+            {
+              "field": "visual_goal",
+              "before": "Explain: no universal guarantee Armour and firearms evolved together for centuries protection always had limits",
+              "accepted": "Show that armour and firearms evolved together with inherent limits"
+            },
+            {
+              "field": "look",
+              "before": "studio",
+              "accepted": "editorial"
+            },
+            {
+              "field": "rhythm",
+              "before": "brisk",
+              "accepted": "measured"
+            },
+            {
+              "field": "items.labels",
+              "before": [
+                "Armour",
+                "Firearms"
+              ],
+              "accepted": [
+                "steel plate deflects bullet",
+                "bullet strikes surface"
+              ]
+            },
+            {
+              "field": "staging.camera",
+              "before": "wide",
+              "accepted": "locked"
+            },
+            {
+              "field": "shot.role",
+              "before": "payoff",
+              "accepted": "detail"
+            },
+            {
+              "field": "shot.framing",
+              "before": "wide",
+              "accepted": "close"
+            },
+            {
+              "field": "shot.transition",
+              "before": "match",
+              "accepted": "cut"
+            },
+            {
+              "field": "shot.focus",
+              "before": "Protection had limits",
+              "accepted": "steel plate deflects bullet"
+            },
+            {
+              "field": "shot.action",
+              "before": "no universal guarantee Armour and firearms evolved together for centuries protection always had limits",
+              "accepted": "bullet strikes and skids off metal surface"
+            }
+          ],
+          "local_fallback_fields": [],
+          "rejected_fields": {
+            "mechanism": "unsupported_source_mechanism"
+          },
+          "rendered_fields": [
+            "staging.camera",
+            "shot.framing"
+          ],
+          "rendered_nontext_fields": [
+            "staging.camera",
+            "shot.framing"
+          ]
+        }
+      ],
+      "global_changes": [
+        {
+          "field": "visual_direction.look",
+          "before": "studio",
+          "accepted": "editorial",
+          "rendered_scene_ids": []
+        },
+        {
+          "field": "visual_direction.rhythm",
+          "before": "brisk",
+          "accepted": "measured",
+          "rendered_scene_ids": []
+        }
+      ],
+      "qualification": "Rendered fields survive validation and are consumed differently by the renderer. This is provenance, not decoded visual approval; local fallback and unchanged source facts are not model changes.",
+      "accepted_scene_count": 7,
+      "rejected_scene_count": 3,
+      "changed_scene_count": 7,
+      "rendered_scene_count": 7,
+      "rendered_nontext_scene_count": 7,
+      "accepted_global_change_count": 2,
+      "rendered_global_decision_count": 0
+    }
+  },
+  "image_status": {
+    "available": true,
+    "scenes": 2,
+    "reason": "reused_local_images"
+  },
+  "stock_status": {
+    "available": false,
+    "reason": "missing_key",
+    "provider": "pexels",
+    "providers": []
+  },
+  "shot_report": {
+    "version": 1,
+    "source": "narration_boundaries_and_constrained_direction",
+    "shots": [
+      {
+        "scene_id": "scene-001",
+        "section_id": "question",
+        "start": 0.0,
+        "duration": 2.266667,
+        "version": 1,
+        "role": "establish",
+        "framing": "wide",
+        "technique": "collage",
+        "camera": "locked",
+        "transition": "cut",
+        "focus": "Could armour stop a bullet?",
+        "action": "Could old armour stop a bullet Sometimes The answer depends"
+      },
+      {
+        "scene_id": "scene-002",
+        "section_id": "question",
+        "start": 2.266667,
+        "duration": 2.333333,
+        "version": 1,
+        "role": "interaction",
+        "framing": "medium",
+        "technique": "collage",
+        "camera": "track",
+        "transition": "match",
+        "focus": "Could armour stop a bullet?",
+        "action": "bullet Sometimes The answer depends on the armour and the weapon"
+      },
+      {
+        "scene_id": "scene-003",
+        "section_id": "construction",
+        "start": 4.6,
+        "duration": 1.666667,
+        "role": "detail",
+        "framing": "macro",
+        "technique": "stage2d",
+        "camera": "locked",
+        "transition": "cut",
+        "version": 1,
+        "focus": "linked rings",
+        "action": "zoom in"
+      },
+      {
+        "scene_id": "scene-004",
+        "section_id": "construction",
+        "start": 6.266667,
+        "duration": 3.3,
+        "role": "detail",
+        "framing": "close",
+        "technique": "stage2d",
+        "camera": "locked",
+        "transition": "cut",
+        "version": 1,
+        "focus": "linked rings and steel plate",
+        "action": "Two textures show different impact resistance."
+      },
+      {
+        "scene_id": "scene-005",
+        "section_id": "reinforcement",
+        "start": 9.566667,
+        "duration": 2.766666,
+        "role": "detail",
+        "framing": "medium",
+        "technique": "diagram3d",
+        "camera": "orbit",
+        "transition": "match",
+        "version": 1,
+        "focus": "steel plate depth",
+        "action": "Depth view exposes metal thickness."
+      },
+      {
+        "scene_id": "scene-006",
+        "section_id": "reinforcement",
+        "start": 12.333333,
+        "duration": 3.400001,
+        "role": "detail",
+        "framing": "close",
+        "technique": "diagram3d",
+        "camera": "locked",
+        "transition": "dissolve",
+        "version": 1,
+        "focus": "double layer armor stack",
+        "action": "A second steel layer sits atop the first plate."
+      },
+      {
+        "scene_id": "scene-007",
+        "section_id": "proof",
+        "start": 15.733333,
+        "duration": 2.8,
+        "role": "detail",
+        "framing": "close",
+        "technique": "stage2d",
+        "camera": "locked",
+        "transition": "cut",
+        "version": 1,
+        "focus": "steel plate deformed",
+        "action": "bullet impacts surface leaving dent"
+      },
+      {
+        "scene_id": "scene-008",
+        "section_id": "proof",
+        "start": 18.533333,
+        "duration": 3.033333,
+        "role": "detail",
+        "framing": "close",
+        "technique": "stage2d",
+        "camera": "locked",
+        "transition": "match",
+        "version": 1,
+        "focus": "bulleted steel plate",
+        "action": "deformed metal absorbs incoming projectile energy"
+      },
+      {
+        "scene_id": "scene-009",
+        "section_id": "answer",
+        "start": 21.566667,
+        "duration": 3.4,
+        "version": 1,
+        "role": "detail",
+        "framing": "macro",
+        "technique": "stage2d",
+        "camera": "push",
+        "transition": "cut",
+        "focus": "Protection had limits",
+        "action": "But one successful test was no universal guarantee Armour and"
+      },
+      {
+        "scene_id": "scene-010",
+        "section_id": "answer",
+        "start": 24.966667,
+        "duration": 4.533333,
+        "role": "detail",
+        "framing": "close",
+        "technique": "stage2d",
+        "camera": "locked",
+        "transition": "cut",
+        "version": 1,
+        "focus": "Armour and Firearms side by side",
+        "action": "two objects sit adjacent in frame"
+      }
+    ],
+    "summary": "10 shots across 5 narration sections; cuts preserve the recording.",
+    "qualification": "Shot planning is not rendered visual approval. Material animations are qualitative schematics, not ballistic predictions."
+  },
+  "direction_report": {
+    "version": 1,
+    "source": "mixed",
+    "status": "checks_only",
+    "summary": "AI-directed actors and actions: 1. Local scene direction: 7. Scenes needing visual review: 0.",
+    "scenes": [
+      {
+        "scene_id": "scene-003",
+        "source": "local",
+        "issues": []
+      },
+      {
+        "scene_id": "scene-004",
+        "source": "local",
+        "issues": []
+      },
+      {
+        "scene_id": "scene-005",
+        "source": "local",
+        "issues": []
+      },
+      {
+        "scene_id": "scene-006",
+        "source": "local",
+        "issues": []
+      },
+      {
+        "scene_id": "scene-007",
+        "source": "local",
+        "issues": []
+      },
+      {
+        "scene_id": "scene-008",
+        "source": "local",
+        "issues": []
+      },
+      {
+        "scene_id": "scene-009",
+        "source": "local",
+        "issues": []
+      },
+      {
+        "scene_id": "scene-010",
+        "source": "ai",
+        "issues": []
+      }
+    ],
+    "qualification": "Checks source words, supported actions and repeated staging. This is not a fact check or a rendered-frame review."
+  },
+  "last_edit": {
+    "scene_id": "scene-008",
+    "status": "ai",
+    "changes": [
+      "Updated the scene heading."
+    ],
+    "provider": "ollama",
+    "model": "qwen3.5:4b",
+    "finish_reason": "stop"
+  }
+}

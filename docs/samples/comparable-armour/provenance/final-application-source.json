@@ -1,0 +1,58 @@
+{
+  "launch_at": "2026-11-08T23:13:35.246575+00:00",
+  "sources": {
+    "agents/visual_director.py": {
+      "module_sha256": "1ea604b7a8e2e8e63402a5a56fb1cf77e5314d39fedbfa838195e7fcc292a28c",
+      "functions": {
+        "_request_design_impl": "e91cff24c843e07fd1c5f16fb12cc4e2820227bca12f63f28bda49dad186042d",
+        "render_decisions": "b7c80c1aea4e8f8f175aa3e457e7b7dc6a62b7f65c8fc4872cd542209ae3c7b9",
+        "_apply_design": "d3d2b41ece75e971a78da158169fddebb257637acded063676c0d575bdfa9f73",
+        "_visible_design": "8d2f1e2fed1cba667b34b5d73f4dff5e67282b0f0b8be285cf48f56e14d440da",
+        "regenerate_scene": "34ff3050ebdde226708fa11c6dbeb14c805718489695e163460312e677bc103a"
+      }
+    },
+    "agents/audio_director.py": {
+      "module_sha256": "e79ed317f4b1f8c6f3ef06b6f3af28446b4081e3bf5f48955eff6e12f4aaad35",
+      "functions": {
+        "_prompt": "05e0d142241ebb4907b4265e865ab6284b0927bed56b197f8f33052cca0c1d50",
+        "_direct_audio": "4fe8be51ca4dceef561ddc9d61558e70b60dfc33a9ef393d765d034c0f0251d3"
+      }
+    },
+    "apis/audio_sources.py": {
+      "module_sha256": "96d526f9324b252614c1519a8cb33df6639fa4f8d23470b9f3bb1ebe0c61cac2",
+      "functions": {
+        "_bundled_candidate": "4442964c954462a2aa80ab1ba9574c3e4417337ef57facf38993ac075a893f4c",
+        "bundled_recording_options": "aec3cc957fa1639616f19f91f9f8c6be20dd680b0f9b7550d91add01c018d88c"
+      }
+    },
+    "agents/render_review.py": {
+      "module_sha256": "c3ccf93b9c85466fe66edd72c695c4f50d5090bb27c9b0b9b865e16315946fcc",
+      "functions": {
+        "_source_redirection": "a7118ee84c62c352d9db5580af20f5ef5852be6e03d519b8be7411729e8b284a",
+        "review_and_repair": "31da5d8f6537f992af6250a9540f69f9ad3ddbc8c3277b6b73189c0e3e308ab5"
+      }
+    }
+  },
+  "renderer_and_catalog_sha256": {
+    "agents/shot_planner.py": "e3d85d5c2b3c850535ac2da616353bfa1058ca5d1b064181fae6732765ddd354",
+    "agents/object_direction.py": "d530e316e59426c2e38449bf4985ac9e72ffa9af760d16bf34fbecbf68131b8a",
+    "video/renderers/html.py": "0bca4296a82b685459100e60ee9a736df37c716c09bfb0bc38878189f78f2180",
+    "renderers/hyperframes/templates/shots.js": "db5f37d1bef673a3b697d5461762c400df151bc30b307730536a158da510e9a8",
+    "renderers/hyperframes/templates/shots.css": "129099c3e664c24a9b6bea3fa626fcca05157ac23f817eae6b9ca5497ce6de82",
+    "renderers/hyperframes/templates/scene.js": "677cfdf6c08ae064f9b5609e00eb062f3bf3154aaaa0ca6af3c6664e41e9ebbe",
+    "renderers/hyperframes/templates/index.html": "37236d016a32fdf87e8a16a1a44c8cb279dae0bd4c1ac59a732e9fcb0abce3af",
+    "renderers/hyperframes/templates/scene.css": "ef64bef99c7c256e5ca8d4192202b5b10dc4011fe51d0c42d2293ab9be328edd",
+    "renderers/hyperframes/templates/objects.js": "87045abdc5c74e1c95ada3bb7fea12d5ec629b0296c078a78347dfd482c75660",
+    "renderers/hyperframes/templates/worlds.js": "6dbfe32c9bdb10528901bc0032acfc113b57cb5f176bbe9707b933379ba279b5",
+    "renderers/hyperframes/templates/worlds.css": "a768e1b08aabf8c06dc7632d2332e324c3913b1ab7868c53d90d0bfae2c9285c",
+    "renderers/hyperframes/templates/preview.js": "670498deb29a2adc72eec5cf8eb4c0865acb9a3fccc13cee94c2205c2a6c0fa8",
+    "renderers/hyperframes/package-lock.json": "ef99cf62defc30591773a41eb7e70daf28fd71780a1f79933bb35bb5098d5d74",
+    "assets/audio/bundled/catalog.json": "cfff5e6e27ff2fb4f7237b2479fb369bce82c7b1ec0243270c368cf63c34c43f"
+  },
+  "visual_response_binding": "visual_response_binding.json",
+  "visual_application": "normal_editorial_plan_render_and_review",
+  "new_visual_inference": false,
+  "sound_and_vision": "normal live configured model requests",
+  "narration_and_assets": "verified prior recordings and acquired assets reused through --resume",
+  "meaning": "Current source hashes recorded immediately before a fresh production-harness process. No recorded visual response replay is requested."
+}

@@ -19,7 +19,7 @@ from urllib.parse import urlsplit
 
 import config
 from apis import openrouter, stock_video
-from agents import art_direction, object_direction
+from agents import art_direction, object_direction, shot_planner
 from apis.llm_session import effective_stop_event, request_scope, session_scope
 
 TEMPLATES = frozenset({"flow", "comparison", "timeline", "chart", "explain", "text", "footage"})
@@ -308,7 +308,7 @@ def _anchor(label: str, events: list[dict], used: set[int]) -> tuple[float, int]
     return None
 
 
-def _beats(scene: dict, words: list[dict], fps: int, captions: list[dict] | None = None) -> tuple[list[dict], str]:
+def _beats(scene: dict, words: list[dict], fps: int, captions: list[dict] | None = None, *, narration=None, context="") -> tuple[list[dict], str]:
     duration = scene["duration"]
     ceiling = max(0, duration - 1 / fps)
     events = [event for event in words if scene["start"] <= event["start"] < scene["start"] + duration]
@@ -351,6 +351,9 @@ def _beats(scene: dict, words: list[dict], fps: int, captions: list[dict] | None
         next_reveal = reveals[index + 1] if index + 1 < len(reveals) else duration * 0.9
         highlight = min(ceiling, max(when, min(next_reveal - 0.1, when + duration * 0.12)))
         beats.append({"time": round(highlight, 6), "target": f"item-{index}", "action": "highlight"})
+    contact = shot_planner.contact_beat(scene, words, narration, context)
+    if contact:
+        beats.append(contact)
     beats.sort(key=lambda beat: (beat["time"], beat["action"] != "reveal"))
     quality = ("word" if matched == len(scene["items"]) else
                "phrase" if phrase_matched == len(scene["items"]) else
@@ -360,11 +363,14 @@ def _beats(scene: dict, words: list[dict], fps: int, captions: list[dict] | None
 
 def _offline_scenes(script: dict, plan: dict) -> tuple[list[dict], dict[str, dict]]:
     lookup = _section_lookup(script)
+    shots_enabled = bool(getattr(config, "SHOT_PLANNING_ENABLED", True))
+    calm = getattr(config, "CHANNEL_PRESET", "general") == "asmr"
     try:
         target = max(6, min(20, float(getattr(config, "VISUAL_SCENE_SECONDS", 12))))
     except (TypeError, ValueError):
         target = 12
-    counts = [max(1, min(8, math.ceil(section["duration"] / target))) for section in plan["sections"]]
+    counts = (shot_planner.shot_counts(plan["sections"], calm=calm) if shots_enabled else
+              [max(1, min(8, math.ceil(section["duration"] / target))) for section in plan["sections"]])
     while sum(counts) > 120:
         largest = max(range(len(counts)), key=counts.__getitem__)
         counts[largest] -= 1
@@ -380,6 +386,8 @@ def _offline_scenes(script: dict, plan: dict) -> tuple[list[dict], dict[str, dic
             value = min(nearby, key=lambda end: abs(end - desired)) if nearby else desired
             boundaries.append(round(value * plan["fps"]) / plan["fps"])
         boundaries.append(section["start"] + section["duration"])
+        if shots_enabled:
+            boundaries = shot_planner.cut_boundaries(section, count, plan)
         for index, (start, end) in enumerate(zip(boundaries, boundaries[1:])):
             narration = _scene_text(section, start, end, plan["captions"])
             template = _template(narration, original, index)
@@ -396,13 +404,17 @@ def _offline_scenes(script: dict, plan: dict) -> tuple[list[dict], dict[str, dic
                 "composition": art_direction.scene_composition(template, len(scenes), getattr(config, "CHANNEL_PRESET", "general")),
             }
             object_direction.apply_staging(scene, narration, calm=getattr(config, "CHANNEL_PRESET", "general") == "asmr")
-            scene["beats"], scene["beat_timing"] = _beats(scene, plan["words"], plan["fps"], plan["captions"])
+            if shots_enabled:
+                shot_planner.direct_shot(scene, narration, original, index, count, global_index=len(scenes),
+                                         final=len(scenes) == sum(counts) - 1, calm=calm)
+            scene["beats"], scene["beat_timing"] = _beats(scene, plan["words"], plan["fps"], plan["captions"],
+                                                        narration=narration, context=original.get("narration", ""))
             sources[scene["id"]] = {"section": original, "narration": narration}
             scenes.append(scene)
     return scenes, sources
 
 
-def _ai_schema(ids: list[str], mode: str = "hybrid") -> dict:
+def _ai_schema(ids: list[str], mode: str = "hybrid", *, shots_enabled=False) -> dict:
     schema = {
         "type": "object", "additionalProperties": False, "required": ["scenes"],
         "properties": {"scenes": {
@@ -459,6 +471,14 @@ def _ai_schema(ids: list[str], mode: str = "hybrid") -> dict:
                        "palette": {"type": "string", "enum": list(art_direction.PALETTES)}},
     }
     schema["required"].append("creative_brief")
+    if shots_enabled:
+        # Hosted structured output requires every property; a bounded array
+        # represents the absence of a physical mechanism without inventing one.
+        scene_schema = schema["properties"]["scenes"]["items"]
+        scene_schema["properties"]["shot"] = shot_planner.shot_schema()
+        scene_schema["properties"]["mechanisms"] = {"type": "array", "minItems": 0, "maxItems": 1,
+                                                     "items": shot_planner.mechanism_schema()}
+        scene_schema["required"].extend(["shot", "mechanisms"])
     return schema
 
 
@@ -472,6 +492,33 @@ def _visual_ai_available():
 def _request_design(scenes: list[dict], sources: dict, instructions: str = "", *,
                     stop_event=None, direction=None, provider_info=None, brief=None, mode="motion") -> dict:
     event = effective_stop_event(stop_event)
+    local_route = getattr(config, "LLM_ROUTE", "auto") == "local" or bool(getattr(config, "OLLAMA_MODEL", ""))
+    if local_route and len(scenes) > 3:
+        # Small installed models must finish bounded objects within their
+        # cancellable deadline. Preserve the whole-film brief across batches;
+        # never ask them to generate an unbounded film-length JSON response.
+        combined, providers = None, []
+        with session_scope(event):
+            for start in range(0, len(scenes), 3):
+                batch = scenes[start:start + 3]
+                print(f"   → Directing shots {start + 1}–{start + len(batch)} of {len(scenes)}…", flush=True)
+                info = {}
+                with request_scope():
+                    result = _request_design_impl(batch, {scene["id"]: sources[scene["id"]] for scene in batch},
+                        instructions, stop_event=event, direction=direction, provider_info=info, brief=brief, mode=mode)
+                providers.append(info)
+                if combined is None:
+                    combined = result
+                    brief, direction = result.get("creative_brief", brief), result.get("visual_direction", direction)
+                else:
+                    combined["scenes"].extend(result["scenes"])
+                    combined.setdefault("_local_direction_scenes", []).extend(result.get("_local_direction_scenes", []))
+        if provider_info is not None:
+            provider_info.clear()
+            provider_info.update(providers[0])
+            provider_info["batches"] = len(providers)
+            provider_info["batch_providers"] = providers
+        return combined
     with session_scope(event), request_scope():
         return _request_design_impl(scenes, sources, instructions, stop_event=event, direction=direction,
                                     provider_info=provider_info, brief=brief, mode=mode)
@@ -500,6 +547,20 @@ def _request_design_impl(scenes: list[dict], sources: dict, instructions: str = 
             "current_composition": scene.get("composition", "default"),
             "provided_chart_data": _chart_data(source["section"]),
         })
+        if scene.get("shot"):
+            if instructions:
+                # An edit needs the existing choices so unrelated decisions
+                # survive. A new design must choose its own shot rather than
+                # copying the complete deterministic fallback supplied here.
+                source_scenes[-1]["current_shot"] = scene["shot"]
+            else:
+                source_scenes[-1]["shot_context"] = {
+                    "section_id": scene["section_id"],
+                    "start_seconds": scene["start"],
+                    "duration_seconds": scene["duration"],
+                }
+        if scene.get("mechanism"):
+            source_scenes[-1]["current_mechanism"] = scene["mechanism"]
         if instructions:
             source_scenes[-1]["current_items"] = scene["items"]
             if scene.get("staging"):
@@ -513,6 +574,9 @@ def _request_design_impl(scenes: list[dict], sources: dict, instructions: str = 
         "each with a short 2-6 word object-name label, symbol and role: exactly one subject, others support or context only when the narration actually supports them. "
         "Full spoken sentences belong in captions, not actor labels. "
         "Symbol choices: " + ", ".join(object_direction.SYMBOLS) + ". "
+        "Symbols name literal depicted subjects, not visual analogies: a circuit cannot stand for linked mail rings, "
+        "a building cannot stand for a breastplate, and census-gap cannot stand for a limit. "
+        "Use concept for a source-supported subject outside the actor catalogue. "
         "A human response to flooding needs people or supported technology as its subject; water is context. "
         "Never invent floating homes, dams, machines or events merely to fill a frame. A concept actor is an explicitly abstract representation. "
         "Supported settings/actions: flood=(rise,adapt,float), census=(record,gap), mining=(extract,transfer), "
@@ -520,6 +584,18 @@ def _request_design_impl(scenes: list[dict], sources: dict, instructions: str = 
         "generic=(reveal,assemble,connect,compare). Generic composes actors and meaningful relationships for energy, nature, networks and other topics. "
         "Use each setting or causal action only when THIS scene's narration supports it, not a noun elsewhere in the film. "
         "Cameras: locked, wide, detail, follow, reveal. Match framing to what changes, with calm scenes locked. "
+        "Each scene is one shot, not a whole narration section. Use establishing views, details, interactions and payoffs deliberately. "
+        "For a new design, choose framing, camera, technique and transition from the narration and read-only shot_context timing. "
+        "Do not return shot_context or change the supplied narration window. For an edit, current_shot is the existing design; "
+        "preserve choices that the edit does not affect. "
+        "Optional shot direction: version=1; role=establish/detail/interaction/payoff; framing=wide/medium/close/macro; "
+        "technique=stage2d/collage/footage/diagram3d; camera=locked/push/orbit/track; transition=cut/match/dissolve; "
+        "focus is a short subject label, action states the visible change in plain words. Existing media alone enables collage/footage. "
+        "Keep current mechanisms unless this shot's source supports a change. Return mechanisms as an empty array or one supported object, version=1: kind=armour/layers, "
+        "material=steel/mail/ceramic/fiber/mixed, action=reveal/approach/impact/deflect/penetrate/separate/absorb/compare. "
+        "diagram3d requires a grounded material mechanism; do not invent physical outcomes. Good stage2d is sufficient for other subjects. "
+        "Material shots draw their named mechanism directly; use generic/reveal staging and concept actors for their part labels, "
+        "rather than inventing unrelated actors. Choose a view that makes the material or action readable. "
         "Do not repeat the same subject/action throughout the film. Name the scene's specific intent in visual_goal. "
         "Match composition to the mechanism or relationship in the narration. "
         "Choose one visual_direction (version 1, look, rhythm, rationale) for the film. "
@@ -551,7 +627,8 @@ def _request_design_impl(scenes: list[dict], sources: dict, instructions: str = 
         f"User design preference: {_text(instructions, 1000)}\n"
         "Source scenes:\n" + json.dumps(source_scenes, ensure_ascii=False)
     )
-    schema = _ai_schema([scene["id"] for scene in scenes], mode)
+    shots_enabled = any(scene.get("shot") for scene in scenes)
+    schema = _ai_schema([scene["id"] for scene in scenes], mode, shots_enabled=shots_enabled)
     def validated(design):
         check_stop()
         design = copy.deepcopy(design)
@@ -570,6 +647,9 @@ def _request_design_impl(scenes: list[dict], sources: dict, instructions: str = 
             for row in design.get("scenes", []) if isinstance(design.get("scenes"), list) else []:
                 if isinstance(row, dict) and row.get("id") in current:
                     old = current[row["id"]]
+                    if shots_enabled:
+                        row.setdefault("shot", copy.deepcopy(old["shot"]))
+                        row.setdefault("mechanisms", [copy.deepcopy(old["mechanism"])] if old.get("mechanism") else [])
                     if mode == "motion" and row.get("template") == "footage" and old.get("footage"):
                         # A legacy saved clip can retain its trusted file during
                         # a label edit; this does not authorize a new Motion clip.
@@ -619,7 +699,7 @@ def _request_design_impl(scenes: list[dict], sources: dict, instructions: str = 
     response_info = {}
     raw = gemini_client.generate(
         prompt + "\nRequired JSON schema:\n" + json.dumps(schema, ensure_ascii=False),
-        json_mode=True, stop_event=stop_event, exclude_providers=excluded, provider_info=response_info)
+        json_mode=True, json_schema=schema, stop_event=stop_event, exclude_providers=excluded, provider_info=response_info)
     if response_info.get("finish_reason") == "length":
         raise ValueError("The visual director did not finish its scene direction.")
     design = validated(extract_complete_json(raw, "Visual director"))
@@ -630,7 +710,222 @@ def _request_design_impl(scenes: list[dict], sources: dict, instructions: str = 
     return design
 
 
-def _apply_design(plan: dict, design: dict, sources: dict, *, directed: set[str] | None = None) -> set[str]:
+def _decision_fields(scene, direction=None, brief=None):
+    """Bounded editable fields; narration, media identity and beats are excluded."""
+    fields = {key: copy.deepcopy(scene.get(key)) for key in ("title", "visual_goal", "template", "stock_subjects")}
+    fields.update(_visible_style(scene, direction, brief))
+    fields["items.labels"] = [item.get("label") for item in scene["items"]]
+    fields["items.values"] = [item.get("value") for item in scene["items"]]
+    fields["items.actors"] = [[item.get("symbol"), item.get("role")] for item in scene["items"]]
+    for group, keys in (("staging", ("world", "action", "camera")),
+                        ("shot", ("role", "framing", "technique", "camera", "transition", "focus", "action")),
+                        ("mechanism", ("kind", "material", "action"))):
+        fields.update({f"{group}.{key}": (scene.get(group) or {}).get(key) for key in keys})
+    return fields
+
+
+def render_decisions(scene, plan):
+    """Conservative renderer-consumed values for provenance, not visual approval.
+
+    These normalized choices mirror the current builders. Notes, inherited
+    source facts, ignored controls and equivalent cuts cannot prove model use.
+    A decoded review remains necessary to judge the resulting pictures.
+    """
+    fields = _decision_fields(scene, plan.get("visual_direction"), plan.get("creative_brief"))
+    values = {"title": scene["title"], "palette": fields["palette"]}
+    shot, mechanism = scene.get("shot"), scene.get("mechanism") or {}
+    if not shot or scene["template"] == "chart":
+        keys = {"look", "rhythm", "composition", "items.labels"}
+        if scene.get("graphics_version") == 2 and not scene.get("image"):
+            keys |= {"staging.world", "staging.action", "staging.camera", "items.actors"}
+            fields["composition"] = "stack" if fields["composition"] == "stack" else "world"
+        else:
+            keys.add("template")
+            if scene["template"] == "chart":
+                keys.add("items.values")
+            elif scene.get("graphics_version") == 1 and not scene.get("image") and not scene.get("footage"):
+                keys.add("items.actors")
+        values.update({key: fields[key] for key in keys})
+        return values
+    values["shot.transition"] = "dissolve" if scene["start"] > 0 and shot["transition"] == "dissolve" else "cut"
+    kicker = plan.get("title", "")
+    values["shot.role"] = "establish" if shot["role"] == "establish" and kicker != scene["title"] and 0 < len(kicker) <= 58 else "other"
+    technique = shot["technique"]
+    if technique == "diagram3d" or mechanism:
+        values["shot.technique"] = "diagram3d" if technique == "diagram3d" else "mechanism2d"
+        values.update({f"mechanism.{key}": mechanism.get(key) for key in ("kind", "material", "action")})
+        if technique == "diagram3d":
+            values.update({key: fields[key] for key in ("shot.framing", "shot.camera")})
+            if mechanism.get("kind") == "armour":
+                values["shot.role"] = "establish" if shot["role"] == "establish" else "other"
+        else:
+            values.update({key: fields[key] for key in ("shot.framing", "shot.camera")})
+        if mechanism.get("kind") == "layers" or mechanism.get("material") in {"ceramic", "fiber", "mixed"}:
+            if technique != "diagram3d" or mechanism.get("action") == "separate":
+                count = (3 if mechanism.get("material") == "mixed" else 2 if mechanism.get("kind") == "layers" else 1)
+                if technique != "diagram3d" and mechanism.get("kind") != "layers":
+                    count = 1
+                limit = 64 if technique == "diagram3d" else 34
+                values["items.labels"] = [label if isinstance(label, str) and len(label) <= limit else "" for label in fields["items.labels"][:count]]
+    elif technique == "collage":
+        values.update({key: fields[key] for key in ("shot.technique", "shot.framing", "shot.camera")})
+        if shot["role"] == "payoff":
+            values["shot.role"] = "payoff"
+        # Photo captions come from trusted media credits, not editable item
+        # labels. Hidden narration fragments cannot prove model direction.
+    elif technique == "footage":
+        values.update({key: fields[key] for key in ("shot.technique", "shot.framing", "shot.camera")})
+        if not scene.get("image") and not scene.get("media_layers"):
+            label = next((label for label in fields["items.labels"] if label and label != scene["title"]), "")
+            values["items.labels"] = [label] if len(label) <= 92 else []
+    elif scene.get("image"):
+        values["shot.technique"] = "still"
+        values.update({key: fields[key] for key in ("shot.framing", "shot.camera")})
+    else:
+        values.update({key: fields[key] for key in ("shot.technique", "shot.framing", "shot.camera", "items.labels", "items.actors")})
+        if scene.get("graphics_version") == 2:
+            values.update({key: fields[key] for key in ("staging.world", "staging.action", "staging.camera")})
+    return values
+
+
+def _restore_decision(scene, field, value):
+    """Restore one bounded pre-model field for a renderer-contract comparison."""
+    if field.startswith("items."):
+        key = field.split(".", 1)[1]
+        items = []
+        for index, entry in enumerate(value):
+            item = copy.deepcopy(scene["items"][index]) if index < len(scene["items"]) else {"label": ""}
+            if key == "actors":
+                item["symbol"], item["role"] = entry
+            else:
+                item["label" if key == "labels" else "value"] = entry
+            items.append(item)
+        scene["items"] = items
+    elif "." in field:
+        group, key = field.split(".", 1)
+        scene.setdefault(group, {})[key] = value
+    else:
+        scene[field] = value
+
+
+_GLOBAL_RENDER_FIELDS = {
+    "visual_direction.look": art_direction.LOOKS,
+    "visual_direction.rhythm": art_direction.RHYTHMS,
+    "creative_brief.palette": tuple(art_direction.PALETTES),
+}
+
+
+def refresh_model_provenance(plan):
+    """Re-evaluate accepted choices after trusted media or later edits replace them."""
+    provenance = plan.get("ai_status", {}).get("provenance")
+    if not isinstance(provenance, dict) or provenance.get("version") != 1 or provenance.get("method") != "accepted_decision_journal":
+        return None
+    scenes = {scene["id"]: scene for scene in plan["scenes"]}
+    rows = provenance.get("scenes", [])
+    if not isinstance(rows, list) or len(rows) > 120:
+        raise ValueError("Model provenance must contain a bounded scene journal.")
+    text_fields = {"title", "items.labels", "visual_goal", "shot.focus", "shot.action", "stock_subjects"}
+    for row in rows:
+        scene = scenes.get(row.get("scene_id"))
+        row["rendered_fields"], row["rendered_nontext_fields"] = [], []
+        if scene is None or row.get("status") != "accepted":
+            continue
+        fields = _decision_fields(scene, plan.get("visual_direction"), plan.get("creative_brief"))
+        actual = render_decisions(scene, plan)
+        changes = row.get("changes", [])
+        if not isinstance(changes, list) or len(changes) > len(fields):
+            raise ValueError("Model provenance has an unbounded decision list.")
+        for change in changes:
+            field = change.get("field")
+            if field not in fields or fields[field] != change.get("accepted"):
+                continue
+            # Restoring an item array can also change its length and labels.
+            # Hidden actors/null values must not borrow those text effects.
+            if field.startswith("items.") and field not in actual:
+                continue
+            previous = copy.deepcopy(scene)
+            _restore_decision(previous, field, change.get("before"))
+            if render_decisions(previous, plan) != actual:
+                row["rendered_fields"].append(field)
+                if field not in text_fields:
+                    row["rendered_nontext_fields"].append(field)
+    global_changes = provenance.get("global_changes", [])
+    if not isinstance(global_changes, list) or len(global_changes) > len(_GLOBAL_RENDER_FIELDS):
+        raise ValueError("Model provenance must contain bounded global decisions.")
+    seen = set()
+    for change in global_changes:
+        if not isinstance(change, dict):
+            raise ValueError("Model provenance has an invalid global decision.")
+        field = change.get("field")
+        if (field not in _GLOBAL_RENDER_FIELDS or field in seen
+                or change.get("accepted") not in _GLOBAL_RENDER_FIELDS[field]
+                or change.get("before") not in (None, *_GLOBAL_RENDER_FIELDS[field])
+                or change.get("before") == change.get("accepted")):
+            raise ValueError("Model provenance has an invalid global decision.")
+        seen.add(field)
+        change["rendered_scene_ids"] = []
+        group, key = field.split(".")
+        if plan.get(group, {}).get(key) != change["accepted"]:
+            continue
+        # Restore only this global default; final scene overrides and media
+        # stay identical. The same conservative builder projection applies.
+        previous = dict(plan)
+        previous[group] = dict(plan.get(group, {}))
+        if change["before"] is None:
+            previous[group].pop(key, None)
+        else:
+            previous[group][key] = change["before"]
+        change["rendered_scene_ids"] = [scene["id"] for scene in plan["scenes"]
+            if render_decisions(scene, previous) != render_decisions(scene, plan)]
+    provenance.update(accepted_scene_count=sum(row.get("status") == "accepted" for row in rows),
+        rejected_scene_count=sum(row.get("status") == "rejected" for row in rows),
+        changed_scene_count=sum(bool(row.get("changes")) for row in rows),
+        rendered_scene_count=sum(bool(row["rendered_fields"]) for row in rows),
+        rendered_nontext_scene_count=sum(bool(row["rendered_nontext_fields"]) for row in rows),
+        accepted_global_change_count=len(global_changes),
+        rendered_global_decision_count=sum(bool(change["rendered_scene_ids"]) for change in global_changes))
+    return provenance
+
+
+def has_model_visual_contribution(plan):
+    """A received response alone cannot qualify a model-backed demonstration."""
+    if plan.get("ai_status", {}).get("status") != "planned":
+        return False
+    checked = copy.deepcopy(plan)
+    try:
+        provenance = refresh_model_provenance(checked)
+    except (ValueError, TypeError, KeyError, AttributeError):
+        return False
+    return bool(provenance and provenance.get("generated_scene_count", 0) > 0
+                and (provenance.get("rendered_nontext_scene_count", 0) > 0
+                     or provenance.get("rendered_global_decision_count", 0) > 0))
+
+
+def _safe_planning_failure(exc):
+    """Keep only fixed validator diagnostics, never arbitrary provider text."""
+    message = str(exc)
+    match = re.fullmatch(r"Visual JSON (?:has an (?:invalid type|unsupported value|unexpected value|unexpected field|invalid item count|invalid text length|invalid number)|is missing a field) at (\$(?:\.[A-Za-z_][A-Za-z0-9_]{0,39}|\[\d{1,3}\]){0,12})\.", message)
+    known = {"visual_direction", "version", "look", "rhythm", "rationale", "creative_brief", "theme", "premise", "continuity",
+             "palette", "scenes", "id", "template", "title", "visual_goal", "composition", "items", "label", "symbol", "role",
+             "staging", "world", "action", "camera", "stock_subjects", "shot", "framing", "technique", "transition", "focus",
+             "mechanisms", "kind", "material"}
+    if match and set(re.findall(r"\.([A-Za-z_][A-Za-z0-9_]*)", match.group(1))) <= known:
+        return message[:300]
+    if re.fullmatch(r"Visual director returned invalid or incomplete JSON \(line \d{1,6}, column \d{1,6}\)\.", message):
+        return message
+    if message in {"The visual model changed scene IDs.", "The creative brief introduced an unsupported number.",
+                   "The visual director did not finish its scene direction.",
+                   "Visual director returned an empty JSON response.", "Visual director must return one complete JSON object."}:
+        return message
+    return "The configured planner did not provide a complete, valid constrained design; provider response text was not retained."
+
+
+def _apply_design(plan: dict, design: dict, sources: dict, *, directed: set[str] | None = None,
+                  provenance: dict | None = None) -> set[str]:
+    before_direction, before_brief = copy.deepcopy(plan.get("visual_direction")), copy.deepcopy(plan.get("creative_brief"))
+    if provenance is not None:
+        provenance.update(version=1, method="accepted_decision_journal", generated_scene_count=len(design.get("scenes", [])), scenes=[], global_changes=[],
+            qualification="Rendered fields survive validation and are consumed differently by the renderer. This is provenance, not decoded visual approval; local fallback and unchanged source facts are not model changes.")
     if "visual_direction" in design:
         direction = art_direction.validate_direction(design["visual_direction"])
         if getattr(config, "CHANNEL_PRESET", "general") == "asmr":
@@ -644,6 +939,15 @@ def _apply_design(plan: dict, design: dict, sources: dict, *, directed: set[str]
         if _number_tokens(proposed) - _number_tokens(supplied + " " + plan.get("title", "")):
             raise ValueError("The creative brief introduced an unsupported number.")
         plan["creative_brief"] = brief
+    if provenance is not None:
+        for field in _GLOBAL_RENDER_FIELDS:
+            group, key = field.split(".")
+            prior = before_direction if group == "visual_direction" else before_brief
+            before = (prior or {}).get(key)
+            accepted = plan.get(group, {}).get(key)
+            if (key in design.get(group, {}) and design[group][key] == accepted
+                    and before != accepted):
+                provenance["global_changes"].append({"field": field, "before": before, "accepted": accepted})
     expected = {scene["id"] for scene in plan["scenes"]}
     updates = design.get("scenes", [])
     if len(updates) != len(expected) or {row["id"] for row in updates} != expected:
@@ -651,22 +955,32 @@ def _apply_design(plan: dict, design: dict, sources: dict, *, directed: set[str]
     lookup = {row["id"]: row for row in updates}
     wanted_footage = set()
     for scene in plan["scenes"]:
+        before_fields = _decision_fields(scene, before_direction, before_brief)
+        journal = {"scene_id": scene["id"], "status": "rejected", "changes": [], "local_fallback_fields": [], "rejected_fields": {}}
+        if provenance is not None:
+            provenance["scenes"].append(journal)
         update = lookup[scene["id"]]
         source = sources[scene["id"]]
         chart_data = _chart_data(source["section"])
         source_text = source["narration"] + " " + json.dumps(source["section"], ensure_ascii=False)
         proposed_text = " ".join([update["title"], update["visual_goal"]] + [item["label"] for item in update["items"]])
+        if isinstance(update.get("shot"), dict):
+            proposed_text += " " + " ".join(str(update["shot"].get(field, "")) for field in ("focus", "action"))
         if _number_tokens(proposed_text) - _number_tokens(source_text):
+            journal["reason"] = "unsupported_number"
             plan["warnings"].append(f"{scene['id']} kept its local design because AI introduced an unsupported number.")
             continue
         template = update["template"]
         if template == "chart" and not chart_data:
+            journal["reason"] = "missing_chart_data"
             plan["warnings"].append(f"{scene['id']} kept its local design because no chart data was supplied.")
             continue
         if template == "footage" and plan["mode"] == "motion":
+            journal["reason"] = "footage_not_allowed"
             plan["warnings"].append(f"{scene['id']} kept graphics because this Motion run does not allow footage.")
             continue
         candidate = copy.deepcopy(scene)
+        model_staging = False
         requests_footage = template == "footage"
         if template == "footage":
             # A model cannot invent a file path. Only the media adapter attaches footage.
@@ -693,19 +1007,19 @@ def _apply_design(plan: dict, design: dict, sources: dict, *, directed: set[str]
             candidate["items"] = [{"label": _text(item["label"], 64)} for item in update["items"]]
             if ("staging" in update and not requests_footage and template != "footage" and not candidate.get("image") and not candidate.get("footage")
                     and (candidate.get("graphics_version") == 2 or scene["id"] not in design.get("_local_direction_scenes", []))):
-                candidate["staging"] = object_direction.validate_staging(update["staging"])
-                candidate["items"] = object_direction.validate_actors([
-                    {"label": _text(item["label"], 64), "symbol": item.get("symbol"), "role": item.get("role")}
-                    for item in update["items"]])
+                try:
+                    candidate["staging"] = object_direction.validate_staging(update["staging"])
+                    candidate["items"] = object_direction.validate_actors([
+                        {"label": _text(item["label"], 64), "symbol": item.get("symbol"), "role": item.get("role")}
+                        for item in update["items"]])
+                except ValueError:
+                    journal["reason"] = "invalid_actor_or_staging_structure"
+                    plan["warnings"].append(f"{scene['id']} kept its local design because AI supplied invalid actor roles/count or an unsupported setting/action pair.")
+                    continue
                 candidate["graphics_version"] = 2
                 if getattr(config, "CHANNEL_PRESET", "general") == "asmr":
                     candidate["staging"]["camera"] = "locked"
-                issues = object_direction.grounding_issues(candidate, source["narration"])
-                if issues:
-                    plan["warnings"].append(f"{scene['id']} kept local scene direction: " + " ".join(issues))
-                    continue
-                if directed is not None and scene["id"] not in design.get("_local_direction_scenes", []):
-                    directed.add(scene["id"])
+                model_staging = scene["id"] not in design.get("_local_direction_scenes", [])
                 if scene["id"] in design.get("_local_direction_scenes", []):
                     plan["warnings"].append(f"{scene['id']} uses local actor/action direction because the AI supplied labels and layout only.")
             elif candidate.get("graphics_version") == 2 and not candidate.get("image") and not candidate.get("footage"):
@@ -720,7 +1034,57 @@ def _apply_design(plan: dict, design: dict, sources: dict, *, directed: set[str]
             wanted_footage.add(scene["id"])
             if update.get("stock_subjects"):
                 candidate["stock_subjects"] = [_text(term, 80) for term in update["stock_subjects"]]
-        candidate["beats"], candidate["beat_timing"] = _beats(candidate, plan.get("words", []), plan["fps"], plan.get("captions", []))
+        if "shot" in update and "shot" in scene:
+            candidate["shot"] = shot_planner.validate_shot(update["shot"])
+        if update.get("mechanisms") and "shot" in candidate:
+            mechanism = shot_planner.validate_mechanism(update["mechanisms"][0])
+            issues = shot_planner.grounding_issues(mechanism, source["narration"], source["section"].get("narration", ""))
+            if issues:
+                journal["rejected_fields"]["mechanism"] = "unsupported_source_mechanism"
+                plan["warnings"].append(f"{scene['id']} kept its source-grounded mechanism: " + " ".join(issues))
+            else:
+                candidate["mechanism"] = mechanism
+        elif "mechanisms" in update:
+            candidate.pop("mechanism", None)
+        if candidate["template"] == "chart":
+            candidate.pop("mechanism", None)
+        shot_planner.reconcile_media(candidate)
+        # Ground what the final renderer consumes. Material shots do not draw
+        # legacy actors, but clearing a mechanism or requesting unavailable
+        # media must still pass the ordinary actor check after reconciliation.
+        if candidate.get("mechanism"):
+            issues = shot_planner.grounding_issues(candidate["mechanism"], source["narration"], source["section"].get("narration", ""))
+            if issues:
+                journal["reason"] = "unsupported_source_mechanism"
+                plan["warnings"].append(f"{scene['id']} kept local scene direction: " + " ".join(issues))
+                continue
+        elif candidate.get("graphics_version") == 2 and not candidate.get("image") and not candidate.get("footage"):
+            issues = object_direction.grounding_issues(candidate, source["narration"])
+            if issues:
+                journal["reason"] = "unsupported_actors_or_action"
+                plan["warnings"].append(f"{scene['id']} kept local scene direction: " + " ".join(issues))
+                continue
+            if directed is not None and model_staging:
+                directed.add(scene["id"])
+        candidate["beats"], candidate["beat_timing"] = _beats(candidate, plan.get("words", []), plan["fps"], plan.get("captions", []),
+                                                           narration=source["narration"], context=source["section"].get("narration", ""))
+        after_fields = _decision_fields(candidate, plan.get("visual_direction"), plan.get("creative_brief"))
+        journal["status"] = "accepted"
+        for field, value in after_fields.items():
+            if value == before_fields[field]:
+                continue
+            if field in {"look", "rhythm", "palette"} and field not in update:
+                # An inherited film choice has its own journal, including
+                # effects on rejected rows; it is not a scene proposal.
+                continue
+            local = (not model_staging and (field.startswith("staging.") or field == "items.actors")
+                     or scene["id"] in design.get("_local_direction_scenes", []) and field == "items.labels"
+                     or candidate["template"] == "chart" and field == "items.values"
+                     or field.startswith("shot.") and update.get("shot", {}).get(field.split(".")[1]) != value)
+            if local:
+                journal["local_fallback_fields"].append(field)
+            else:
+                journal["changes"].append({"field": field, "before": before_fields[field], "accepted": copy.deepcopy(value)})
         scene.clear()
         scene.update(candidate)
     return wanted_footage
@@ -735,7 +1099,16 @@ def _direction_report(plan, sources, directed=()):
             continue
         issues = []
         source = sources.get(scene["id"], {}).get("narration", "")
-        if scene.get("graphics_version") == 2:
+        if scene.get("mechanism"):
+            mechanism = scene["mechanism"]
+            context = sources.get(scene["id"], {}).get("section", {}).get("narration", "")
+            issues.extend(shot_planner.grounding_issues(mechanism, source, context))
+            signature = (mechanism["kind"], mechanism["material"], mechanism["action"],
+                         scene.get("shot", {}).get("framing"), scene.get("shot", {}).get("technique"))
+            if signature == previous:
+                issues.append("This shot repeats the preceding material, action and framing; review whether it explains a different idea.")
+            previous = signature
+        elif scene.get("graphics_version") == 2:
             issues.extend(object_direction.grounding_issues(scene, source))
             if all(item.get("symbol") == "concept" for item in scene["items"]):
                 issues.append("This scene remains abstract; its actors do not depict a concrete narrated subject.")
@@ -899,6 +1272,8 @@ def _attach_footage(plan: dict, sources: dict, output_dir, wanted: set[str], *, 
         providers.add(selected["provider"])
         excluded.add(f"{selected['provider']}:{selected['provider_id']}")
         scene.pop("image", None)
+        scene.pop("media_layers", None)
+        scene.pop("mechanism", None)
         scene["template"] = "footage"
         _as_media_scene(scene)
         scene["composition"] = "default"
@@ -986,7 +1361,21 @@ def _attach_images(plan: dict, image_map: dict | None, output_dir) -> None:
             continue
         index = used.get(scene["section_id"], 0)
         scene["image"] = copy.deepcopy(choices[index % len(choices)])
+        if scene.get("shot") and len(choices) >= 2:
+            # Every layer comes from the existing, section-bound picture
+            # pipeline. Do not duplicate one picture to manufacture variety.
+            unique, digests = [], set()
+            for choice in choices[index % len(choices):] + choices[:index % len(choices)]:
+                digest = _image_digest(choice["path"])
+                if digest and digest not in digests:
+                    digests.add(digest)
+                    unique.append(copy.deepcopy(choice))
+                if len(unique) == 4:
+                    break
+            if len(unique) >= 2:
+                scene["media_layers"] = unique
         _as_media_scene(scene)
+        shot_planner.reconcile_media(scene)
         used[scene["section_id"]] = index + 1
         attached += 1
     plan["image_status"] = {"available": bool(attached), "scenes": attached,
@@ -1094,8 +1483,9 @@ def validate_plan(plan: dict) -> dict:
             raise ValueError("A scene needs a safe string ID.")
         if set(scene) - {"id", "section_id", "template", "start", "duration", "title",
                          "visual_goal", "items", "beats", "footage", "image", "beat_timing", "composition", "look", "rhythm", "graphics_version",
-                         "staging", "palette", "stock_subjects"}:
+                         "staging", "palette", "stock_subjects", "shot", "mechanism", "media_layers"}:
             raise ValueError("The scene contains unsupported fields.")
+        shot_planner.validate_scene(scene)
         if "graphics_version" in scene and (type(scene["graphics_version"]) is not int or scene["graphics_version"] not in {1, 2}):
             raise ValueError("Unsupported object graphics version.")
         if scene.get("graphics_version") == 2:
@@ -1118,7 +1508,7 @@ def validate_plan(plan: dict) -> dict:
         for field, choices in (("composition", art_direction.COMPOSITIONS), ("look", art_direction.LOOKS), ("rhythm", art_direction.RHYTHMS)):
             if field in scene and scene[field] not in choices:
                 raise ValueError("The scene uses an unsupported visual direction.")
-        if photos_disabled and "image" in scene:
+        if photos_disabled and ("image" in scene or "media_layers" in scene):
             raise ValueError("This storyboard has saved photos disabled. Use Animate these photos to include them.")
         if photos_disabled and plan["mode"] == "motion" and "footage" in scene:
             raise ValueError("Graphics-only Motion cannot contain footage. Choose Hybrid to use video clips.")
@@ -1171,8 +1561,7 @@ def validate_plan(plan: dict) -> dict:
                 raise ValueError("A motion beat is outside its scene or uses an unsupported action.")
         if scene.get("beat_timing", "distributed") not in {"word", "phrase", "mixed", "distributed"}:
             raise ValueError("The beat timing quality is invalid.")
-        if "image" in scene:
-            asset = scene["image"]
+        for asset in ([scene["image"]] if "image" in scene else []) + scene.get("media_layers", []):
             if not isinstance(asset, dict) or set(asset) - {"path", "source", "source_url", "credit", "license"}:
                 raise ValueError("Image contains unsupported fields.")
             path = asset.get("path")
@@ -1282,27 +1671,34 @@ def plan_scenes(script: dict, timeline: dict, mode: str = "motion",
                                          direction=plan["visual_direction"], brief=plan["creative_brief"], mode=mode,
                                          provider_info=provider_info)
             candidate = copy.deepcopy(plan)
-            wants_footage = _apply_design(candidate, design, sources, directed=directed)
+            provenance = {}
+            wants_footage = _apply_design(candidate, design, sources, directed=directed, provenance=provenance)
             validate_plan(candidate)
             plan = candidate
-            plan["ai_status"] = {"status": "planned", **provider_info}
+            plan["ai_status"] = {"status": "planned", **provider_info, "provenance": provenance}
             if provider_info.get("fallback_from"):
                 plan["warnings"].append("The selected free OpenRouter planner did not produce a usable design; a configured free text model supplied this storyboard.")
         except (RuntimeError, openrouter.OpenRouterError, ValueError, KeyError, TypeError) as exc:
             directed.clear()
-            plan["ai_status"] = {"status": "fallback", "reason": getattr(exc, "code", "invalid_design")}
+            plan["ai_status"] = {"status": "fallback", "reason": getattr(exc, "code", "invalid_design"),
+                                 "detail": _safe_planning_failure(exc)}
             plan["warnings"].append("Visual AI was unavailable or returned an invalid design; local animated templates are ready.")
     if use_project_photos:
         _attach_images(plan, image_map, output_dir)
     else:
         plan["image_status"] = {"available": False, "scenes": 0, "reason": "project_photos_disabled"}
     _attach_footage(plan, sources, output_dir, wants_footage, stop_event=stop_event)
+    for scene in plan["scenes"]:
+        shot_planner.reconcile_media(scene)
+    if any(scene.get("shot") for scene in plan["scenes"]):
+        plan["shot_report"] = shot_planner.report(plan)
     if "image_status" in plan:
         plan["image_status"]["scenes"] = sum(bool(scene.get("image")) for scene in plan["scenes"])
         plan["image_status"]["available"] = bool(plan["image_status"]["scenes"])
     if any(scene["beat_timing"] != "word" for scene in plan["scenes"]):
         plan["warnings"].append("Some motion beats follow subtitle cues or approximate positions within narration sections; they are not exact word timings.")
     plan["direction_report"] = _direction_report(plan, sources, directed)
+    refresh_model_provenance(plan)
     plan["warnings"] = list(dict.fromkeys(plan["warnings"]))
     validate_plan(plan)
     if output_dir is not None:
@@ -1319,8 +1715,12 @@ def _set_scene_template(scene: dict, template: str, source_section: dict) -> Non
             raise ValueError("This section has no supplied chart data. Choose another layout.")
         scene["items"] = data
         scene.pop("image", None)
+        scene.pop("media_layers", None)
+        scene.pop("mechanism", None)
         scene.pop("graphics_version", None)
         scene.pop("staging", None)
+        if scene.get("shot"):
+            scene["shot"]["technique"] = "stage2d"
     else:
         scene["items"] = [{key: item[key] for key in ("label", "symbol", "role") if key in item} for item in scene["items"]]
     if template != "footage":
@@ -1335,7 +1735,7 @@ def _visible_style(scene: dict, direction=None, brief=None) -> dict:
             "palette": scene.get("palette", (brief or {}).get("palette", "legacy"))}
 
 
-def _visible_design(scene: dict, direction=None, brief=None) -> tuple:
+def _visible_design(scene: dict, direction=None, brief=None, *, film_title="") -> tuple:
     """Ignore planning notes and attribution URLs that do not appear on screen."""
     media = scene.get("footage") if scene["template"] == "footage" else (
         scene.get("image") if scene["template"] != "chart" else None)
@@ -1344,14 +1744,40 @@ def _visible_design(scene: dict, direction=None, brief=None) -> tuple:
     items = [{key: item[key] for key in ("label", "value") if key in item} for item in scene["items"]] if scene["template"] in {"chart", "timeline"} else [
         item["label"] for item in scene["items"]]
     style = _visible_style(scene, direction, brief)
+    material_shot = scene.get("shot") and scene.get("mechanism") and not media and scene["template"] != "chart"
+    collage_shot = (scene.get("shot", {}).get("technique") == "collage"
+                    and not scene.get("mechanism") and scene["template"] != "chart")
+    if material_shot or collage_shot:
+        # These builders ignore legacy layouts, actors and their staging.
+        # Reuse consumed choices, retaining typography and title animation
+        # that provenance deliberately treats conservatively.
+        visible = render_decisions(scene, {"title": film_title,
+            "visual_direction": direction or {}, "creative_brief": brief or {}})
+        visible["shot.heading_size"] = "small" if scene["shot"]["role"] in {"detail", "interaction"} else "large"
+        visible["look"] = {"editorial": "serif", "botanical": "serif", "blueprint": "monospace",
+                           "poster": "uppercase"}.get(style["look"], "sans")
+        visible["rhythm"] = style["rhythm"]
+        if collage_shot:
+            visible["media_layers"] = [(layer.get("path"),
+                " ".join(((layer.get("credit") or "").strip() or (layer.get("source") or "").strip()).split()).split(" · ", 1)[0][:120])
+                for layer in scene.get("media_layers", [])]
+        return ("collage-shot" if collage_shot else "material-shot", visible)
     graphics = (scene.get("graphics_version"), scene.get("staging"),
                 [(item.get("symbol"), item.get("role")) for item in scene["items"]]) if scene.get("graphics_version") and not media and scene["template"] != "chart" else None
     staged = scene.get("graphics_version") == 2 and graphics is not None
     # V2 is composed by staging, not by swapping the old slide template name.
     template = None if staged else scene["template"]
     composition = ("stack" if style["composition"] == "stack" else "world") if staged else style["composition"]
+    shot = scene.get("shot")
+    if shot:
+        # Focus/action prose guides the director but does not itself animate a
+        # new subject. Match is currently the same rendered cut as cut.
+        shot = {key: value for key, value in shot.items() if key not in {"focus", "action"}}
+        shot["transition"] = "dissolve" if shot["transition"] == "dissolve" else "cut"
+    layers = [(layer.get("path"),) for layer in scene.get("media_layers", [])]
     return (template, scene["title"], items, visible_media, graphics,
-            composition, style["look"], style["rhythm"], style["palette"])
+            composition, style["look"], style["rhythm"], style["palette"],
+            shot, scene.get("mechanism"), layers)
 
 
 def regenerate_scene(plan: dict, scene_id: str, script: dict, instructions: str = "", *,
@@ -1406,6 +1832,24 @@ def regenerate_scene(plan: dict, scene_id: str, script: dict, instructions: str 
     palette = art_direction.explicit_palette(local_instructions)
     calm = getattr(config, "CHANNEL_PRESET", "general") == "asmr"
     staging_edit = object_direction.explicit_staging(local_instructions, original.get("staging"), narration, calm=calm)
+    shot_edit = {}
+    if original.get("shot"):
+        for value, expression in (("macro", r"\bmacro\b|\bextreme\s+close"), ("close", r"\bclose[ -]?up\b|\bcloser\b"),
+                                   ("wide", r"\bwide(?:r)?\b"), ("medium", r"\bmedium\b")):
+            if re.search(expression, local_instructions):
+                shot_edit["framing"] = value
+                break
+        for value, expression in (("diagram3d", r"\b3d\b|\bthree[ -]dimensional\b"), ("stage2d", r"\b2d\b|\btwo[ -]dimensional\b"),
+                                  ("collage", r"\bcollage\b")):
+            if re.search(expression, local_instructions):
+                if value == "diagram3d" and not replacement.get("mechanism"):
+                    raise ValueError("This narration does not support an available 3D material mechanism. Choose a 2D scene or existing media.")
+                if value == "collage" and not replacement.get("image"):
+                    raise ValueError("A collage needs pictures from this project's existing image pipeline.")
+                shot_edit["technique"] = value
+        for value in shot_planner.CAMERAS:
+            if re.search(r"\b" + value + r"\b", local_instructions):
+                shot_edit["camera"] = "locked" if calm else value
     layout_words = re.sub(r"\b(?:less|shorter|simpler|concise)\s+text\b", "", local_instructions)
     preference = next((name for name in ("comparison", "timeline", "flow", "chart", "explain", "text")
                        if re.search(r"\b" + name + r"\b", layout_words)), None)
@@ -1443,7 +1887,7 @@ def regenerate_scene(plan: dict, scene_id: str, script: dict, instructions: str 
                 result["warnings"].append("The selected free OpenRouter planner did not produce a usable design; a configured free text model supplied this scene edit.")
         except (RuntimeError, openrouter.OpenRouterError, ValueError, KeyError, TypeError):
             result.setdefault("warnings", []).append("Scene regeneration used local templates because visual AI was unavailable.")
-    supported = preference or simpler or remove_photos or graphics_only or object_graphics or replace_image or look or rhythm or composition or palette or staging_edit or footage_requested
+    supported = preference or simpler or remove_photos or graphics_only or object_graphics or replace_image or look or rhythm or composition or palette or staging_edit or footage_requested or shot_edit
     if instructions.strip() and not ai_applied and not supported:
         raise ValueError("No available AI could interpret this edit, so the storyboard was kept. Choose a local/free model in Settings, or request a supported action, camera, palette, layout, less text, or removal of photos.")
     # A supported user layout takes precedence over an optional model's choice.
@@ -1466,6 +1910,7 @@ def regenerate_scene(plan: dict, scene_id: str, script: dict, instructions: str 
         ]
     if remove_photos:
         replacement.pop("image", None)
+        replacement.pop("media_layers", None)
     if graphics_only:
         if replacement["template"] == "footage":
             _set_scene_template(replacement, preference or "explain", source_section)
@@ -1478,6 +1923,7 @@ def regenerate_scene(plan: dict, scene_id: str, script: dict, instructions: str 
             _set_scene_template(replacement, preference or "explain", source_section)
         replacement.pop("footage", None)
         replacement["image"] = new_image
+        replacement.pop("media_layers", None)
     elif original.get("footage") and not preference and not graphics_only and not footage_requested:
         replacement["footage"] = copy.deepcopy(original["footage"])
         replacement["template"] = "footage"
@@ -1529,30 +1975,51 @@ def regenerate_scene(plan: dict, scene_id: str, script: dict, instructions: str 
                 or previous_hash and previous_hash == _footage_fingerprint(acquired, output_dir, stop_event)):
             raise ValueError("The available clip is the same source or recording already used. The scene was kept; no distinct matching clip was available.")
         result["stock_status"] = temporary["stock_status"]
-    if _visible_design(replacement, result.get("visual_direction"), result.get("creative_brief")) == _visible_design(original, result.get("visual_direction"), result.get("creative_brief")):
+    if replacement.get("shot"):
+        replacement["shot"].update(shot_edit)
+        if staging_edit and "framing" not in shot_edit:
+            replacement["shot"]["framing"] = {"detail": "close", "wide": "wide", "follow": "medium", "locked": "medium", "reveal": "wide"}[staging_edit["camera"]]
+        if not instructions.strip() and not replace_image:
+            replacement["shot"]["framing"] = "wide" if original["shot"]["framing"] in {"close", "macro"} else "close"
+        shot_planner.reconcile_media(replacement)
+    before_design = _visible_design(original, result.get("visual_direction"), result.get("creative_brief"), film_title=result["title"])
+    after_design = _visible_design(replacement, result.get("visual_direction"), result.get("creative_brief"), film_title=result["title"])
+    if after_design == before_design:
         if not instructions.strip() and not preference and not original.get("footage") and original["template"] != "chart":
             _set_scene_template(replacement, "text" if original["template"] == "explain" else "explain", source_section)
         else:
             raise ValueError("This scene's visible design is unchanged. Request a supported action, closer camera, warmer colors, different layout, or another saved photo.")
-    replacement["beats"], replacement["beat_timing"] = _beats(replacement, result.get("words", []), result["fps"], result.get("captions", []))
+    replacement["beats"], replacement["beat_timing"] = _beats(replacement, result.get("words", []), result["fps"], result.get("captions", []),
+                                                             narration=narration, context=source_section.get("narration", ""))
     result["scenes"][index] = replacement
     changes = []
-    if original.get("graphics_version") != replacement.get("graphics_version"):
+    material_edit = before_design[0] == after_design[0] == "material-shot"
+    projected_edit = material_edit or before_design[0] == after_design[0] == "collage-shot"
+    before_visible, after_visible = (before_design[1], after_design[1]) if projected_edit else ({}, {})
+    if (any(before_visible.get(key) != after_visible.get(key) for key in before_visible if key.startswith("shot."))
+            if projected_edit else original.get("shot") != replacement.get("shot")):
+        changes.append("Updated the shot framing, technique or camera direction.")
+    if material_edit and any(before_visible.get(key) != after_visible.get(key) for key in before_visible if key.startswith("mechanism.")):
+        changes.append("Updated the material interaction.")
+    if not projected_edit and original.get("graphics_version") != replacement.get("graphics_version"):
         changes.append("Rebuilt the scene as animated objects and diagrams.")
     before_style = {"template": original["template"], **_visible_style(original, result.get("visual_direction"), result.get("creative_brief"))}
     after_style = {"template": replacement["template"], **_visible_style(replacement, result.get("visual_direction"), result.get("creative_brief"))}
     for field, label in (("template", "Layout"), ("composition", "Composition"), ("look", "Visual look"), ("rhythm", "Motion rhythm"), ("palette", "Palette")):
+        if projected_edit and (field in {"template", "composition"} or before_visible.get(field) == after_visible.get(field)):
+            continue
         if before_style[field] != after_style[field]:
             changes.append(f"{label}: {before_style[field]} → {after_style[field]}.")
     if original["title"] != replacement["title"]:
         changes.append("Updated the scene heading.")
-    if [item["label"] for item in original["items"]] != [item["label"] for item in replacement["items"]]:
+    if (before_visible.get("items.labels") != after_visible.get("items.labels") if projected_edit else
+            [item["label"] for item in original["items"]] != [item["label"] for item in replacement["items"]]):
         changes.append("Updated the on-screen labels.")
-    elif replacement.get("graphics_version") in {1, 2} and replacement["template"] not in {"footage", "chart"} and not replacement.get("image") and [item.get("symbol") for item in original["items"]] != [item.get("symbol") for item in replacement["items"]]:
+    elif not projected_edit and replacement.get("graphics_version") in {1, 2} and replacement["template"] not in {"footage", "chart"} and not replacement.get("image") and [item.get("symbol") for item in original["items"]] != [item.get("symbol") for item in replacement["items"]]:
         changes.append("Updated the illustrated subjects.")
     for field, label in (("world", "Setting"), ("action", "Action"), ("camera", "Camera")):
         before, after = original.get("staging", {}).get(field), replacement.get("staging", {}).get(field)
-        if before != after:
+        if not projected_edit and before != after:
             changes.append(f"{label}: {before or 'legacy'} → {after or 'media'}.")
     if original.get("image") != replacement.get("image"):
         changes.append("Replaced the project photo." if replacement.get("image") else "Removed the photo.")
@@ -1568,6 +2035,8 @@ def regenerate_scene(plan: dict, scene_id: str, script: dict, instructions: str 
     prior_ai = {row["scene_id"] for row in result.get("direction_report", {}).get("scenes", []) if row.get("source") == "ai"}
     prior_ai.discard(original["id"])
     result["direction_report"] = _direction_report(result, all_sources, prior_ai | directed)
+    if any(scene.get("shot") for scene in result["scenes"]):
+        result["shot_report"] = shot_planner.report(result)
     if "image_status" in result:
         attached = sum(bool(scene.get("image")) and scene["template"] not in {"chart", "footage"}
                        for scene in result["scenes"])

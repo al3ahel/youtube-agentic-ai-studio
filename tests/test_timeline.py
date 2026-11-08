@@ -142,6 +142,9 @@ def test_synthesiser_requests_actual_word_boundaries(tmp_path, monkeypatch):
     import asyncio
     import sys
     from video import narrator
+    # This stub checks speech events, not an external proxy's TLS trust setup.
+    monkeypatch.delenv("SSL_CERT_FILE", raising=False)
+    monkeypatch.delenv("REQUESTS_CA_BUNDLE", raising=False)
     calls = []
     class Speech:
         def __init__(self, *args, **kwargs):

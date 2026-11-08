@@ -10,7 +10,7 @@ from copy import deepcopy
 SYMBOLS = (
     "concept", "census", "census-gap", "people", "mining", "solar",
     "battery", "circuit", "water", "plant", "network", "trade",
-    "conflict", "document", "orbit", "building",
+    "conflict", "document", "orbit", "building", "armour", "firearm",
 )
 STAGING_ACTIONS = {
     "flood": ("rise", "adapt", "float"),
@@ -25,6 +25,8 @@ _RULES = (
     ("network", r"\bdata\s+mining\b"),
     ("census-gap", r"\b(?:census|population)\b.{0,100}\bunder[ -]?count|\bunder[ -]?count\w*.{0,100}\b(?:census|population)\b"),
     ("census", r"\b(?:census|censuses|enumerat\w*)\b"),
+    ("armour", r"\b(?:armou?r|breastplates?|cuirass(?:es)?)\b"),
+    ("firearm", r"\b(?:firearms?|muskets?|pistols?|handguns?|arquebus(?:es)?|rifles?(?!\s+through\b))\b"),
     ("mining", r"\b(?:mining|mines?|miners?|ore|copper|iron|coal|mineral\w*)\b"),
     ("solar", r"\b(?:solar|sunlight|photovoltaic\w*)\b"),
     ("battery", r"\b(?:battery|batteries|recharg\w*)\b"),
@@ -73,14 +75,15 @@ def symbol_for_item(label, narration):
     source = re.sub(r"\b(?:without|not about|unrelated to|no mention of|excluding)\b[^.!?;]*", "", str(narration), flags=re.I)
     label = str(label)
     direct = _subject(label)
-    if direct != "concept" and re.search(dict(_RULES)[direct], source, re.I):
+    if direct != "concept" and symbol_supported(direct, source):
         return direct
     tokens = _words(label)
     clauses = re.split(r"(?<=[.!?;])\s+|\n+", source)
     ranked = sorted(((len(tokens & _words(clause)), -index, clause)
                      for index, clause in enumerate(clauses)), reverse=True)
     if ranked and ranked[0][0] >= 2:
-        return _subject(ranked[0][2])
+        subject = _subject(ranked[0][2])
+        return subject if symbol_supported(subject, ranked[0][2]) else "concept"
     return "concept"
 
 
@@ -115,7 +118,13 @@ def symbol_supported(symbol, narration):
     expression = dict(_RULES).get(symbol)
     if symbol == "mining" and re.search(r"\bdata\s+mining\b", str(narration), re.I) and not re.search(r"\b(?:ore|mines?|minerals?|drill\w*)\b", str(narration), re.I):
         return False
-    return bool(expression and re.search(expression, _source_text(narration), re.I))
+    source = _source_text(narration)
+    if symbol in {"armour", "firearm"}:
+        # A named absence is not a depicted object. Keep this bounded to the
+        # new physical subjects rather than treating "no guarantee" as a ban
+        # on every concrete noun later in the same sentence.
+        source = re.sub(r"\bno\s+" + expression + r"[^.!?;]*", "", source, flags=re.I)
+    return bool(expression and re.search(expression, source, re.I))
 
 
 def grounding_issues(scene, narration):
@@ -179,6 +188,7 @@ def _actor_label(symbol, source, fallback):
         "solar": r"\bsolar\s+panels?\b|\bsunlight\b|\bsolar\b",
         "building": r"\b(?:floating|raised|flooded)\s+(?:homes?|houses?|buildings?)\b|" + dict(_RULES)["building"],
         "people": r"\b(?:rescue|construction|census)\s+workers?\b|" + dict(_RULES)["people"],
+        "armour": r"\b(?:body\s+)?armou?r\b|\bbreastplates?\b|\bcuirass(?:es)?\b",
     }
     expression = expressions.get(symbol, dict(_RULES).get(symbol))
     match = re.search(expression, source, re.I) if expression else None
@@ -209,11 +219,17 @@ def apply_staging(scene, narration, *, calm=False):
             continue
         seen.add(identity)
         items.append({"label": _actor_label(symbol, _source_text(narration), label), "symbol": symbol})
+    source = _source_text(narration)
+    if staging["world"] == "generic" and any(
+            symbol != "concept" and symbol_supported(symbol, source) for symbol in SYMBOLS):
+        # Narration fragments are planning fallbacks, not additional objects.
+        # Reserve the bounded cast for the actual supported subjects before
+        # applying the count limit; four fragments must not crowd them out.
+        items = [item for item in items if item["symbol"] != "concept"]
     items = items[:4]
     relevant = {"flood": {"water", "building", "people"},
                 "census": {"census", "census-gap", "people", "document"},
                 "mining": {"mining", "trade", "people", "building"}}.get(staging["world"], set(SYMBOLS))
-    source = _source_text(narration)
     for symbol, expression in _RULES:
         if symbol not in relevant or any(item["symbol"] == symbol for item in items) or len(items) >= 4:
             continue
@@ -221,7 +237,7 @@ def apply_staging(scene, narration, *, calm=False):
         if symbol == "mining" and re.search(r"\bdata\s+mining\b", source, re.I) and not re.search(r"\b(?:ore|mines?|minerals?|drill\w*)\b", source, re.I):
             continue
         match = re.search(expression, source, re.I)
-        if match:
+        if match and symbol_supported(symbol, source):
             items.append({"label": _actor_label(symbol, source, match.group(0)), "symbol": symbol})
     if any(item["symbol"] != "concept" for item in items):
         # A fallback heading such as "Scene 1" is not another narrated actor.

@@ -67,6 +67,8 @@ _SETTINGS = {
     "visual_planner_model": ("VISUAL_PLANNER_MODEL", str),
     "visual_review_model": ("VISUAL_REVIEW_MODEL", str),
     "visual_review_enabled": ("VISUAL_REVIEW_ENABLED", bool),
+    "shot_planning_enabled": ("SHOT_PLANNING_ENABLED", bool),
+    "render_repair_enabled": ("RENDER_REPAIR_ENABLED", bool),
     "openrouter_free_only": ("OPENROUTER_FREE_ONLY", bool),
     "motion_quality":   ("MOTION_QUALITY", str),
     "motion_workers":   ("MOTION_WORKERS", int),

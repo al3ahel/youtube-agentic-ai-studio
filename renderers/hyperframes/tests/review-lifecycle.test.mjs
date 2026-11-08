@@ -163,7 +163,7 @@ async function startServer(directory, mode, port = 0) {
   }};
 }
 
-test("studio: real draft completion, Review retry, restart recovery and starting another video", {skip: skipped, timeout: 60000}, async t => {
+test("studio: real draft completion, Review retry, restart recovery and starting another video", {skip: skipped, timeout: 120000}, async t => {
   const directory = await mkdtemp(path.join(tmpdir(), "yaas-review-lifecycle-"));
   let server, browser;
   t.after(async () => { if (browser) await browser.close(); if (server) await server.close(); await rm(directory, {recursive: true, force: true}); });
@@ -175,9 +175,20 @@ test("studio: real draft completion, Review retry, restart recovery and starting
   };
   const args = process.env.YAAS_TEST_CHROME_ARGS ? JSON.parse(process.env.YAAS_TEST_CHROME_ARGS) : [];
   browser = await puppeteer.launch({executablePath: browserPath, headless: true, args, timeout: 20000});
-  const page = await browser.newPage(), errors = [], responses = [], thumbnailWrites = [];
+  const page = await browser.newPage(), errors = [], responses = [], thumbnailWrites = [], network = [];
   page.on("pageerror", error => errors.push(error.message));
   page.on("response", response => { if (new URL(response.url()).pathname === "/api/output") responses.push(response.status()); });
+  page.on("response", response => {
+    const path = new URL(response.url()).pathname;
+    if (["/api/status", "/api/output", "/api/visuals", "/preview-video"].includes(path)) {
+      network.push({path, status: response.status(), range: response.headers()["content-range"] || null});
+      if (network.length > 24) network.shift();
+    }
+  });
+  page.on("requestfailed", request => {
+    network.push({path: new URL(request.url()).pathname, failure: request.failure()?.errorText});
+    if (network.length > 24) network.shift();
+  });
   page.on("request", request => { if (new URL(request.url()).pathname === "/api/thumbnail" && request.method() === "POST") thumbnailWrites.push(request.postData()); });
   await page.setRequestInterception(true);
   page.on("request", request => request.url().startsWith(origin) ? request.continue() : request.abort());
@@ -259,7 +270,59 @@ test("studio: real draft completion, Review retry, restart recovery and starting
   assert.equal(await page.$eval("#hero-form", node => node.hidden), false, "Recovery must not force the completion card back over the creation form");
   assert.deepEqual(await readFile(path.join(directory, "output/motion_preview.mp4")), before, "Starting another video must preserve the existing draft until generation starts");
   await page.click('#tabs a[data-view="review"]');
-  await page.waitForFunction(() => document.querySelectorAll("#scene-list button").length === 7 && document.querySelector("#player video")?.readyState >= 2);
+  const reopenState = () => page.evaluate(() => {
+    const video = document.querySelector("#player video"), feedback = document.querySelector("#review-feedback");
+    const panel = document.querySelector("#rv-watch"), bounds = video?.getBoundingClientRect();
+    const style = video ? getComputedStyle(video) : null, panelStyle = getComputedStyle(panel);
+    return {scenes: document.querySelectorAll("#scene-list button").length, heading: document.querySelector("#review-heading").textContent,
+      feedback: {hidden: feedback.hidden, text: feedback.textContent},
+      reviewActive: document.querySelector("#view-review").classList.contains("active"),
+      layout: {panelHidden: panel.hidden, panelDisplay: panelStyle.display, panelOpacity: panelStyle.opacity,
+        display: style?.display, visibility: style?.visibility, opacity: style?.opacity,
+        x: bounds?.x, y: bounds?.y, width: bounds?.width, height: bounds?.height},
+      video: video ? {readyState: video.readyState, error: video.error?.message || null, currentSrc: video.currentSrc,
+        preload: video.preload, paused: video.paused, currentTime: video.currentTime, duration: video.duration,
+        videoWidth: video.videoWidth, videoHeight: video.videoHeight, networkState: video.networkState,
+        decodedFrames: video.getVideoPlaybackQuality().totalVideoFrames, droppedFrames: video.getVideoPlaybackQuality().droppedVideoFrames} : null};
+  });
+  const explainReopenFailure = async error => {
+    error.message += `; restored Review: ${JSON.stringify(await reopenState())}; network: ${JSON.stringify(network)}; errors: ${errors.join("; ")}`;
+    throw error;
+  };
+  await page.waitForFunction(() => document.querySelectorAll("#scene-list button").length === 7
+    && document.querySelector("#player video")?.currentSrc && document.querySelector("#review-feedback").hidden)
+    .catch(explainReopenFailure);
+  t.diagnostic(`Restored Review before visibility/playback: ${JSON.stringify(await reopenState())}; network: ${JSON.stringify(network)}`);
+  await page.$eval("#rv-watch", node => node.scrollIntoView({block: "center", behavior: "instant"}));
+  await page.waitForFunction(() => {
+    const panel = document.querySelector("#rv-watch"), video = document.querySelector("#player video");
+    const style = getComputedStyle(video), rect = video.getBoundingClientRect();
+    return document.querySelector("#view-review").classList.contains("active") && !panel.hidden
+      && Number(getComputedStyle(panel).opacity) > .99 && style.display !== "none" && style.visibility === "visible"
+      && rect.width > 0 && rect.height > 0 && rect.bottom > 0 && rect.top < innerHeight;
+  }).catch(explainReopenFailure);
+  const beforePlayback = await reopenState();
+  t.diagnostic(`Restored Review before playback: ${JSON.stringify(beforePlayback)}; network: ${JSON.stringify(network)}`);
+  assert.equal(beforePlayback.video.error, null);
+  // Review intentionally asks the browser to preload metadata. After a server
+  // restart, the browser can leave a paused offscreen player idle before even
+  // parsing metadata. Prove visible playback decodes frames and advances time,
+  // instead of treating a preload hint as a guarantee or weakening the proof.
+  const fromTime = beforePlayback.video.currentTime;
+  const playResult = await page.$eval("#player video", async video => Promise.race([
+    video.play().then(() => ({resolved: true, paused: video.paused})).catch(error => ({resolved: false, name: error.name, message: error.message})),
+    new Promise(resolve => setTimeout(() => resolve({resolved: false, timeout: true}), 10000)),
+  ])).catch(explainReopenFailure);
+  t.diagnostic(`Restored Review play request: ${JSON.stringify(playResult)}`);
+  assert.equal(playResult.resolved, true, `Visible playback did not start: ${JSON.stringify(playResult)}; ${JSON.stringify(await reopenState())}; ${JSON.stringify(network)}`);
+  await page.waitForFunction(fromTime => {
+    const video = document.querySelector("#player video");
+    return video.readyState >= 2 && !video.error && video.currentTime > fromTime + .15
+      && video.getVideoPlaybackQuality().totalVideoFrames > video.getVideoPlaybackQuality().droppedVideoFrames;
+  }, {timeout: 15000}, fromTime).catch(explainReopenFailure);
+  const afterPlayback = await reopenState();
+  t.diagnostic(`Restored Review decoded playback: ${JSON.stringify(afterPlayback)}; network: ${JSON.stringify(network)}`);
+  await page.$eval("#player video", video => video.pause());
   assert.equal(await page.$eval("#edit-desc", node => node.value), expectedDescription,
     "Restart recovery preserves the creator prose and one current footage-credit block");
   await page.$eval("#rv-watch", node => window.scrollTo({top: window.scrollY + node.getBoundingClientRect().top - 85, behavior: "instant"}));

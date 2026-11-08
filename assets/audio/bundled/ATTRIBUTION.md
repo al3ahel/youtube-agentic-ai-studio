@@ -1,6 +1,6 @@
 # Bundled audio: source, license and reproduction notes
 
-These four recordings provide a small, offline source for compatible Automatic
+These five recordings provide a small, offline source for compatible Automatic
 sound requests. They are real third-party recordings. They retain **Creative
 Commons Attribution 4.0 International** licensing; the application code's license
 does not replace the audio licenses. Preserve the credits when redistributing
@@ -28,8 +28,9 @@ platform will never issue a claim.
 | `music/cylinder-one-45s.ogg` | Chris Zabriskie, “Cylinder One” from *Cylinders* | 45.000 s | 537,411 |
 | `sfx/book-page-turn.ogg` | Oculus VR, LLC, *Oculus Audio Pack 01*: book page turns | 1.740667 s | 21,961 |
 | `sfx/small-whoosh.ogg` | Oculus VR, LLC, *Oculus Audio Pack 01*: small whoosh | 0.189333 s | 6,221 |
+| `sfx/metal-surface-impact.ogg` | Oculus VR, LLC, *Oculus Audio Pack 01*: metal surface impact | 1.132583 s | 14,209 |
 
-Total audio size: **1,052,283 bytes**. All four files are Ogg Vorbis at 48 kHz;
+Total audio size: **1,066,492 bytes**. All five files are Ogg Vorbis at 48 kHz;
 music is stereo and effects are mono. The music files have no detected leading
 silence at −45 dBFS. Natural internal phrase gaps remain. The page-turn excerpt
 starts at the original recording's first audible paper movement. The whoosh is
@@ -124,7 +125,7 @@ manifest verifies the exact shipped bytes, not every possible re-encoding.
 
 ## Oculus Audio Pack effects
 
-Both effects come directly from the original licensor's
+All three effects come directly from the original licensor's
 [Meta Open Sound repository](https://github.com/facebookincubator/Meta-open-sound),
 commit `251c0be57d5d1b3242b91f53e0cde62ab1cb42d9`. The collection has its own
 [CC BY 4.0 license](https://github.com/facebookincubator/Meta-open-sound/blob/251c0be57d5d1b3242b91f53e0cde62ab1cb42d9/corpora/oculus-audio-pack/LICENSE)
@@ -133,9 +134,12 @@ The repository's general CC0 license does **not** replace this collection's
 CC BY 4.0 license. Its exact upstream credit is retained in
 [META_ATTRIBUTION.md](META_ATTRIBUTION.md).
 
-The indexed descriptions identify actual book page turns in `index/PAPR.json`
-and a small, subtle whoosh in `index/WHSH.json`; there is no alarm, voice or
-musical sting substituted for those effects.
+The indexed descriptions identify actual book page turns in `index/PAPR.json`,
+a small, subtle whoosh in `index/WHSH.json`, and a metal object striking a hard
+surface in `index/METL.json`. The metal recording is generic contact foley;
+it is not an authenticated recording of a gunshot or armour test. Only compatible
+generic metal-contact searches can choose it. Specific weapon, alloy or
+continuous ambience requests still use the ordinary source search.
 
 ### Credits and changes
 
@@ -156,6 +160,12 @@ to the UCS naming convention; OGG previews transcoded from the original WAVs.
   `fc831db894c08fb5d543759da1d4c4e0b1101679`, SHA-256
   `606f8d0b2b022f1470466e250613bd067ccff7697d58a2518661d1e5eaa8f153`.
   Its Ogg bytes were copied unchanged; only the local filename differs.
+- **Metal surface impact:** source
+  `corpora/oculus-audio-pack/ogg/METLImpt_MetalHitSurface_OS_01.ogg`, Git blob
+  `1817e07deb1d386639f193779e4ea16e6f616de7`, SHA-256
+  `f372bda70ca1a66650270022c82634b87ff40d15b061f1e988fa40e00a066233`.
+  The downloaded bytes were checked against the pinned Git blob and copied
+  unchanged; only the local filename differs.
 
 The soundtrack mixer can further adjust each recording's level and timing.
 The selected recording's manifest credit accompanies those uses.

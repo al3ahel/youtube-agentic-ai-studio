@@ -25,7 +25,7 @@ const RANGES = {
   broll_xfade:    { to: v => Math.round(v * 10), from: v => v / 10, label: v => (v / 10).toFixed(1) + " s" },
 };
 const TEXT = ["channel_name", "channel_desc", "brand_text", "thumb_style", "gemini_model", "groq_model", "openrouter_model", "render_preset", "kb_start", "kb_end", "privacy", "voice_id", "trends_geo", "visual_mode", "visual_planner_model", "visual_review_model", "motion_quality", "motion_workers", "caption_style", "music_track", "sfx_track", "sfx_mode", "sound_mode", "sound_intensity", "llm_route", "ollama_base_url", "ollama_model"];
-const BOOLS = ["fact_grounding", "music_enabled", "sfx_enabled", "audio_mastering", "show_brand", "credit_yaas", "visual_ai_enabled", "visual_review_enabled", "openrouter_free_only", "voice_cache_enabled", "script_review_enabled"];
+const BOOLS = ["fact_grounding", "music_enabled", "sfx_enabled", "audio_mastering", "show_brand", "credit_yaas", "visual_ai_enabled", "visual_review_enabled", "shot_planning_enabled", "render_repair_enabled", "openrouter_free_only", "voice_cache_enabled", "script_review_enabled"];
 Object.entries(RANGES).forEach(([k, r]) => { const el = $("#r-" + k); el.addEventListener("input", () => $("#v-" + k).textContent = r.label(+el.value)); });
 
 let settingsSnap = "", settingsProfileId = null, settingsLoadSerial = 0, settingsSavePending = false;

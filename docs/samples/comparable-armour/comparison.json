@@ -1,0 +1,1521 @@
+{
+  "version": 1,
+  "status": "rendered_needs_review",
+  "started_at": "2026-11-08T23:13:35.789763+00:00",
+  "workflow": "normal production render and review of independently inspected, model-assisted editorial edits",
+  "new_full_storyboard_inference": false,
+  "new_sound_inference": false,
+  "original_visual_inference": "four genuine local batches in the preserved fresh comparison run",
+  "editorial_edit_receipt_sha256": "3a1faef521c003a126ee425d7d96d1f053967ded16919ee7953605b9c90181f0",
+  "original_interrupted_harness_receipt_sha256": "a144a0b58dbb5657a5c604cf0a264d85ed8ccee91cce8ce3dc5982362b683b88",
+  "prepared_edit_plan_sha256": "6cc3c9fbcd3a1d2e90757d8647d85d29d41e1cbb0e0879394e85b12c7f73d8a4",
+  "render_input_plan_sha256": "9b5e90f8818a881a61fd49428b9ccc3fea4e0fe501a04cb786cb2e8e33a2b771",
+  "provenance_refresh": "The ordinary refresh_model_provenance recomputed surviving original choices before render; it changed no visual or narrative control.",
+  "protected_inputs": {
+    "script.json": "54472a2641afcbf4063c1793a194b613d82b283b47c1bc98a50f11dd6fb08a4b",
+    "narration.wav": "c76d1f3e4ec8a586b4fe12464daead2c91d29ab862900efaa80362f45646850c",
+    "narration.timings.json": "09075306225724e7e074a226d9b4c612adc1772a42c86d56309e7832f5307f0f",
+    "timeline.json": "2d85cb1fd9cbe85d473a8dfd0b54e0bb035b60aa9ab832c3f81be3deada68aef",
+    "render_audio.json": "6baf28b2ca9861e13fd6baabc07d5f5c3ad5e5893a817c13a5c97558aee9dbc6",
+    "soundtracks/5fd0c8429b054c5593f13ba1af9cf0c2.wav": "75229d2a1037bd706f0488642f6392ef5b7ef8f62a512192ed105886994e62e6"
+  },
+  "requirements_unmet": [
+    "complete_reliable_semantic_review",
+    "render_review_passed"
+  ],
+  "comparison_complete": false,
+  "reference_quality_parity_claimed": false,
+  "subjective_audio_listening": "not_performed",
+  "stages": {
+    "encoding": {
+      "status": "verified",
+      "checks": {
+        "dimensions": true,
+        "frame_rate": true,
+        "decoded_frame_count": true,
+        "video_codec": true,
+        "audio_codec": true,
+        "duration": true
+      },
+      "sha256": "a8cc826624ba496307f5baebd6445de92712b6197164a1f4bca1a3b0d2c0f290",
+      "bytes": 7831583,
+      "probe": {
+        "streams": [
+          {
+            "index": 0,
+            "codec_name": "h264",
+            "codec_long_name": "H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10",
+            "profile": "High",
+            "codec_type": "video",
+            "codec_tag_string": "avc1",
+            "codec_tag": "0x31637661",
+            "width": 1080,
+            "height": 1920,
+            "coded_width": 1088,
+            "coded_height": 1920,
+            "closed_captions": 0,
+            "film_grain": 0,
+            "has_b_frames": 0,
+            "sample_aspect_ratio": "1:1",
+            "display_aspect_ratio": "9:16",
+            "pix_fmt": "yuv420p",
+            "level": 40,
+            "color_range": "tv",
+            "color_space": "bt709",
+            "color_transfer": "bt709",
+            "color_primaries": "bt709",
+            "chroma_location": "center",
+            "field_order": "progressive",
+            "refs": 3,
+            "is_avc": "true",
+            "nal_length_size": "4",
+            "id": "0x1",
+            "r_frame_rate": "30/1",
+            "avg_frame_rate": "30/1",
+            "time_base": "1/15360",
+            "start_pts": 0,
+            "start_time": "0.000000",
+            "duration_ts": 453120,
+            "duration": "29.500000",
+            "bit_rate": "1920085",
+            "bits_per_raw_sample": "8",
+            "nb_frames": "885",
+            "nb_read_frames": "885",
+            "extradata_size": 52,
+            "disposition": {
+              "default": 1,
+              "dub": 0,
+              "original": 0,
+              "comment": 0,
+              "lyrics": 0,
+              "karaoke": 0,
+              "forced": 0,
+              "hearing_impaired": 0,
+              "visual_impaired": 0,
+              "clean_effects": 0,
+              "attached_pic": 0,
+              "timed_thumbnails": 0,
+              "non_diegetic": 0,
+              "captions": 0,
+              "descriptions": 0,
+              "metadata": 0,
+              "dependent": 0,
+              "still_image": 0
+            },
+            "tags": {
+              "language": "und",
+              "handler_name": "VideoHandler",
+              "vendor_id": "[0][0][0][0]",
+              "encoder": "Lavc60.31.102 libx264"
+            }
+          },
+          {
+            "index": 1,
+            "codec_name": "aac",
+            "codec_long_name": "AAC (Advanced Audio Coding)",
+            "profile": "LC",
+            "codec_type": "audio",
+            "codec_tag_string": "mp4a",
+            "codec_tag": "0x6134706d",
+            "sample_fmt": "fltp",
+            "sample_rate": "48000",
+            "channels": 2,
+            "channel_layout": "stereo",
+            "bits_per_sample": 0,
+            "initial_padding": 0,
+            "id": "0x2",
+            "r_frame_rate": "0/0",
+            "avg_frame_rate": "0/0",
+            "time_base": "1/48000",
+            "start_pts": 0,
+            "start_time": "0.000000",
+            "duration_ts": 1416000,
+            "duration": "29.500000",
+            "bit_rate": "196208",
+            "nb_frames": "1384",
+            "nb_read_frames": "1383",
+            "extradata_size": 2,
+            "disposition": {
+              "default": 1,
+              "dub": 0,
+              "original": 0,
+              "comment": 0,
+              "lyrics": 0,
+              "karaoke": 0,
+              "forced": 0,
+              "hearing_impaired": 0,
+              "visual_impaired": 0,
+              "clean_effects": 0,
+              "attached_pic": 0,
+              "timed_thumbnails": 0,
+              "non_diegetic": 0,
+              "captions": 0,
+              "descriptions": 0,
+              "metadata": 0,
+              "dependent": 0,
+              "still_image": 0
+            },
+            "tags": {
+              "language": "und",
+              "handler_name": "SoundHandler",
+              "vendor_id": "[0][0][0][0]"
+            }
+          }
+        ],
+        "format": {
+          "filename": "final_short.mp4",
+          "nb_streams": 2,
+          "nb_programs": 0,
+          "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+          "format_long_name": "QuickTime / MOV",
+          "start_time": "0.000000",
+          "duration": "29.500000",
+          "size": "7831583",
+          "bit_rate": "2123819",
+          "probe_score": 100,
+          "tags": {
+            "minor_version": "512",
+            "major_brand": "isom",
+            "compatible_brands": "isomiso2avc1mp41",
+            "hyperframes_version": "0.9.19",
+            "hyperframes_renderer": "hyperframes",
+            "encoder": "Lavf60.16.100"
+          }
+        }
+      }
+    },
+    "initial_soundtrack_preservation": {
+      "stream": {
+        "codec_name": "aac",
+        "sample_rate": "48000",
+        "channels": 2,
+        "duration": "29.500000"
+      },
+      "decoded_pcm_sha256": "b4027aa9fbf3f3f21d394ed41da74d5a3095cbb987f13bcd6de29f892df8c6cb",
+      "decoded_pcm_bytes": 11329536,
+      "sample_format": "s32le",
+      "method": "ffmpeg AAC decode at native rate and channel count; no resampling or remix",
+      "qualification": "Decoded sample identity, not a listening or intelligibility assessment.",
+      "matches_original_decoded_pcm": true
+    },
+    "render_review": {
+      "version": 1,
+      "run_id": "3220ca2e748a4ef1acc4e07820dbfe9a",
+      "attempt": 0,
+      "plan_sha256": "9b5e90f8818a881a61fd49428b9ccc3fea4e0fe501a04cb786cb2e8e33a2b771",
+      "status": "issues_found",
+      "passed": false,
+      "issues": [
+        {
+          "shot_id": "scene-001",
+          "code": "repetition",
+          "severity": "warning",
+          "source": "vision",
+          "message": "The 'result' sample (image_index 2) is visually identical to the 'action' sample (image_index 1). The composition does not change or progress, which contradicts the expected role of a result shot.",
+          "repair": "none",
+          "samples": [
+            "scene-001:action",
+            "scene-001:result"
+          ]
+        },
+        {
+          "shot_id": "scene-002",
+          "code": "repetition",
+          "severity": "error",
+          "source": "vision",
+          "message": "The visual state for 'scene-002:action' and 'scene-002:result' is identical. The only change is the addition of text at the bottom, which does not constitute a new physical action or result.",
+          "repair": "none",
+          "samples": [
+            "scene-002:action",
+            "scene-002:result"
+          ]
+        },
+        {
+          "shot_id": "scene-004",
+          "code": "subject_relevance",
+          "severity": "error",
+          "source": "vision",
+          "message": "The narration states 'Steel plate armour can deflect some blows away from the body', but the visual content is a static image of a shield with no depiction of an impact or deflection.",
+          "repair": "none",
+          "samples": [
+            "scene-004:setup",
+            "scene-004:action",
+            "scene-004:result"
+          ]
+        },
+        {
+          "shot_id": "scene-005",
+          "code": "repetition",
+          "severity": "error",
+          "source": "vision",
+          "message": "The 'action' and 'result' samples are visually identical to the 'setup' sample. There is no observable action or change in state.",
+          "repair": "none",
+          "samples": [
+            "scene-005:setup",
+            "scene-005:action",
+            "scene-005:result"
+          ]
+        },
+        {
+          "shot_id": "scene-006",
+          "code": "subject_relevance",
+          "severity": "error",
+          "source": "vision",
+          "message": "The narration states 'was hardened thickened or given a reinforcing layer over the breastplate'. The visual sequence shows the addition of a layer, but the text at the bottom ('was hardened thickened or given') is presented as a separate sentence fragment rather than part of the continuous narration",
+          "repair": "none",
+          "samples": [
+            "scene-006:setup",
+            "scene-006:action",
+            "scene-006:result"
+          ]
+        },
+        {
+          "shot_id": "scene-009",
+          "code": "repetition",
+          "severity": "warning",
+          "source": "vision",
+          "message": "The visual state between sample 1 and sample 2 is identical, indicating a lack of progression or action.",
+          "repair": "none",
+          "samples": [
+            "scene-009:action",
+            "scene-009:result"
+          ]
+        },
+        {
+          "shot_id": "scene-010",
+          "code": "repetition",
+          "severity": "error",
+          "source": "vision",
+          "message": "The visual content (Armour and Firearms) is identical across all three samples. The 'action' and 'result' labels are inappropriate for a static image sequence that only changes its subtitle text.",
+          "repair": "none",
+          "samples": [
+            "scene-010:setup",
+            "scene-010:action",
+            "scene-010:result"
+          ]
+        }
+      ],
+      "samples": [
+        {
+          "shot_id": "scene-001",
+          "frames": [
+            {
+              "id": "scene-001:setup",
+              "phase": "setup",
+              "time": 0.366667,
+              "file": "scene-001-setup.jpg",
+              "sha256": "b9602210e8d3e2303c08c28c0d28a900ea50f0aa3a0a92c463dd7d769411662a",
+              "width": 360,
+              "height": 640
+            },
+            {
+              "id": "scene-001:action",
+              "phase": "action",
+              "time": 1.166667,
+              "file": "scene-001-action.jpg",
+              "sha256": "8c8bf26b389d2d464524882e047900578c0b5f668e1ca801bdeed65997f78b69",
+              "width": 360,
+              "height": 640
+            },
+            {
+              "id": "scene-001:result",
+              "phase": "result",
+              "time": 1.933333,
+              "file": "scene-001-result.jpg",
+              "sha256": "ab5d0f230bacf4b3a080007881ed9504af362cb150312729fda132e3f99189de",
+              "width": 360,
+              "height": 640
+            }
+          ],
+          "metrics": {
+            "central_stage_contrast": [
+              50.7659,
+              63.7184,
+              63.8082
+            ],
+            "central_stage_change": [
+              48.8047,
+              0.3077
+            ]
+          },
+          "sampling": {
+            "method": "fixed_fractions",
+            "fractions": [
+              0.16,
+              0.5,
+              0.84
+            ],
+            "distinct_frames": 3,
+            "progression_covered": true
+          },
+          "source_narration": "Could old armour stop a bullet Sometimes The answer depends",
+          "source_section_narration": "Could old armour stop a bullet? Sometimes. The answer depends on the armour and the weapon.",
+          "source_scope": "caption_overlap"
+        },
+        {
+          "shot_id": "scene-002",
+          "frames": [
+            {
+              "id": "scene-002:setup",
+              "phase": "setup",
+              "time": 2.666667,
+              "file": "scene-002-setup.jpg",
+              "sha256": "936ae2d5413dfa6e856c24a1109445f8ab30db0afe838bc64c886c00a8d144ab",
+              "width": 360,
+              "height": 640
+            },
+            {
+              "id": "scene-002:action",
+              "phase": "action",
+              "time": 3.466667,
+              "file": "scene-002-action.jpg",
+              "sha256": "2678cab7fa2bd61867f8070341b904ecef7068680534afe2092a1c311a1fbff3",
+              "width": 360,
+              "height": 640
+            },
+            {
+              "id": "scene-002:result",
+              "phase": "result",
+              "time": 4.233333,
+              "file": "scene-002-result.jpg",
+              "sha256": "4037977e9af5679239724d633aa1724a89715edab284af52b926a4e4ab6c40c1",
+              "width": 360,
+              "height": 640
+            }
+          ],
+          "metrics": {
+            "central_stage_contrast": [
+              72.4486,
+              67.0993,
+              67.1274
+            ],
+            "central_stage_change": [
+              51.2347,
+              13.7367
+            ],
+            "preceding_shot_change": 47.1867
+          },
+          "sampling": {
+            "method": "fixed_fractions",
+            "fractions": [
+              0.16,
+              0.5,
+              0.84
+            ],
+            "distinct_frames": 3,
+            "progression_covered": true
+          },
+          "source_narration": "bullet Sometimes The answer depends on the armour and the weapon",
+          "source_section_narration": "Could old armour stop a bullet? Sometimes. The answer depends on the armour and the weapon.",
+          "source_scope": "caption_overlap"
+        },
+        {
+          "shot_id": "scene-003",
+          "frames": [
+            {
+              "id": "scene-003:setup",
+              "phase": "setup",
+              "time": 4.9,
+              "file": "scene-003-setup.jpg",
+              "sha256": "aaacbf663d97dd48a6c37c45f2c4d5e0be32db899fd60034a2017d954c14cf88",
+              "width": 360,
+              "height": 640
+            },
+            {
+              "id": "scene-003:action",
+              "phase": "action",
+              "time": 5.466667,
+              "file": "scene-003-action.jpg",
+              "sha256": "0b4d379856da6ae8559d5befcc5c42a1a382dd2bd16861e1ea638a31ffdfef40",
+              "width": 360,
+              "height": 640
+            },
+            {
+              "id": "scene-003:result",
+              "phase": "result",
+              "time": 6.033333,
+              "file": "scene-003-result.jpg",
+              "sha256": "5d2dcb608b2d6f9d38f0ed9132997d1a7edc6d9a6f1d023556dd596a18f59cb9",
+              "width": 360,
+              "height": 640
+            }
+          ],
+          "metrics": {
+            "central_stage_contrast": [
+              43.5523,
+              43.5525,
+              43.5525
+            ],
+            "central_stage_change": [
+              0.001,
+              0.0
+            ],
+            "preceding_shot_change": 82.5734
+          },
+          "sampling": {
+            "method": "fixed_fractions",
+            "fractions": [
+              0.16,
+              0.5,
+              0.84
+            ],
+            "distinct_frames": 3,
+            "progression_covered": true
+          },
+          "source_narration": "Mail armour uses linked rings",
+          "source_section_narration": "Mail armour uses linked rings. Steel plate armour can deflect some blows away from the body.",
+          "source_scope": "caption_overlap"
+        },
+        {
+          "shot_id": "scene-004",
+          "frames": [
+            {
+              "id": "scene-004:setup",
+              "phase": "setup",
+              "time": 6.8,
+              "file": "scene-004-setup.jpg",
+              "sha256": "5166744b7f5323b8b653a29df663067b9004e80aa723b8ba98a7925bdfa0dfae",
+              "width": 360,
+              "height": 640
+            },
+            {
+              "id": "scene-004:action",
+              "phase": "action",
+              "time": 7.933333,
+              "file": "scene-004-action.jpg",
+              "sha256": "96231fb1b217d203b5833eed5fa97b4eb8317c445d16f749416449f97077c872",
+              "width": 360,
+              "height": 640
+            },
+            {
+              "id": "scene-004:result",
+              "phase": "result",
+              "time": 9.066667,
+              "file": "scene-004-result.jpg",
+              "sha256": "5787520a79024fdd9df1e2f7f22f1de2dbc9c3f3913836f9b1d4c17a355a55e8",
+              "width": 360,
+              "height": 640
+            }
+          ],
+          "metrics": {
+            "central_stage_contrast": [
+              43.5381,
+              43.5381,
+              43.5379
+            ],
+            "central_stage_change": [
+              0.0,
+              0.0017
+            ],
+            "preceding_shot_change": 27.6165
+          },
+          "sampling": {
+            "method": "fixed_fractions",
+            "fractions": [
+              0.16,
+              0.5,
+              0.84
+            ],
+            "distinct_frames": 3,
+            "progression_covered": true
+          },
+          "source_narration": "Steel plate armour can deflect some blows away from the body",
+          "source_section_narration": "Mail armour uses linked rings. Steel plate armour can deflect some blows away from the body.",
+          "source_scope": "caption_overlap"
+        },
+        {
+          "shot_id": "scene-005",
+          "frames": [
+            {
+              "id": "scene-005:setup",
+              "phase": "setup",
+              "time": 10.033333,
+              "file": "scene-005-setup.jpg",
+              "sha256": "7d1aae094da36aed7d7b7ac452be5959ca73c58cb30fc9ce8ac405b7bb282347",
+              "width": 360,
+              "height": 640
+            },
+            {
+              "id": "scene-005:action",
+              "phase": "action",
+              "time": 10.966667,
+              "file": "scene-005-action.jpg",
+              "sha256": "33db4e4ab4d93d79a1ce513e80e0c88c0b9e82f5434fd8a71dd793d64885be66",
+              "width": 360,
+              "height": 640
+            },
+            {
+              "id": "scene-005:result",
+              "phase": "result",
+              "time": 11.9,
+              "file": "scene-005-result.jpg",
+              "sha256": "d851432e4cf5dfa19a430923f55643d548e27c2ae49b0bb16fc126fe9538090c",
+              "width": 360,
+              "height": 640
+            }
+          ],
+          "metrics": {
+            "central_stage_contrast": [
+              49.4274,
+              49.4324,
+              49.3344
+            ],
+            "central_stage_change": [
+              7.8244,
+              9.6136
+            ],
+            "preceding_shot_change": 38.0271
+          },
+          "sampling": {
+            "method": "fixed_fractions",
+            "fractions": [
+              0.16,
+              0.5,
+              0.84
+            ],
+            "distinct_frames": 3,
+            "progression_covered": true
+          },
+          "source_narration": "When firearms spread steel armour was hardened thickened or given",
+          "source_section_narration": "When firearms spread, steel armour was hardened, thickened, or given a reinforcing layer over the breastplate.",
+          "source_scope": "caption_overlap"
+        },
+        {
+          "shot_id": "scene-006",
+          "frames": [
+            {
+              "id": "scene-006:setup",
+              "phase": "setup",
+              "time": 12.9,
+              "file": "scene-006-setup.jpg",
+              "sha256": "4a382cb19a739c30cd727563d2e37c7020c1c4857e7c3fc4b23f63bd32f32664",
+              "width": 360,
+              "height": 640
+            },
+            {
+              "id": "scene-006:action",
+              "phase": "action",
+              "time": 14.066667,
+              "file": "scene-006-action.jpg",
+              "sha256": "97fb9186a81c2d6e526524e301e5c6f4bcac6f56191b56792c99cc40078d4632",
+              "width": 360,
+              "height": 640
+            },
+            {
+              "id": "scene-006:result",
+              "phase": "result",
+              "time": 15.2,
+              "file": "scene-006-result.jpg",
+              "sha256": "5e29906952b84f89a1ae9e854984caf53dd5b7f5aab3d66d4c7a556006bcde83",
+              "width": 360,
+              "height": 640
+            }
+          ],
+          "metrics": {
+            "central_stage_contrast": [
+              52.7349,
+              51.6147,
+              49.6799
+            ],
+            "central_stage_change": [
+              15.8567,
+              5.4979
+            ],
+            "preceding_shot_change": 27.3974
+          },
+          "sampling": {
+            "method": "fixed_fractions",
+            "fractions": [
+              0.16,
+              0.5,
+              0.84
+            ],
+            "distinct_frames": 3,
+            "progression_covered": true
+          },
+          "source_narration": "was hardened thickened or given a reinforcing layer over the breastplate",
+          "source_section_narration": "When firearms spread, steel armour was hardened, thickened, or given a reinforcing layer over the breastplate.",
+          "source_scope": "caption_overlap"
+        },
+        {
+          "shot_id": "scene-007",
+          "frames": [
+            {
+              "id": "scene-007:setup",
+              "phase": "setup",
+              "time": 16.366667,
+              "file": "scene-007-setup.jpg",
+              "sha256": "c0fa8050d94789ae4aba23aef535af32e04fb34f0fd4809436cdc611e3d37ab8",
+              "width": 360,
+              "height": 640
+            },
+            {
+              "id": "scene-007:action",
+              "phase": "action",
+              "time": 17.166667,
+              "file": "scene-007-action.jpg",
+              "sha256": "c8b7fbabaa99482f6a507c19dbfe188183dc7145dcfbaef69eb969117c095c35",
+              "width": 360,
+              "height": 640
+            },
+            {
+              "id": "scene-007:result",
+              "phase": "result",
+              "time": 18.166667,
+              "file": "scene-007-result.jpg",
+              "sha256": "c08b5ff9e26991df058c3f3c2ddbdba953c70a93653a1a9e4e84a0bffd541010",
+              "width": 360,
+              "height": 640
+            }
+          ],
+          "metrics": {
+            "central_stage_contrast": [
+              15.8926,
+              15.9086,
+              15.8153
+            ],
+            "central_stage_change": [
+              0.7444,
+              1.5089
+            ],
+            "preceding_shot_change": 69.7377
+          },
+          "sampling": {
+            "method": "scene_contact_beat",
+            "contact_time": 17.134458,
+            "word_anchor_matches": true,
+            "qualification": "The cue is planned animation timing; word timing is not a listened-to contact verification.",
+            "distinct_frames": 3,
+            "progression_covered": true,
+            "post_contact_seconds": 1.032209,
+            "result_window": "sampled"
+          },
+          "source_narration": "In proof tests bullets hit some steel breastplates A surviving",
+          "source_section_narration": "In proof tests, bullets hit some steel breastplates. A surviving dent showed that particular shot had stopped.",
+          "source_scope": "caption_overlap"
+        },
+        {
+          "shot_id": "scene-008",
+          "frames": [
+            {
+              "id": "scene-008:setup",
+              "phase": "setup",
+              "time": 19.033333,
+              "file": "scene-008-setup.jpg",
+              "sha256": "62009849ed9d84aab305419b8f95030399dd58410c402a1696d2f26becc69d3d",
+              "width": 360,
+              "height": 640
+            },
+            {
+              "id": "scene-008:action",
+              "phase": "action",
+              "time": 20.066667,
+              "file": "scene-008-action.jpg",
+              "sha256": "c26b3a26de3920839c2c2cd1dfc31295d1d961f50873f5bbcb899c5ee555acc4",
+              "width": 360,
+              "height": 640
+            },
+            {
+              "id": "scene-008:result",
+              "phase": "result",
+              "time": 21.1,
+              "file": "scene-008-result.jpg",
+              "sha256": "853353e0133941c901505f67d47542940db4392b9a08fce2040fdbd6d87bad1c",
+              "width": 360,
+              "height": 640
+            }
+          ],
+          "metrics": {
+            "central_stage_contrast": [
+              14.9219,
+              14.9213,
+              14.9218
+            ],
+            "central_stage_change": [
+              0.0007,
+              0.0015
+            ],
+            "preceding_shot_change": 1.9094
+          },
+          "sampling": {
+            "method": "settled_result_view",
+            "fractions": [
+              0.16,
+              0.5,
+              0.84
+            ],
+            "mechanism_result_view": true,
+            "qualification": "The source refers to the preceding contact's settled consequence; no new contact motion is expected. Visibility and correctness still require review.",
+            "distinct_frames": 3,
+            "progression_covered": true
+          },
+          "source_narration": "some steel breastplates A surviving dent showed that particular shot had stopped",
+          "source_section_narration": "In proof tests, bullets hit some steel breastplates. A surviving dent showed that particular shot had stopped.",
+          "source_scope": "caption_overlap"
+        },
+        {
+          "shot_id": "scene-009",
+          "frames": [
+            {
+              "id": "scene-009:setup",
+              "phase": "setup",
+              "time": 22.133333,
+              "file": "scene-009-setup.jpg",
+              "sha256": "21727e5ede035142d21a65936416605dd5000e315ae9a3668c3f88858a992a35",
+              "width": 360,
+              "height": 640
+            },
+            {
+              "id": "scene-009:action",
+              "phase": "action",
+              "time": 23.3,
+              "file": "scene-009-action.jpg",
+              "sha256": "42dd3481d2e857789e1183bdcc92fe998debc1bc8e1ba3a10d8efaed64eb14d7",
+              "width": 360,
+              "height": 640
+            },
+            {
+              "id": "scene-009:result",
+              "phase": "result",
+              "time": 24.433333,
+              "file": "scene-009-result.jpg",
+              "sha256": "544d19a62bd195d24dc38aa9bf70efd3f483febe57d1e2a6a7e21a788e261d2b",
+              "width": 360,
+              "height": 640
+            }
+          ],
+          "metrics": {
+            "central_stage_contrast": [
+              11.4214,
+              11.6927,
+              12.0082
+            ],
+            "central_stage_change": [
+              1.0043,
+              1.0582
+            ],
+            "preceding_shot_change": 8.6566
+          },
+          "sampling": {
+            "method": "fixed_fractions",
+            "fractions": [
+              0.16,
+              0.5,
+              0.84
+            ],
+            "distinct_frames": 3,
+            "progression_covered": true
+          },
+          "source_narration": "But one successful test was no universal guarantee Armour and",
+          "source_section_narration": "But one successful test was no universal guarantee. Armour and firearms evolved together for centuries; protection always had limits.",
+          "source_scope": "caption_overlap"
+        },
+        {
+          "shot_id": "scene-010",
+          "frames": [
+            {
+              "id": "scene-010:setup",
+              "phase": "setup",
+              "time": 25.7,
+              "file": "scene-010-setup.jpg",
+              "sha256": "cce51cba46efcbd971fdf818620f9b032070ed7c65f8718665bbff81cd4086a7",
+              "width": 360,
+              "height": 640
+            },
+            {
+              "id": "scene-010:action",
+              "phase": "action",
+              "time": 27.266667,
+              "file": "scene-010-action.jpg",
+              "sha256": "a83bf16ac23046d45ec902e40d5c6361e511e427778692d2b9df946e7d5cc677",
+              "width": 360,
+              "height": 640
+            },
+            {
+              "id": "scene-010:result",
+              "phase": "result",
+              "time": 28.8,
+              "file": "scene-010-result.jpg",
+              "sha256": "d2d7ea803f07e60dedd474e9ce20b965a3b9d2710628850be3d9c026dfb4175c",
+              "width": 360,
+              "height": 640
+            }
+          ],
+          "metrics": {
+            "central_stage_contrast": [
+              35.596,
+              35.6768,
+              35.6768
+            ],
+            "central_stage_change": [
+              0.038,
+              0.0
+            ],
+            "preceding_shot_change": 11.6805
+          },
+          "sampling": {
+            "method": "fixed_fractions",
+            "fractions": [
+              0.16,
+              0.5,
+              0.84
+            ],
+            "distinct_frames": 3,
+            "progression_covered": true
+          },
+          "source_narration": "no universal guarantee Armour and firearms evolved together for centuries protection always had limits",
+          "source_section_narration": "But one successful test was no universal guarantee. Armour and firearms evolved together for centuries; protection always had limits.",
+          "source_scope": "caption_overlap"
+        }
+      ],
+      "render": {
+        "file": "final_short.mp4",
+        "sha256": "a8cc826624ba496307f5baebd6445de92712b6197164a1f4bca1a3b0d2c0f290",
+        "duration": 29.5,
+        "fps": 30.0,
+        "width": 1080,
+        "height": 1920,
+        "video_codec": "h264",
+        "has_audio": true
+      },
+      "evidence_directory": "render_review/3220ca2e748a4ef1acc4e07820dbfe9a/attempt-0",
+      "qualification": [
+        "Three decoded phases inspect sampled shot progression, not every frame or smooth playback.",
+        "Pixel heuristics do not establish subject relevance, correctness, readability or artistic quality.",
+        "Encoded audio is measured; music suitability, intelligibility and sound aesthetics have not been listened to."
+      ],
+      "coverage": {
+        "total_shots": 10,
+        "technical_shots": 10,
+        "technical_complete": true,
+        "frames_per_shot": 3,
+        "sampling": "three decoded phases around a planned contact beat when present; otherwise 16%, 50%, 84%; evenly distributed shot selection when over 24"
+      },
+      "audio": {
+        "status": "measured_not_listened",
+        "has_audio": true,
+        "perceptual_quality": "not_assessed",
+        "issues": [],
+        "duration": 29.504,
+        "rms_dbfs": -19.802,
+        "peak_dbfs": -1.662,
+        "clipped_fraction": 0.0,
+        "silence_intervals": [],
+        "measurement": "8 kHz mono PCM sample-peak/RMS check; not a true-peak, intelligibility, music-quality or listening test"
+      },
+      "vision": {
+        "status": "incomplete",
+        "shots_reviewed": 8,
+        "complete": false,
+        "results": [
+          {
+            "shot_id": "scene-001",
+            "confidence": 0.95,
+            "observations": [
+              {
+                "sample_id": "scene-001:setup",
+                "visible": "A single image of a full suit of plate armour is shown in the center of the frame."
+              },
+              {
+                "sample_id": "scene-001:action",
+                "visible": "The composition changes to show three images. The original full suit of plate armour remains at the top. Below it, a new image appears on the right showing chainmail. A third image appears in the bottom left, showing a close-up of a breastplate."
+              },
+              {
+                "sample_id": "scene-001:result",
+                "visible": "The composition is identical to the action shot, displaying the three images: the full suit of plate armour, chainmail, and the close-up of the breastplate."
+              }
+            ],
+            "assessments": {
+              "subject_relevance": "uncertain",
+              "composition": "uncertain",
+              "motion": "uncertain"
+            },
+            "issues": [
+              {
+                "category": "repetition",
+                "severity": "warning",
+                "message": "The 'result' sample (image_index 2) is visually identical to the 'action' sample (image_index 1). The composition does not change or progress, which contradicts the expected role of a result shot.",
+                "samples": [
+                  "scene-001:action",
+                  "scene-001:result"
+                ],
+                "repair": "none"
+              }
+            ],
+            "reliable": false
+          },
+          {
+            "shot_id": "scene-002",
+            "confidence": 1.0,
+            "observations": [
+              {
+                "sample_id": "scene-002:setup",
+                "visible": "A single image of a mail shirt is shown against a plain background. Text at the top asks 'Could armour stop a bullet?'. A caption at the bottom reads 'bullet Sometimes The answer depends'."
+              },
+              {
+                "sample_id": "scene-002:action",
+                "visible": "The previous image of the mail shirt remains, but two additional images are added below it. One shows a piece of plate armor (labeled 'Armor of Emperor Ferdinand I (1503-1564)'), and the other shows a close-up of a damaged or textured metal surface."
+              },
+              {
+                "sample_id": "scene-002:result",
+                "visible": "The scene is identical to the action shot. A new caption appears at the bottom, reading 'weapon'."
+              }
+            ],
+            "assessments": {
+              "subject_relevance": "uncertain",
+              "composition": "uncertain",
+              "motion": "uncertain"
+            },
+            "issues": [
+              {
+                "category": "repetition",
+                "severity": "error",
+                "message": "The visual state for 'scene-002:action' and 'scene-002:result' is identical. The only change is the addition of text at the bottom, which does not constitute a new physical action or result.",
+                "samples": [
+                  "scene-002:action",
+                  "scene-002:result"
+                ],
+                "repair": "reframe_wide"
+              }
+            ],
+            "reliable": false
+          },
+          {
+            "shot_id": "scene-004",
+            "confidence": 1.0,
+            "observations": [
+              {
+                "sample_id": "scene-004:setup",
+                "visible": "A static illustration of a steel plate shield is centered on screen. The text 'Steel plate armour can deflect' is displayed at the bottom."
+              },
+              {
+                "sample_id": "scene-004:action",
+                "visible": "The same static illustration of the steel plate shield is centered on screen. The text 'some blows away from the body' is displayed at the bottom."
+              },
+              {
+                "sample_id": "scene-004:result",
+                "visible": "The same static illustration of the steel plate shield is centered on screen. The word 'body' is displayed in a small box at the bottom."
+              }
+            ],
+            "assessments": {
+              "subject_relevance": "fail",
+              "composition": "uncertain",
+              "motion": "uncertain"
+            },
+            "issues": [
+              {
+                "category": "subject_relevance",
+                "severity": "error",
+                "message": "The narration states 'Steel plate armour can deflect some blows away from the body', but the visual content is a static image of a shield with no depiction of an impact or deflection.",
+                "samples": [
+                  "scene-004:setup",
+                  "scene-004:action",
+                  "scene-004:result"
+                ],
+                "repair": "source_direction"
+              }
+            ],
+            "reliable": false
+          },
+          {
+            "shot_id": "scene-005",
+            "confidence": 1.0,
+            "observations": [
+              {
+                "sample_id": "scene-005:setup",
+                "visible": "A single steel breastplate is centered in the frame, viewed from a slightly elevated angle. The plate has a distinct thickness and features rows of rivets along its edges. A vertical seam runs down the center. The text 'Harder, thicker armour' appears at the top, and 'When firearms spread steel armour' is at the bottom"
+              },
+              {
+                "sample_id": "scene-005:action",
+                "visible": "The scene is identical to the previous one. The breastplate remains in the exact same position with no movement or change in lighting."
+              },
+              {
+                "sample_id": "scene-005:result",
+                "visible": "The scene is identical to the previous ones. The breastplate remains static and unchanged."
+              }
+            ],
+            "assessments": {
+              "subject_relevance": "uncertain",
+              "composition": "uncertain",
+              "motion": "uncertain"
+            },
+            "issues": [
+              {
+                "category": "repetition",
+                "severity": "error",
+                "message": "The 'action' and 'result' samples are visually identical to the 'setup' sample. There is no observable action or change in state.",
+                "samples": [
+                  "scene-005:setup",
+                  "scene-005:action",
+                  "scene-005:result"
+                ],
+                "repair": "none"
+              }
+            ],
+            "reliable": false
+          },
+          {
+            "shot_id": "scene-006",
+            "confidence": 1.0,
+            "observations": [
+              {
+                "sample_id": "scene-006:setup",
+                "visible": "A single grey rectangular plate stands vertically on a flat surface. A blue vertical line is visible on its right edge. Text at the top reads 'Adding a reinforcing layer'. Text at the bottom reads 'was hardened thickened or given'. The text appears to be part of a sentence being constructed across frames."
+              },
+              {
+                "sample_id": "scene-006:action",
+                "visible": "The grey plate is now shown with a second, thinner blue layer positioned directly in front of it (closer to the viewer). Labels identify the original grey part as 'original breastplate' and the new blue part as 'reinforcing layer'. The bottom text reads 'a reinforcing layer over the'."
+              },
+              {
+                "sample_id": "scene-006:result",
+                "visible": "The two layers are now clearly separated, showing the original grey plate behind a slightly offset blue plate. Labels identify both parts again. The bottom text completes the sentence with 'breastplate'."
+              }
+            ],
+            "assessments": {
+              "subject_relevance": "fail",
+              "composition": "uncertain",
+              "motion": "uncertain"
+            },
+            "issues": [
+              {
+                "category": "subject_relevance",
+                "severity": "error",
+                "message": "The narration states 'was hardened thickened or given a reinforcing layer over the breastplate'. The visual sequence shows the addition of a layer, but the text at the bottom ('was hardened thickened or given') is presented as a separate sentence fragment rather than part of the continuous narration",
+                "samples": [
+                  "scene-006:setup",
+                  "scene-006:action",
+                  "scene-006:result"
+                ],
+                "repair": "none"
+              }
+            ],
+            "reliable": false
+          },
+          {
+            "shot_id": "scene-007",
+            "confidence": 1.0,
+            "observations": [
+              {
+                "sample_id": "scene-007:setup",
+                "visible": "A bullet is positioned to the left of a vertical steel plate on a grid background. The plate is straight and undisturbed."
+              },
+              {
+                "sample_id": "scene-007:action",
+                "visible": "The bullet has made contact with the center of the steel plate, leaving a visible dent and shockwave lines. The plate remains largely straight but shows localized deformation at the impact point."
+              },
+              {
+                "sample_id": "scene-007:result",
+                "visible": "The steel plate is now significantly bent or deformed into a curved shape, indicating substantial structural change from the impact."
+              }
+            ],
+            "assessments": {
+              "subject_relevance": "pass",
+              "composition": "pass",
+              "motion": "pass"
+            },
+            "issues": [],
+            "reliable": true
+          },
+          {
+            "shot_id": "scene-009",
+            "confidence": 1.0,
+            "observations": [
+              {
+                "sample_id": "scene-009:setup",
+                "visible": "A static shot displays a beige background with a faint grid pattern. Centered is an illustration of a breastplate (armour), split vertically into white and grey sections. Text at the top reads 'Protection had limits'. At the bottom, a black bar contains the text 'But one successful test was', with the word 'successful'"
+              },
+              {
+                "sample_id": "scene-009:action",
+                "visible": "The visual composition is identical to the previous shot. The image shows the same breastplate illustration and grid background. The text at the top remains 'Protection had limits'. The bottom black bar now displays the text 'no universal guarantee Armour and', with the word 'universal' highlighted in yellow."
+              },
+              {
+                "sample_id": "scene-009:result",
+                "visible": "The visual composition is identical to the previous shot. The image shows the same breastplate illustration and grid background. The text at the top remains 'Protection had limits'. The bottom black bar displays the text 'no universal guarantee Armour and', with the word 'universal' highlighted in yellow."
+              }
+            ],
+            "assessments": {
+              "subject_relevance": "pass",
+              "composition": "pass",
+              "motion": "uncertain"
+            },
+            "issues": [
+              {
+                "category": "repetition",
+                "severity": "warning",
+                "message": "The visual state between sample 1 and sample 2 is identical, indicating a lack of progression or action.",
+                "samples": [
+                  "scene-009:action",
+                  "scene-009:result"
+                ],
+                "repair": "none"
+              }
+            ],
+            "reliable": false
+          },
+          {
+            "shot_id": "scene-010",
+            "confidence": 0.95,
+            "observations": [
+              {
+                "sample_id": "scene-010:setup",
+                "visible": "A static composition showing a piece of Armour and a firearm side-by-side on a grid background. The text at the bottom reads 'firearms evolved together for centuries'. This is a still image, not an action sequence."
+              },
+              {
+                "sample_id": "scene-010:action",
+                "visible": "The same static composition as before. The text at the bottom has changed to 'protection always had limits'."
+              },
+              {
+                "sample_id": "scene-010:result",
+                "visible": "The same static composition as before. The text at the bottom has changed again, highlighting the word 'limits' in yellow."
+              }
+            ],
+            "assessments": {
+              "subject_relevance": "uncertain",
+              "composition": "uncertain",
+              "motion": "uncertain"
+            },
+            "issues": [
+              {
+                "category": "repetition",
+                "severity": "error",
+                "message": "The visual content (Armour and Firearms) is identical across all three samples. The 'action' and 'result' labels are inappropriate for a static image sequence that only changes its subtitle text.",
+                "samples": [
+                  "scene-010:setup",
+                  "scene-010:action",
+                  "scene-010:result"
+                ],
+                "repair": "none"
+              }
+            ],
+            "reliable": false
+          }
+        ],
+        "failures": [
+          {
+            "shot_ids": [
+              "scene-003"
+            ],
+            "reason": "invalid_or_unavailable_review"
+          },
+          {
+            "shot_ids": [
+              "scene-008"
+            ],
+            "reason": "invalid_or_unavailable_review"
+          }
+        ],
+        "batches": [
+          {
+            "shot_ids": [
+              "scene-001"
+            ],
+            "provider": "ollama",
+            "model": "qwen3.5:4b",
+            "digest": "d8b0f5e9760cd1682034f292d7ef72ec46f432149be0df7574bf2d6e92e38c04",
+            "local": true
+          },
+          {
+            "shot_ids": [
+              "scene-002"
+            ],
+            "provider": "ollama",
+            "model": "qwen3.5:4b",
+            "digest": "d8b0f5e9760cd1682034f292d7ef72ec46f432149be0df7574bf2d6e92e38c04",
+            "local": true
+          },
+          {
+            "shot_ids": [
+              "scene-004"
+            ],
+            "provider": "ollama",
+            "model": "qwen3.5:4b",
+            "digest": "d8b0f5e9760cd1682034f292d7ef72ec46f432149be0df7574bf2d6e92e38c04",
+            "local": true
+          },
+          {
+            "shot_ids": [
+              "scene-005"
+            ],
+            "provider": "ollama",
+            "model": "qwen3.5:4b",
+            "digest": "d8b0f5e9760cd1682034f292d7ef72ec46f432149be0df7574bf2d6e92e38c04",
+            "local": true
+          },
+          {
+            "shot_ids": [
+              "scene-006"
+            ],
+            "provider": "ollama",
+            "model": "qwen3.5:4b",
+            "digest": "d8b0f5e9760cd1682034f292d7ef72ec46f432149be0df7574bf2d6e92e38c04",
+            "local": true
+          },
+          {
+            "shot_ids": [
+              "scene-007"
+            ],
+            "provider": "ollama",
+            "model": "qwen3.5:4b",
+            "digest": "d8b0f5e9760cd1682034f292d7ef72ec46f432149be0df7574bf2d6e92e38c04",
+            "local": true
+          },
+          {
+            "shot_ids": [
+              "scene-009"
+            ],
+            "provider": "ollama",
+            "model": "qwen3.5:4b",
+            "digest": "d8b0f5e9760cd1682034f292d7ef72ec46f432149be0df7574bf2d6e92e38c04",
+            "local": true
+          },
+          {
+            "shot_ids": [
+              "scene-010"
+            ],
+            "provider": "ollama",
+            "model": "qwen3.5:4b",
+            "digest": "d8b0f5e9760cd1682034f292d7ef72ec46f432149be0df7574bf2d6e92e38c04",
+            "local": true
+          }
+        ],
+        "provider": "ollama",
+        "model": "qwen3.5:4b",
+        "digest": "d8b0f5e9760cd1682034f292d7ef72ec46f432149be0df7574bf2d6e92e38c04",
+        "local": true
+      },
+      "summary": "Decoded 10 of 10 shots at three phases each; vision reviewed 8 of 10 shots. 5 errors and 2 observations. Soundtrack levels and silence were measured; sound quality still needs listening. Incomplete or unavailable semantic review is not an approval.",
+      "repair_history": [],
+      "repairs_applied": 0,
+      "shots_repaired": 0,
+      "source_redirections_attempted": 0
+    },
+    "encoded_verification": {
+      "status": "verified",
+      "checks": {
+        "dimensions": true,
+        "frame_rate": true,
+        "decoded_frame_count": true,
+        "video_codec": true,
+        "audio_codec": true,
+        "duration": true
+      },
+      "sha256": "a8cc826624ba496307f5baebd6445de92712b6197164a1f4bca1a3b0d2c0f290",
+      "bytes": 7831583,
+      "probe": {
+        "streams": [
+          {
+            "index": 0,
+            "codec_name": "h264",
+            "codec_long_name": "H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10",
+            "profile": "High",
+            "codec_type": "video",
+            "codec_tag_string": "avc1",
+            "codec_tag": "0x31637661",
+            "width": 1080,
+            "height": 1920,
+            "coded_width": 1088,
+            "coded_height": 1920,
+            "closed_captions": 0,
+            "film_grain": 0,
+            "has_b_frames": 0,
+            "sample_aspect_ratio": "1:1",
+            "display_aspect_ratio": "9:16",
+            "pix_fmt": "yuv420p",
+            "level": 40,
+            "color_range": "tv",
+            "color_space": "bt709",
+            "color_transfer": "bt709",
+            "color_primaries": "bt709",
+            "chroma_location": "center",
+            "field_order": "progressive",
+            "refs": 3,
+            "is_avc": "true",
+            "nal_length_size": "4",
+            "id": "0x1",
+            "r_frame_rate": "30/1",
+            "avg_frame_rate": "30/1",
+            "time_base": "1/15360",
+            "start_pts": 0,
+            "start_time": "0.000000",
+            "duration_ts": 453120,
+            "duration": "29.500000",
+            "bit_rate": "1920085",
+            "bits_per_raw_sample": "8",
+            "nb_frames": "885",
+            "nb_read_frames": "885",
+            "extradata_size": 52,
+            "disposition": {
+              "default": 1,
+              "dub": 0,
+              "original": 0,
+              "comment": 0,
+              "lyrics": 0,
+              "karaoke": 0,
+              "forced": 0,
+              "hearing_impaired": 0,
+              "visual_impaired": 0,
+              "clean_effects": 0,
+              "attached_pic": 0,
+              "timed_thumbnails": 0,
+              "non_diegetic": 0,
+              "captions": 0,
+              "descriptions": 0,
+              "metadata": 0,
+              "dependent": 0,
+              "still_image": 0
+            },
+            "tags": {
+              "language": "und",
+              "handler_name": "VideoHandler",
+              "vendor_id": "[0][0][0][0]",
+              "encoder": "Lavc60.31.102 libx264"
+            }
+          },
+          {
+            "index": 1,
+            "codec_name": "aac",
+            "codec_long_name": "AAC (Advanced Audio Coding)",
+            "profile": "LC",
+            "codec_type": "audio",
+            "codec_tag_string": "mp4a",
+            "codec_tag": "0x6134706d",
+            "sample_fmt": "fltp",
+            "sample_rate": "48000",
+            "channels": 2,
+            "channel_layout": "stereo",
+            "bits_per_sample": 0,
+            "initial_padding": 0,
+            "id": "0x2",
+            "r_frame_rate": "0/0",
+            "avg_frame_rate": "0/0",
+            "time_base": "1/48000",
+            "start_pts": 0,
+            "start_time": "0.000000",
+            "duration_ts": 1416000,
+            "duration": "29.500000",
+            "bit_rate": "196208",
+            "nb_frames": "1384",
+            "nb_read_frames": "1383",
+            "extradata_size": 2,
+            "disposition": {
+              "default": 1,
+              "dub": 0,
+              "original": 0,
+              "comment": 0,
+              "lyrics": 0,
+              "karaoke": 0,
+              "forced": 0,
+              "hearing_impaired": 0,
+              "visual_impaired": 0,
+              "clean_effects": 0,
+              "attached_pic": 0,
+              "timed_thumbnails": 0,
+              "non_diegetic": 0,
+              "captions": 0,
+              "descriptions": 0,
+              "metadata": 0,
+              "dependent": 0,
+              "still_image": 0
+            },
+            "tags": {
+              "language": "und",
+              "handler_name": "SoundHandler",
+              "vendor_id": "[0][0][0][0]"
+            }
+          }
+        ],
+        "format": {
+          "filename": "final_short.mp4",
+          "nb_streams": 2,
+          "nb_programs": 0,
+          "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+          "format_long_name": "QuickTime / MOV",
+          "start_time": "0.000000",
+          "duration": "29.500000",
+          "size": "7831583",
+          "bit_rate": "2123819",
+          "probe_score": 100,
+          "tags": {
+            "minor_version": "512",
+            "major_brand": "isom",
+            "compatible_brands": "isomiso2avc1mp41",
+            "hyperframes_version": "0.9.19",
+            "hyperframes_renderer": "hyperframes",
+            "encoder": "Lavf60.16.100"
+          }
+        }
+      }
+    },
+    "final_soundtrack_preservation": {
+      "stream": {
+        "codec_name": "aac",
+        "sample_rate": "48000",
+        "channels": 2,
+        "duration": "29.500000"
+      },
+      "decoded_pcm_sha256": "b4027aa9fbf3f3f21d394ed41da74d5a3095cbb987f13bcd6de29f892df8c6cb",
+      "decoded_pcm_bytes": 11329536,
+      "sample_format": "s32le",
+      "method": "ffmpeg AAC decode at native rate and channel count; no resampling or remix",
+      "qualification": "Decoded sample identity, not a listening or intelligibility assessment.",
+      "matches_original_decoded_pcm": true,
+      "original_decoded_pcm_sha256": "b4027aa9fbf3f3f21d394ed41da74d5a3095cbb987f13bcd6de29f892df8c6cb"
+    }
+  },
+  "local_response_capture": {
+    "directory": "model_responses",
+    "files": [
+      "model_responses/response-0023.json",
+      "model_responses/response-0024.json",
+      "model_responses/response-0025.json",
+      "model_responses/response-0026.json",
+      "model_responses/response-0027.json",
+      "model_responses/response-0028.json",
+      "model_responses/response-0029.json",
+      "model_responses/response-0030.json",
+      "model_responses/response-0031.json",
+      "model_responses/response-0032.json"
+    ],
+    "errors": [],
+    "omitted_calls": 0,
+    "max_bytes_per_file": 2097152,
+    "max_calls_this_run": 64,
+    "response_mutation": false,
+    "request_text_and_images_saved": false
+  },
+  "local_runtime": {
+    "status": "installed",
+    "runtime": "ollama",
+    "runtime_version": "0.40.15",
+    "model": {
+      "id": "qwen3.5:4b",
+      "name": "qwen3.5:4b",
+      "model": "qwen3.5:4b",
+      "size": 3324173934,
+      "digest": "d8b0f5e9760cd1682034f292d7ef72ec46f432149be0df7574bf2d6e92e38c04",
+      "family": "qwen35",
+      "parameter_size": "4.2B",
+      "quantization_level": "Q4_K_M",
+      "local": true
+    },
+    "capabilities": [
+      "completion",
+      "vision",
+      "tools",
+      "thinking"
+    ],
+    "meaning": "Installed identity reported by the loopback service. Actual responding providers are recorded per stage."
+  },
+  "final_application_source_sha256": "81228a0ad9f0c5a5f18ab5a680f3cde58c94b5367236b638a7935b6a08664aa6",
+  "gates": {
+    "format": true,
+    "surviving_actual_model_contribution": true,
+    "complete_reliable_semantic_review": false,
+    "render_review_passed": false,
+    "decoded_soundtrack_identical": true,
+    "source_recordings_and_timeline_unchanged": true
+  },
+  "final_plan_sha256": "9b5e90f8818a881a61fd49428b9ccc3fea4e0fe501a04cb786cb2e8e33a2b771",
+  "video": "final_short.mp4",
+  "finished_at": "2026-11-08T23:32:48.036521+00:00"
+}

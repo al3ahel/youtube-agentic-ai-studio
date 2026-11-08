@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "endpoint": "/api/chat",
+  "stage": "editorial_render_review",
+  "model": "qwen3.5:4b",
+  "started_at": "2026-11-08T23:26:39.074562+00:00",
+  "native_json_schema": true,
+  "image_count": 3,
+  "status": "received",
+  "finished_at": "2026-11-08T23:27:56.619696+00:00",
+  "response_text": "{\"model\":\"qwen3.5:4b\",\"created_at\":\"2026-11-08T23:27:56.6140178Z\",\"message\":{\"role\":\"assistant\",\"content\":\"{\\n  \\\"shots\\\": [\\n    {\\n      \\\"shot_id\\\": \\\"scene-007\\\",\\n      \\\"confidence\\\": 1.0,\\n      \\\"observations\\\": [\\n        {\\n          \\\"sample_id\\\": \\\"scene-007:setup\\\",\\n          \\\"visible\\\": \\\"A bullet is positioned to the left of a vertical steel plate on a grid background. The plate is straight and undisturbed.\\\"\\n        },\\n        {\\n          \\\"sample_id\\\": \\\"scene-007:action\\\",\\n          \\\"visible\\\": \\\"The bullet has made contact with the center of the steel plate, leaving a visible dent and shockwave lines. The plate remains largely straight but shows localized deformation at the impact point.\\\"\\n        },\\n        {\\n          \\\"sample_id\\\": \\\"scene-007:result\\\",\\n          \\\"visible\\\": \\\"The steel plate is now significantly bent or deformed into a curved shape, indicating substantial structural change from the impact.\\\"\\n        }\\n      ],\\n      \\\"assessments\\\": {\\n        \\\"subject_relevance\\\": \\\"pass\\\",\\n        \\\"composition\\\": \\\"pass\\\",\\n        \\\"motion\\\": \\\"pass\\\"\\n      },\\n      \\\"issues\\\": []\\n    }\\n  ]\\n}\"},\"done\":true,\"done_reason\":\"stop\",\"total_duration\":77537723086,\"load_duration\":31138366,\"prompt_eval_count\":1660,\"prompt_eval_cached_count\":0,\"prompt_eval_duration\":42451770000,\"eval_count\":262,\"eval_duration\":34848607000}",
+  "redacted": true,
+  "truncated": false,
+  "redacted_response_json_sha256": "f536d553d274f04175ab38aa84d7671cc55651815d952b9d1f5f2d6c0b7916c4"
+}

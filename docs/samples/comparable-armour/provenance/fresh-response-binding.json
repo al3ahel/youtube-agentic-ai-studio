@@ -1,0 +1,117 @@
+{
+  "version": 1,
+  "created_at": "2026-11-08T22:34:01.030401+00:00",
+  "scope": "Local responses may be reapplied only to these unchanged inputs; reapplication is not new inference.",
+  "original_run_started_at": "2026-11-08T22:34:00.856447+00:00",
+  "script_signature": "6376a718b8b1d76e8ed4c754e0ef5cfb772630dcccadef4a7df04a8e2cdcad71",
+  "timeline_signature": "bdc2eed078ba9805b5ccd6d3649fde5024e299db0cd950155c479b54ec62ab95",
+  "files": {
+    "script.json": "54472a2641afcbf4063c1793a194b613d82b283b47c1bc98a50f11dd6fb08a4b",
+    "narration.wav": "c76d1f3e4ec8a586b4fe12464daead2c91d29ab862900efaa80362f45646850c",
+    "narration.timings.json": "09075306225724e7e074a226d9b4c612adc1772a42c86d56309e7832f5307f0f",
+    "timeline.json": "2d85cb1fd9cbe85d473a8dfd0b54e0bb035b60aa9ab832c3f81be3deada68aef",
+    "image_map.json": "90179cf076b4cd5f53037176894886a4fbeae213f647e0f5a220a5e7226e95f8"
+  },
+  "visual_director_functions_sha256": {
+    "_normalise_timeline": "5470afec08f80b774c8131e98729b0c2b81edc6c6f8bf0b9e4d2c52de92fc950",
+    "_offline_scenes": "2e3d94809c2c1b3a5e69eecc08d99d3e46fa8b60339d4eb41680537586916d46",
+    "_ai_schema": "1cfd9778dc262c9c425c547d241c930560abea58c98f3485c727946a31f9ede9",
+    "_request_design": "1d7a2d7afd4ea396a2ff1ba3513a091eb41db42526c05ab8ba3865d9338ad929",
+    "_request_design_impl": "e91cff24c843e07fd1c5f16fb12cc4e2820227bca12f63f28bda49dad186042d"
+  },
+  "support_files_sha256": {
+    "agents/shot_planner.py": "e3d85d5c2b3c850535ac2da616353bfa1058ca5d1b064181fae6732765ddd354",
+    "agents/art_direction.py": "df13900c8a8285c10a1d7d787d5f552dbdf7205d641e3ce0f52c15989bcecdbc",
+    "agents/object_direction.py": "d530e316e59426c2e38449bf4985ac9e72ffa9af760d16bf34fbecbf68131b8a"
+  },
+  "local_runtime": {
+    "status": "installed",
+    "runtime": "ollama",
+    "runtime_version": "0.40.15",
+    "model": {
+      "id": "qwen3.5:4b",
+      "name": "qwen3.5:4b",
+      "model": "qwen3.5:4b",
+      "size": 3324173934,
+      "digest": "d8b0f5e9760cd1682034f292d7ef72ec46f432149be0df7574bf2d6e92e38c04",
+      "family": "qwen35",
+      "parameter_size": "4.2B",
+      "quantization_level": "Q4_K_M",
+      "local": true
+    },
+    "capabilities": [
+      "completion",
+      "vision",
+      "tools",
+      "thinking"
+    ],
+    "meaning": "Installed identity reported by the loopback service. Actual responding providers are recorded per stage."
+  },
+  "configuration": {
+    "route": "local",
+    "local_model": "qwen3.5:4b",
+    "visual_planner_model": "openrouter/free",
+    "visual_review_model": "openrouter/free",
+    "local_review_model": "qwen3.5:4b",
+    "openrouter_model": "openrouter/free",
+    "gemini_model": "gemini-3.8-flash",
+    "groq_model": "openai/gpt-oss-120b",
+    "hosted_credentials_present": {
+      "OPENROUTER": false,
+      "GEMINI": false,
+      "GROQ": false
+    },
+    "openrouter_free_only": true,
+    "narration_engine": "edge-tts",
+    "narration_engine_version": "7.3.1",
+    "voice": "en-US-AndrewNeural",
+    "initial_voice_rate": "+0%",
+    "voice_pitch": "+0Hz",
+    "sound_mode": "auto",
+    "meaning": "Configured choices only; actual responding providers appear in each stage's evidence.",
+    "run_only_overrides": [
+      "1080x1920@30fps",
+      "Automatic sound",
+      "free-only OpenRouter",
+      "rendered semantic review enabled"
+    ]
+  },
+  "prompt_settings": {
+    "channel_preset": "general",
+    "mode": "hybrid",
+    "user_instructions": ""
+  },
+  "expected_scene_ids": [
+    "scene-001",
+    "scene-002",
+    "scene-003",
+    "scene-004",
+    "scene-005",
+    "scene-006",
+    "scene-007",
+    "scene-008",
+    "scene-009",
+    "scene-010"
+  ],
+  "shots_enabled": true,
+  "sealed_at": "2026-11-08T22:51:32.843877+00:00",
+  "response_captures": [
+    {
+      "file": "model_responses/response-0011.json",
+      "sha256": "4e45150b6f60a6c04a29425499b9e5b6a23e51b41e9cd50af1f110a03f11be3f"
+    },
+    {
+      "file": "model_responses/response-0012.json",
+      "sha256": "5d28099d0130dd841ba9df7ddd649f0d02d9d2951423df3fbd9ee26f5803322a"
+    },
+    {
+      "file": "model_responses/response-0013.json",
+      "sha256": "15457a4964f7322f5969e3a2dd67f6ed8eae9183126d25736ad07190d61ae645"
+    },
+    {
+      "file": "model_responses/response-0014.json",
+      "sha256": "5a798cda88819fb7291a6f16e4acffda0db2a827d33706bf9130d6c6bfbc5421"
+    }
+  ],
+  "expected_batches": 4
+}

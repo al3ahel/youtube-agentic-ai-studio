@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "endpoint": "/api/chat",
+  "stage": "automatic_sound",
+  "model": "qwen3.5:4b",
+  "started_at": "2026-11-08T22:51:32.879119+00:00",
+  "native_json_schema": false,
+  "image_count": 0,
+  "status": "received",
+  "finished_at": "2026-11-08T22:52:42.212182+00:00",
+  "response_text": "{\"model\":\"qwen3.5:4b\",\"created_at\":\"2026-11-08T22:52:42.211179351Z\",\"message\":{\"role\":\"assistant\",\"content\":\"{\\\"summary\\\":\\\"A quiet, contemplative instrumental bed grounds the existential science tone; soft page turns accent transitions without disrupting narration.\\\", \\\"music\\\":{\\\"use\\\":true,\\\"query\\\":\\\"calm minimal ambient music\\\",\\\"asset_id\\\":\\\"\\\",\\\"reason\\\":\\\"Gentle electronic texture fits the deep scientific inquiry style without dramatic interference.\\\"}, \\\"ambience\\\":{\\\"use\\\":false,\\\"query\\\":\\\"\\\",\\\"asset_id\\\":\\\"\\\",\\\"reason\\\":\\\"Narration remains dominant; no environmental layer needed to support the Vsauce-style storytelling.\\\"}, \\\"events\\\":[{\\\"section_id\\\":\\\"question\\\",\\\"query\\\":\\\"paper turn\\\",\\\"asset_id\\\":\\\"\\\",\\\"label\\\":\\\"Intro transition\\\",\\\"reason\\\":\\\"Soft page turn signals the opening question without distracting from the hook.\\\"},{\\\"section_id\\\":\\\"construction\\\",\\\"query\\\":\\\"metal contact\\\",\\\"asset_id\\\":\\\"\\\",\\\"label\\\":\\\"Visual cue\\\",\\\"reason\\\":\\\"Subtle metal impact aligns with the discussion of steel rings and plate armour mechanics.\\\"},{\\\"section_id\\\":\\\"proof\\\",\\\"query\\\":\\\"paper turn\\\",\\\"asset_id\\\":\\\"\\\",\\\"label\\\":\\\"Section marker\\\",\\\"reason\\\":\\\"Page turn indicates a shift to historical proof testing evidence.\\\"}]}\"},\"done\":true,\"done_reason\":\"stop\",\"total_duration\":69320220831,\"load_duration\":1339443,\"prompt_eval_count\":2469,\"prompt_eval_cached_count\":0,\"prompt_eval_duration\":41471644000,\"eval_count\":203,\"eval_duration\":27567074000}",
+  "redacted": true,
+  "truncated": false,
+  "redacted_response_json_sha256": "225a8400116315a6f3109a29211cd552ac281f62a813bb3f83b0c5fa962fa539"
+}

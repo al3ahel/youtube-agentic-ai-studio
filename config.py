@@ -98,6 +98,8 @@ VISUAL_AI_ENABLED = True
 VISUAL_PLANNER_MODEL = "openrouter/free"
 VISUAL_REVIEW_MODEL = "openrouter/free"
 VISUAL_REVIEW_ENABLED = False          # explicit opt-in before uploading frames
+SHOT_PLANNING_ENABLED = True          # new plans use narration-bound shots; saved plans retain their edits
+RENDER_REPAIR_ENABLED = True          # one bounded repair; evidence and failed draft are retained
 OPENROUTER_FREE_ONLY = True
 MOTION_QUALITY = "standard"            # draft | standard | high
 MOTION_WORKERS = 1                     # conservative on Windows/laptops
@@ -279,6 +281,7 @@ USER_SETTINGS = (
     "SCRIPT_REVIEW_ENABLED", "VOICE_CACHE_ENABLED",
     "VISUAL_MODE", "VISUAL_AI_ENABLED", "VISUAL_PLANNER_MODEL",
     "VISUAL_REVIEW_MODEL", "VISUAL_REVIEW_ENABLED", "OPENROUTER_FREE_ONLY",
+    "SHOT_PLANNING_ENABLED", "RENDER_REPAIR_ENABLED",
     "MOTION_QUALITY", "MOTION_WORKERS",
     "FACT_GROUNDING", "KEYLESS_LLM_FALLBACK", "IMAGE_SOURCES", "TRENDS_GEO",
     "MUSIC_ENABLED", "MUSIC_VOLUME", "MUSIC_TRACK",

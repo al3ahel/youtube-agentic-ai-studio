@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "endpoint": "/api/chat",
+  "stage": "editorial_render_review",
+  "model": "qwen3.5:4b",
+  "started_at": "2026-11-08T23:29:33.129564+00:00",
+  "native_json_schema": true,
+  "image_count": 3,
+  "status": "received",
+  "finished_at": "2026-11-08T23:31:15.993319+00:00",
+  "response_text": "{\"model\":\"qwen3.5:4b\",\"created_at\":\"2026-11-08T23:31:15.991725238Z\",\"message\":{\"role\":\"assistant\",\"content\":\"{\\n  \\\"shots\\\": [\\n    {\\n      \\\"shot_id\\\": \\\"scene-009\\\",\\n      \\\"confidence\\\": 1.0,\\n      \\\"observations\\\": [\\n        {\\n          \\\"sample_id\\\": \\\"scene-009:setup\\\",\\n          \\\"visible\\\": \\\"A static shot displays a beige background with a faint grid pattern. Centered is an illustration of a breastplate (armour), split vertically into white and grey sections. Text at the top reads 'Protection had limits'. At the bottom, a black bar contains the text 'But one successful test was', with the word 'successful'\\\"\\n        },\\n        {\\n          \\\"sample_id\\\": \\\"scene-009:action\\\",\\n          \\\"visible\\\": \\\"The visual composition is identical to the previous shot. The image shows the same breastplate illustration and grid background. The text at the top remains 'Protection had limits'. The bottom black bar now displays the text 'no universal guarantee Armour and', with the word 'universal' highlighted in yellow.\\\"\\n        },\\n        {\\n          \\\"sample_id\\\": \\\"scene-009:result\\\",\\n          \\\"visible\\\": \\\"The visual composition is identical to the previous shot. The image shows the same breastplate illustration and grid background. The text at the top remains 'Protection had limits'. The bottom black bar displays the text 'no universal guarantee Armour and', with the word 'universal' highlighted in yellow.\\\"\\n        }\\n      ],\\n      \\\"assessments\\\": {\\n        \\\"subject_relevance\\\": \\\"pass\\\",\\n        \\\"composition\\\": \\\"pass\\\",\\n        \\\"motion\\\": \\\"uncertain\\\"\\n      },\\n      \\\"issues\\\": [\\n        {\\n          \\\"category\\\": \\\"repetition\\\",\\n          \\\"severity\\\": \\\"warning\\\",\\n          \\\"message\\\": \\\"The visual state between sample 1 and sample 2 is identical, indicating a lack of progression or action.\\\",\\\"samples\\\": [\\n            \\\"scene-009:action\\\",\\n            \\\"scene-009:result\\\"\\n          ],\\\"repair\\\": \\\"none\\\"\\n        }\\n      ]\\n    }\\n  ]\\n}\"},\"done\":true,\"done_reason\":\"stop\",\"total_duration\":102855812341,\"load_duration\":1908911,\"prompt_eval_count\":1588,\"prompt_eval_cached_count\":0,\"prompt_eval_duration\":33284413999,\"eval_count\":451,\"eval_duration\":69348140000}",
+  "redacted": true,
+  "truncated": false,
+  "redacted_response_json_sha256": "66a13cf4ccd9b455d5a26dbc1144e4cb519511025f28b50e623e9fd3d0e02730"
+}

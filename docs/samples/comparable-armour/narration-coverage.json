@@ -1,0 +1,38 @@
+{
+  "status": "matched_returned_word_events",
+  "audio_sha256": "c76d1f3e4ec8a586b4fe12464daead2c91d29ab862900efaa80362f45646850c",
+  "script_signature": "6376a718b8b1d76e8ed4c754e0ef5cfb772630dcccadef4a7df04a8e2cdcad71",
+  "sections": [
+    {
+      "section_id": "question",
+      "script_words": 16,
+      "returned_words": 16,
+      "exact_sequence_match": true
+    },
+    {
+      "section_id": "construction",
+      "script_words": 16,
+      "returned_words": 16,
+      "exact_sequence_match": true
+    },
+    {
+      "section_id": "reinforcement",
+      "script_words": 16,
+      "returned_words": 16,
+      "exact_sequence_match": true
+    },
+    {
+      "section_id": "proof",
+      "script_words": 17,
+      "returned_words": 17,
+      "exact_sequence_match": true
+    },
+    {
+      "section_id": "answer",
+      "script_words": 19,
+      "returned_words": 19,
+      "exact_sequence_match": true
+    }
+  ],
+  "qualification": "Verifies every script word against returned TTS word events, including order. This is not independent ASR or a listening assessment."
+}

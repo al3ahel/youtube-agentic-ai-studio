@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "endpoint": "/api/chat",
+  "stage": "editorial_render_review",
+  "model": "qwen3.5:4b",
+  "started_at": "2026-11-08T23:23:01.352287+00:00",
+  "native_json_schema": true,
+  "image_count": 3,
+  "status": "received",
+  "finished_at": "2026-11-08T23:24:46.555254+00:00",
+  "response_text": "{\"model\":\"qwen3.5:4b\",\"created_at\":\"2026-11-08T23:24:46.550124793Z\",\"message\":{\"role\":\"assistant\",\"content\":\"{\\n    \\\"shots\\\": [\\n        {\\n            \\\"shot_id\\\": \\\"scene-005\\\",\\n            \\\"confidence\\\": 1.0,\\n            \\\"observations\\\": [\\n                {\\n                    \\\"sample_id\\\": \\\"scene-005:setup\\\",\\n                    \\\"visible\\\": \\\"A single steel breastplate is centered in the frame, viewed from a slightly elevated angle. The plate has a distinct thickness and features rows of rivets along its edges. A vertical seam runs down the center. The text 'Harder, thicker armour' appears at the top, and 'When firearms spread steel armour' is at the bottom\\\"\\n                },\\n                {\\n                    \\\"sample_id\\\": \\\"scene-005:action\\\",\\n                    \\\"visible\\\": \\\"The scene is identical to the previous one. The breastplate remains in the exact same position with no movement or change in lighting.\\\"\\n                },\\n                {\\n                    \\\"sample_id\\\": \\\"scene-005:result\\\",\\n                    \\\"visible\\\": \\\"The scene is identical to the previous ones. The breastplate remains static and unchanged.\\\"\\n                }\\n            ],\\n            \\\"assessments\\\": {\\n                \\\"subject_relevance\\\": \\\"uncertain\\\",\\n                \\\"composition\\\": \\\"uncertain\\\",\\n                \\\"motion\\\": \\\"uncertain\\\"\\n            },\\n            \\\"issues\\\": [\\n                {\\n                    \\\"category\\\": \\\"repetition\\\",\\n                    \\\"severity\\\": \\\"error\\\",\\n                    \\\"message\\\": \\\"The 'action' and 'result' samples are visually identical to the 'setup' sample. There is no observable action or change in state.\\\",\\n                    \\\"samples\\\": [\\n                    \\\"scene-005:setup\\\",\\n                    \\\"scene-005:action\\\",\\n                    \\\"scene-005:result\\\"\\n                    ],\\\"repair\\\": \\\"none\\\"\\n                }\\n            ]\\n        }\\n    ]\\n}\"},\"done\":true,\"done_reason\":\"stop\",\"total_duration\":105194274800,\"load_duration\":2242447,\"prompt_eval_count\":1611,\"prompt_eval_cached_count\":0,\"prompt_eval_duration\":33859319000,\"eval_count\":404,\"eval_duration\":71109254000}",
+  "redacted": true,
+  "truncated": false,
+  "redacted_response_json_sha256": "cc51ee9194642744a93e3ba35397817529b9e3a2e8e0034098ce53b12b67a5fb"
+}

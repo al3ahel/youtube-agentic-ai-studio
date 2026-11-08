@@ -61,17 +61,19 @@ async function pixelDifference(page, before, after) {
       return context.getImageData(0, 0, image.width, image.height).data;
     }
     const [left, right] = await Promise.all([pixels(before), pixels(after)]);
-    let changed = 0, maxDelta = 0;
+    let changed = 0, aboveOne = 0, maxDelta = 0;
     for (let index = 0; index < left.length; index += 4) {
-      let different = false;
+      let different = false, significant = false;
       for (let channel = 0; channel < 3; channel++) {
         const delta = Math.abs(left[index + channel] - right[index + channel]);
         if (delta) different = true;
+        if (delta > 1) significant = true;
         maxDelta = Math.max(maxDelta, delta);
       }
       if (different) changed++;
+      if (significant) aboveOne++;
     }
-    return {changed, maxDelta, total: left.length / 4};
+    return {changed, aboveOne, maxDelta, total: left.length / 4};
   }, {before: Buffer.from(before).toString("base64"), after: Buffer.from(after).toString("base64")});
 }
 
@@ -111,8 +113,13 @@ for (const orientation of ["landscape", "portrait"]) {
     await page.setViewport(orientation === "portrait" ? {width: 360, height: 640} : {width: 640, height: 360});
     await page.goto(`${origin}/directed-${orientation}/motion/index.html`, {waitUntil: "domcontentloaded"});
     const plan = await page.evaluate(async () => (await window.YAASMotionReady).plan);
-    assert.deepEqual(plan.scenes.map(scene => [scene.graphics_version, scene.staging.world, scene.staging.action]),
-      [[2, "flood", "rise"], [2, "flood", "float"], [2, "generic", "connect"]]);
+    const expectedWorlds = {coast: [2, "flood", "rise"], adapt: [2, "flood", "float"], power: [2, "generic", "connect"]};
+    assert.ok(plan.scenes.length > plan.sections.length, "The current planner must cut the longer explanation into shots");
+    for (const scene of plan.scenes) {
+      assert.deepEqual([scene.graphics_version, scene.staging.world, scene.staging.action], expectedWorlds[scene.section_id]);
+      assert.ok(scene.shot, "The real current planner must preserve shot-level direction");
+    }
+    const powerIndex = plan.scenes.findIndex(scene => scene.section_id === "power");
     assert.equal(await page.$$eval(".node-card,.arranged-card,.orbit-card,.illustrated-item", nodes => nodes.length), 0);
     const snapshots = new Map();
     await mkdir(path.join(fixtureRoot, "screenshots"), {recursive: true});
@@ -121,7 +128,7 @@ for (const orientation of ["landscape", "portrait"]) {
       const state = await domState(page);
       const frame = await page.screenshot({path: path.join(fixtureRoot, "screenshots", `directed-${orientation}-${time}.png`)});
       const bounds = await page.evaluate(() => {
-        const scene = [...document.querySelectorAll(".world-scene")].find(node => Number(getComputedStyle(node).opacity) > .99);
+        const scene = [...document.querySelectorAll(".world-scene,.shot-scene")].find(node => Number(getComputedStyle(node).opacity) > .99);
         const stage = scene.querySelector(".world-stage").getBoundingClientRect();
         const labels = [...scene.querySelectorAll(".world-label")].map(label => {
           const range = document.createRange(); range.selectNodeContents(label);
@@ -145,21 +152,22 @@ for (const orientation of ["landscape", "portrait"]) {
     assert.notEqual(snapshots.get(4.5).bounds.home, snapshots.get(8.75).bounds.home, "A source-explicit floating home must rise with the water");
     assert.notEqual(snapshots.get(10.5).bounds.battery, snapshots.get(13.5).bounds.battery, "Energy transfer must leave a charged storage result");
     await seekForCapture(page, 13.5);
-    assert.ok(await page.$eval('#scene-2 [data-action-part="powered-windows"]', node => Number(getComputedStyle(node).opacity) <= .151),
+    assert.ok(await page.$eval(`#scene-${powerIndex} [data-action-part="powered-windows"]`, node => Number(getComputedStyle(node).opacity) <= .151),
       "The home must stay unpowered while its incoming transfer is still travelling");
     await seekForCapture(page, 14 - 1 / 12);
-    assert.ok(await page.$eval('#scene-2 [data-action-part="powered-windows"]', node => Number(getComputedStyle(node).opacity) > .8),
+    assert.ok(await page.$eval(`#scene-${powerIndex} [data-action-part="powered-windows"]`, node => Number(getComputedStyle(node).opacity) > .8),
       "The power transfer must arrive and leave a visible result before the final encoded frame");
     for (const time of [13.5, .5, 8.75, 3.25, 10.5, 4.5, .5]) {
       await seekForCapture(page, time);
       assert.deepEqual(await domState(page), snapshots.get(time).state, `Reverse seek at ${time}`);
       const difference = await pixelDifference(page, snapshots.get(time).frame, await page.screenshot());
-      // Going through the fully lit final SVG frame can rerasterize a few
-      // battery/roof/caption edge pixels on Chromium's opacity layers. Exact
-      // geometry, transforms, opacity, fill and stroke are asserted above.
-      // Inspected fringes: at most 371/230400 pixels and 46/255 delta; this
-      // bounded tolerance cannot replace the actor/arrival/state assertions.
-      assert.ok(difference.maxDelta <= 48 && difference.changed <= difference.total * .002, `${time}: ${JSON.stringify(difference)}`);
+      // Exact geometry, transforms, opacity, fill and stroke are asserted
+      // above. Software Chromium also changes sparse gradient pixels by one
+      // channel step after compositing: inspected 1197/230400 pixels, all
+      // 1/255. Keep the existing tighter bound for differences above one step
+      // and separately bound the one-step compositor noise to 1% of the frame.
+      assert.ok(difference.maxDelta <= 48 && difference.aboveOne <= difference.total * .002
+        && difference.changed <= difference.total * .01, `${time}: ${JSON.stringify(difference)}`);
     }
     assert.equal(await page.evaluate(() => window.__timelines["yaas-motion"].duration()), 14);
     await page.close();
@@ -248,10 +256,12 @@ for (const orientation of ["landscape", "portrait"]) {
       assert.deepEqual(await domState(page), snapshots.get(time).state);
       const repeated = await page.screenshot();
       const difference = await pixelDifference(page, snapshots.get(time).frame, repeated);
-      // Chromium can rerasterize the rounded caption's 1px border after a
-      // reverse seek. Allow that tiny fringe; all object/actor DOM states above
-      // must still match exactly and a moved subject changes far more pixels.
-      assert.ok(difference.maxDelta <= 24 && difference.changed <= difference.total * .001, `${time}: ${JSON.stringify(difference)}`);
+      // Software Chromium can rerasterize gradient dithering and the rounded
+      // caption border after reverse seeks. Inspected 1115 changed pixels,
+      // only four above 1/255. Preserve the strict edge bound independently
+      // of that sparse one-step noise; all actor state must match exactly.
+      assert.ok(difference.maxDelta <= 24 && difference.aboveOne <= difference.total * .001
+        && difference.changed <= difference.total * .01, `${time}: ${JSON.stringify(difference)}`);
     }
     assert.equal(await page.evaluate(() => window.__timelines["yaas-motion"].duration()), 14);
     await page.close();

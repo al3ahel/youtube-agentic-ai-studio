@@ -1,0 +1,87 @@
+/* Shot compositions use the whole frame. The saved narration owns their clock. */
+.shot-scene { --shot-ink: #f5f0e6; --shot-accent: #e8b86c; --shot-background: #111b24; --shot-surface: #273640; background: var(--shot-background); }
+#composition[data-shot="1"] .film-header,
+#composition[data-shot="1"] .film-footer,
+#composition[data-shot="1"] .backdrop-grid,
+#composition[data-shot="1"] .backdrop-orbit { display: none; }
+#composition .shot-scene .scene-number, #composition .shot-scene .eyebrow { display: none; }
+#composition .shot-scene .scene-header {
+  z-index: 12; top: 70px; left: 106px; right: 106px;
+  pointer-events: none; display: flex; flex-direction: column; align-items: flex-start;
+}
+#composition .shot-scene .scene-title {
+  display: block; max-width: 1220px; font-size: 76px; line-height: 1.04;
+  font-weight: 710; letter-spacing: -.055em; color: var(--shot-ink);
+  text-wrap: balance; text-shadow: 0 3px 20px #07101855;
+}
+#composition .shot-scene .scene-title.long-title { font-size: 61px; }
+#composition .shot-scene .scene-title.very-long-title { font-size: 49px; }
+#composition .shot-scene[data-shot-role="detail"] .scene-title,
+#composition .shot-scene[data-shot-role="interaction"] .scene-title { max-width: 1020px; font-size: 57px; }
+#composition .shot-scene .scene-visual {
+  left: 0; top: 0; width: 1920px; height: 1080px; overflow: hidden;
+}
+.shot-kicker { margin-bottom: 19px; color: var(--shot-accent); font-size: 19px; font-weight: 650; letter-spacing: .19em; text-transform: uppercase; }
+.shot-kicker:empty { display: none; }
+.shot-surface { position: absolute; inset: 0; width: 100%; height: 100%; }
+.shot-surface canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
+.shot-scene[data-technique="diagram3d"] .scene-visual { background: radial-gradient(ellipse at 58% 46%, var(--shot-surface) 0, var(--shot-background) 75%); }
+.shot-scene[data-technique="stage2d"] { --shot-background: #e7e0d2; --shot-surface: #f8f3e5; --shot-ink: #172d34; --shot-accent: #8a4a24; }
+#composition .shot-scene[data-technique="stage2d"] .scene-title { text-shadow: none; }
+.shot-world-window { position: absolute; left: 75px; top: 200px; width: 1770px; height: 710px; overflow: hidden; }
+.shot-world-inner { position: absolute; inset: 0; width: 100%; height: 100%; }
+.shot-world-inner .world-note { display: none; }
+.shot-world-inner .world-label { font-size: 33px; }
+.shot-world-inner .world-label-subject { font-size: 40px; }
+.shot-mechanism-note { position: absolute; left: 106px; bottom: 55px; color: var(--shot-ink); opacity: .55; letter-spacing: .12em; font-size: 14px; text-transform: uppercase; }
+.shot-layer-label {
+  position: absolute; max-width: 390px; font-size: 29px; line-height: 1.15; font-weight: 590;
+  color: var(--shot-ink); border-left: 3px solid var(--shot-accent); padding: 8px 0 8px 17px;
+  transform: translateY(-50%); text-wrap: balance;
+  background: color-mix(in srgb, var(--shot-surface) 93%, transparent); padding-right: 16px; border-radius: 0 3px 3px 0;
+}
+.shot-layer-label:empty { display: none; }
+.shot-scene[data-technique="collage"] { --shot-background: #e8e1d3; --shot-ink: #243534; --shot-accent: #a94d35; }
+#composition .shot-scene[data-technique="collage"] .scene-title { color: var(--shot-ink); text-shadow: none; }
+.collage-paper { position: absolute; inset: 0; background: repeating-linear-gradient(0deg, #111a1b03 0, #111a1b03 1px, transparent 1px, transparent 7px); }
+.collage-rule { position: absolute; top: 52%; left: -6%; width: 112%; height: 2px; transform: rotate(-13deg); background: #856a4c55; }
+.collage-layer { position: absolute; margin: 0; background: #f7f3e8; padding: 13px 13px 49px; box-shadow: 0 26px 48px #28281c30, 0 2px 3px #28281c50; transform-origin: center; overflow: hidden; }
+.collage-viewport { position: absolute; inset: 13px 13px 49px; overflow: hidden; background: #cad0c9; }
+.collage-viewport img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.collage-label { position: absolute; left: 19px; right: 19px; bottom: 14px; font-size: 20px; color: #354341; font-weight: 560; letter-spacing: .01em; line-height: 1.1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.collage-tape { position: absolute; z-index: 2; width: 116px; height: 32px; top: -6px; left: 35%; background: #d5b6809c; transform: rotate(-9deg); clip-path: polygon(2% 0, 98% 3%, 100% 91%, 1% 100%); }
+.collage-stroke { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.shot-footage { position: absolute; inset: 0; overflow: hidden; }
+.shot-footage video, .shot-footage > img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.shot-footage-shade { position: absolute; inset: 0; background: linear-gradient(180deg, #0b171cd9 0, #0b171c00 31%, #0b171c00 68%, #0b171ce0 100%); pointer-events: none; }
+.shot-footage-copy { position: absolute; left: 106px; top: 73%; width: 900px; color: #f5f0e6; font-size: 38px; line-height: 1.14; font-weight: 580; text-wrap: balance; text-shadow: 0 3px 15px #0008; }
+.shot-footage-copy::before { content: ''; display: block; width: 74px; height: 5px; background: var(--shot-accent); margin-bottom: 23px; }
+.shot-footage-inset { position: absolute; right: 96px; bottom: 205px; width: 400px; height: 310px; padding: 9px; background: #f5f0e6; transform: rotate(3deg); box-shadow: 0 16px 44px #07101866; }
+.shot-footage-inset img { width: 100%; height: 100%; object-fit: cover; }
+.shot-source-credit { position: absolute; left: 106px; bottom: 54px; max-width: 1450px; font-size: 14px; color: #fff9; }
+#composition[data-shot="1"] #caption-mount { left: 130px; right: 130px; bottom: 85px; height: 100px; }
+#composition[data-shot="1"] .caption-cue { border: 0; border-radius: 4px; background: #0e1b23df; padding: 13px 25px; font-size: 42px; font-weight: 640; line-height: 1.17; box-shadow: 0 4px 22px #0002; max-width: 1500px; }
+#composition[data-shot="1"] .caption-cue.long-caption { font-size: 34px; }
+#composition.portrait .shot-scene .scene-header { top: 112px; left: 76px; right: 76px; }
+#composition.portrait .shot-scene .scene-title { max-width: 920px; font-size: 91px; line-height: 1.03; }
+#composition.portrait .shot-scene .scene-title.long-title { font-size: 77px; }
+#composition.portrait .shot-scene .scene-title.very-long-title { font-size: 64px; }
+#composition.portrait .shot-scene[data-shot-role="detail"] .scene-title,
+#composition.portrait .shot-scene[data-shot-role="interaction"] .scene-title { font-size: 64px; }
+#composition.portrait .shot-scene .scene-visual { width: 1080px; height: 1920px; }
+.portrait .shot-kicker { font-size: 23px; margin-bottom: 27px; }
+.portrait .shot-world-window { left: 28px; top: 390px; width: 1024px; height: 1120px; }
+.portrait .shot-world-inner .world-label { font-size: 35px; }
+.portrait .shot-world-inner .world-label-subject { font-size: 44px; }
+.portrait .shot-mechanism-note { left: 76px; bottom: 93px; font-size: 18px; }
+.portrait .shot-layer-label { font-size: 38px; max-width: 355px; padding-left: 16px; }
+.portrait .collage-layer { padding: 14px 14px 53px; box-shadow: 0 27px 55px #28281c38, 0 2px 3px #28281c50; }
+.portrait .collage-viewport { inset: 14px 14px 53px; }
+.portrait .collage-label { font-size: 23px; bottom: 14px; }
+.portrait .collage-tape { width: 145px; height: 40px; }
+.portrait .shot-footage-copy { left: 76px; top: 70%; width: 760px; font-size: 45px; }
+.portrait .shot-footage-inset { right: 75px; bottom: 410px; width: 360px; height: 385px; }
+.portrait .shot-source-credit { left: 76px; bottom: 97px; max-width: 900px; font-size: 17px; }
+#composition.portrait[data-shot="1"] #caption-mount { left: 66px; right: 66px; bottom: 205px; height: 190px; }
+#composition.portrait[data-shot="1"] .caption-cue { max-width: 948px; font-size: 56px; padding: 17px 23px; }
+#composition.portrait[data-shot="1"] .caption-cue.long-caption { font-size: 46px; }

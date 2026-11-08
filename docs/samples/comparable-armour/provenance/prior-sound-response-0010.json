@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "endpoint": "/api/chat",
+  "stage": "automatic_sound",
+  "model": "qwen3.5:4b",
+  "started_at": "2026-11-08T22:17:05.592711+00:00",
+  "native_json_schema": false,
+  "image_count": 0,
+  "status": "received",
+  "finished_at": "2026-11-08T22:18:42.263721+00:00",
+  "response_text": "{\"model\":\"qwen3.5:4b\",\"created_at\":\"2026-11-08T22:18:42.259980249Z\",\"message\":{\"role\":\"assistant\",\"content\":\"{\\\"summary\\\":\\\"A calm, low-intensity soundscape with minimal metallic accents to match the historical science analysis tone.\\\",\\\"music\\\":{\\\"use\\\":true,\\\"query\\\":\\\"calm minimal ambient music\\\",\\\"asset_id\\\":\\\"\\\",\\\"reason\\\":\\\"Gentle electronic bed without singing or dramatic hits suits the deep scientific questioning style; avoids alarms or effects on short sections.\\\"},\\\"ambience\\\":{\\\"use\\\":false,\\\"query\\\":\\\"\\\",\\\"asset_id\\\":\\\"\\\",\\\"reason\\\":\\\"Ambient music provides sufficient atmospheric texture without competing with narration.\\\"},\\\"events\\\":[{\\\"section_id\\\":\\\"question\\\",\\\"query\\\":\\\"small whoosh\\\",\\\"asset_id\\\":\\\"\\\",\\\"label\\\":\\\"Intro emphasis\\\",\\\"reason\\\":\\\"Subtle sound to underscore the opening question without starting a cut effect.\\\"},{\\\"section_id\\\":\\\"proof\\\",\\\"query\\\":\\\"metal contact\\\",\\\"asset_id\\\":\\\"\\\",\\\"label\\\":\\\"Impact visualization\\\",\\\"reason\\\":\\\"Reinforces the concept of bullets hitting steel breastplates; used sparingly as it is key content.\\\"}]}\"},\"done\":true,\"done_reason\":\"stop\",\"total_duration\":96666101701,\"load_duration\":6921502549,\"prompt_eval_count\":2469,\"prompt_eval_cached_count\":0,\"prompt_eval_duration\":51176390000,\"eval_count\":177,\"eval_duration\":38518829000}",
+  "redacted": true,
+  "truncated": false,
+  "redacted_response_json_sha256": "1dda497f2d940c4b14dd3a8808562ba637c72f8028ac6180b03da080816bb204"
+}

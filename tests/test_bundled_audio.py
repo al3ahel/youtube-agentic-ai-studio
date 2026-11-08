@@ -45,7 +45,8 @@ def _samples(path):
 
 
 @pytest.mark.parametrize("query,kind,minimum", [(REPORTED_QUERY, "music", 3),
-    ("soft paper turn", "sfx", .05), ("small quiet whoosh", "sfx", .05)])
+    ("soft paper turn", "sfx", .05), ("small quiet whoosh", "sfx", .05),
+    ("subtle metal impact", "sfx", .05)])
 def test_real_licensed_family_is_available_without_search_and_has_audible_samples(catalog, query, kind, minimum):
     asset = audio_sources.acquire_audio(query, kind=kind, profile_id="default", mood="subtle", min_duration=minimum, max_duration=600)
     assert asset and asset["provider"] == "bundled" and asset["selection_source"] == "bundled_catalog"
@@ -66,6 +67,8 @@ def test_real_licensed_family_is_available_without_search_and_has_audible_sample
     ("rain recording", "sfx", 8), ("metal page turn", "sfx", .05),
     ("long dramatic whoosh", "sfx", .05), ("no paper turn", "sfx", .05),
     ("paper turn", "sfx", 8), ("whoosh", "sfx", 8),
+    ("gunshot metal impact", "sfx", .05), ("steel plate impact", "sfx", .05),
+    ("metal impact", "sfx", 8), ("without metal impact", "sfx", .05),
 ])
 def test_curated_collection_does_not_replace_specific_unrelated_or_continuous_requests(catalog, monkeypatch, query, kind, minimum):
     searches = []
@@ -139,7 +142,40 @@ def test_cancel_during_bundled_validation_does_not_commit_a_partial_cache(catalo
     assert not [path for path in (Path(config.DATA_DIR) / "audio-auto").rglob("*") if path.is_file()]
 
 
-def test_reported_intent_mixes_actual_music_and_both_effects_and_retains_complete_description_credits(catalog, tmp_path, monkeypatch):
+def test_offered_recordings_are_verified_public_metadata_and_real_supported_searches(catalog):
+    options = audio_sources.bundled_recording_options()
+    assert len(options) == 5 and len({row["sha256"] for row in options}) == 5
+    serialised = json.dumps(options)
+    assert str(catalog) not in serialised and "local_path" not in serialised and "filename" not in serialised
+    assert all("id" not in row and "asset_id" not in row for row in options)
+    for row in options:
+        found = audio_sources._bundled_candidate(row["query"], row["kind"], 3 if row["kind"] == "music" else .05, 600, "subtle")
+        assert found["expected_sha256"] == row["sha256"]
+        assert all(found[key] == row[key] for key in ("title", "creator", "license", "license_url", "source_url"))
+
+
+@pytest.mark.parametrize("fault", ["missing", "tampered", "license", "outside_path"])
+def test_unusable_recordings_are_not_offered_to_the_model(catalog, fault):
+    manifest = json.loads((catalog / "catalog.json").read_text())
+    row = next(item for item in manifest["assets"] if item["family"] == "metal_impact")
+    media = catalog / row["filename"]
+    if fault == "missing":
+        media.unlink()
+    elif fault == "tampered":
+        content = bytearray(media.read_bytes()); content[len(content) // 2] ^= 1
+        media.write_bytes(content)
+    elif fault == "license":
+        row["license"], row["license_url"] = "CC BY-NC 4.0", "https://creativecommons.org/licenses/by-nc/4.0/"
+    else:
+        shutil.copyfile(media, catalog.parent / "outside.ogg")
+        row["filename"] = "../outside.ogg"
+    (catalog / "catalog.json").write_text(json.dumps(manifest))
+    offered = audio_sources.bundled_recording_options()
+    assert len(offered) == 4
+    assert all(item["sha256"] != row["sha256"] and item["query"] != "metal contact" for item in offered)
+
+
+def test_model_selected_offered_queries_mix_real_music_and_effects_with_complete_credits(catalog, tmp_path, monkeypatch):
     previous = deepcopy(state)
     state.clear()
     state.update(fresh_project_state())
@@ -154,7 +190,7 @@ def test_reported_intent_mixes_actual_music_and_both_effects_and_retains_complet
     script = {"title": "A documentary explanation", "sections": [
         {"id": "opening", "narration": "A clear introduction."},
         {"id": "paper", "narration": "We turn to the evidence."},
-        {"id": "next", "narration": "We move to the next point."}]}
+        {"id": "impact", "narration": "A metal surface is struck."}]}
     voice = output / "narration.wav"
     times = np.arange(24 * RATE) / RATE
     spoken = .12 * np.sin(2 * np.pi * 400 * times)
@@ -169,11 +205,16 @@ def test_reported_intent_mixes_actual_music_and_both_effects_and_retains_complet
     prompts = []
     def plan(prompt, *, provider_info, **kwargs):
         prompts.append(prompt)
+        data = json.loads(prompt.split("PROJECT DATA:\n", 1)[1])
+        offered = data["available_recordings"]
+        assert len(offered) == 5 and all(set(row) == {"query", "kind", "title", "creator", "license"} for row in offered)
+        assert str(catalog) not in json.dumps(offered)
+        choose = lambda text: next(row["query"] for row in offered if text in row["title"])
         provider_info.update(provider="ollama", model="controlled-test-model")
-        return json.dumps({"summary": "A calm instrumental bed, paper turn and restrained whoosh.",
-            "music": {"use": True, "query": REPORTED_QUERY}, "ambience": {"use": False},
-            "events": [{"section_id": "paper", "query": "soft paper turn", "label": "Evidence"},
-                       {"section_id": "next", "query": "small quiet whoosh", "label": "Next point"}]})
+        return json.dumps({"summary": "A calm instrumental bed, paper turn and generic metal contact.",
+            "music": {"use": True, "query": choose("Cylinder One")}, "ambience": {"use": False},
+            "events": [{"section_id": "paper", "query": choose("Book page"), "label": "Evidence"},
+                       {"section_id": "impact", "query": choose("Metal surface"), "label": "Illustrative contact"}]})
     monkeypatch.setattr(gemini_client, "generate", plan)
     original = voice.read_bytes()
     state.update(script=script, timeline=timeline, audio_path=str(voice), profile_id=owner["id"], description="My edited introduction.")
@@ -186,6 +227,8 @@ def test_reported_intent_mixes_actual_music_and_both_effects_and_retains_complet
         assert design["music"] and [event["start"] for event in design["events"]] == [8, 16]
         assert "music bed" in design["summary"] and "2 timed effects" in design["summary"]
         assert design["profile_id"] == owner["id"] and not design["warnings"]
+        assert design["planner"]["prompt_sha256"] == hashlib.sha256(prompts[0].encode()).hexdigest()
+        assert design["available_recordings"] == audio_sources.bundled_recording_options()
         assert len(manifest["credits"]) == len(load_audio_credits(timeline)) == 3
         assert all(item["provider"] == "bundled" and item["selection_source"] == "bundled_catalog" for item in manifest["credits"])
         assert "The requested film" in prompts[0] and "A different active channel" not in prompts[0]
@@ -201,7 +244,7 @@ def test_reported_intent_mixes_actual_music_and_both_effects_and_retains_complet
             basis = np.column_stack((np.sin(2 * np.pi * 400 * ts), np.cos(2 * np.pi * 400 * ts)))
             residual = segment - basis @ np.linalg.lstsq(basis, segment, rcond=None)[0]
             return np.sqrt(np.mean(residual ** 2))
-        assert residual_rms(8, .8) > .002 and residual_rms(16, .18) > .002
+        assert residual_rms(8, .8) > .002 and residual_rms(16, .8) > .002
         description = ensure_audio_credits(state["description"], timeline)
         assert description.startswith("My edited introduction.") and len(description) <= 5000
         assert all(item["source_url"] in description and item["license_url"] in description and item["creator"] in description

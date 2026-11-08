@@ -145,6 +145,42 @@
       "provider": "bundled",
       "content_id": "unknown",
       "verified_on": "2026-11-08"
+    },
+    {
+      "kind": "sfx",
+      "family": "metal_impact",
+      "title": "Metal surface impact",
+      "creator": "Oculus VR, LLC",
+      "source_url": "https://github.com/facebookincubator/Meta-open-sound/blob/251c0be57d5d1b3242b91f53e0cde62ab1cb42d9/corpora/oculus-audio-pack/index/METL.json",
+      "download_url": "https://raw.githubusercontent.com/facebookincubator/Meta-open-sound/251c0be57d5d1b3242b91f53e0cde62ab1cb42d9/corpora/oculus-audio-pack/ogg/METLImpt_MetalHitSurface_OS_01.ogg",
+      "provider_id": "oculus-audio-pack/METLImpt_MetalHitSurface_OS_01/v1",
+      "tags": [
+        "metal",
+        "metallic",
+        "impact",
+        "hit",
+        "contact",
+        "clang",
+        "surface"
+      ],
+      "attribution": "\"Oculus Audio Pack 01\" by Oculus VR, LLC (https://developers.meta.com/vr/downloads/package/oculus-audio-pack-1/), licensed under CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/). Files renamed to the UCS naming convention; OGG previews transcoded from the original WAVs. Metal surface impact OGG copied without further audio changes; level and timing may be adjusted in the finished soundtrack.",
+      "changes": "No audio changes to the upstream Ogg preview; only the local filename changed. Generic metal-contact foley, not an authenticated recording of a gunshot or armour test.",
+      "original_git_blob_sha": "1817e07deb1d386639f193779e4ea16e6f616de7",
+      "license_evidence": [
+        "https://github.com/facebookincubator/Meta-open-sound/blob/251c0be57d5d1b3242b91f53e0cde62ab1cb42d9/corpora/oculus-audio-pack/LICENSE",
+        "https://github.com/facebookincubator/Meta-open-sound/blob/251c0be57d5d1b3242b91f53e0cde62ab1cb42d9/corpora/oculus-audio-pack/ATTRIBUTION.md"
+      ],
+      "id": "f2a88cacbb0d481ec0fa71aafbb5a174",
+      "filename": "sfx/metal-surface-impact.ogg",
+      "sha256": "f372bda70ca1a66650270022c82634b87ff40d15b061f1e988fa40e00a066233",
+      "bytes": 14209,
+      "duration": 1.132583,
+      "original_sha256": "f372bda70ca1a66650270022c82634b87ff40d15b061f1e988fa40e00a066233",
+      "license": "CC BY 4.0",
+      "license_url": "https://creativecommons.org/licenses/by/4.0/",
+      "provider": "bundled",
+      "content_id": "unknown",
+      "verified_on": "2026-11-08"
     }
   ]
 }

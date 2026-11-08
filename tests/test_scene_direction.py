@@ -14,6 +14,8 @@ from video.timeline import script_signature
 
 @pytest.fixture(autouse=True)
 def offline(monkeypatch):
+    # Six-second scenes intentionally retain their original actor/action IDs.
+    monkeypatch.setattr(config, "SHOT_PLANNING_ENABLED", False)
     for name in ("OPENROUTER_API_KEY", "GEMINI_API_KEY", "GROQ_API_KEY", "PIXABAY_API_KEY", "PEXELS_API_KEY"):
         monkeypatch.setattr(config, name, "")
         monkeypatch.delenv(name, raising=False)

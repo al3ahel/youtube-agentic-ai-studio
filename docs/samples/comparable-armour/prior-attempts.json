@@ -1,0 +1,353 @@
+{
+  "version": 1,
+  "updated_at": "2026-11-08T22:29:23.525066+00:00",
+  "scope": "Historical attempts preceding the final separately audited editorial render/review. Earlier strict runs are not relabelled as successful.",
+  "model": "qwen3.5:4b",
+  "model_digest": "d8b0f5e9760cd1682034f292d7ef72ec46f432149be0df7574bf2d6e92e38c04",
+  "attempts": [
+    {
+      "id": "unconstrained-schema",
+      "outcome": "blocked",
+      "reason": "Actual local response failed normal visual schema validation; no valid model-backed plan.",
+      "report_sha256": "e109942a44ef70d75f84b25742e25fa327073b35508f84557bec08d3fe0627b9",
+      "status_recorded": "blocked",
+      "blocked_stage": "visual_planning",
+      "message": "The visual planner did not return an accepted model response; local template output is not a model-backed demonstration.",
+      "script_sha256": "6376a718b8b1d76e8ed4c754e0ef5cfb772630dcccadef4a7df04a8e2cdcad71"
+    },
+    {
+      "id": "native-schema-original-application",
+      "outcome": "blocked",
+      "reason": "Ten real proposals were rejected by the then-active application guards.",
+      "captures": [
+        {
+          "capture_sha256": "4fe479896b7c8ba193f787adcb386547f695cddef5835f540aa8d9ab4b4006bb",
+          "stage": "visual_planning",
+          "started_at": "2026-11-08T21:22:11.249093+00:00",
+          "finished_at": "2026-11-08T21:30:07.811248+00:00",
+          "model": "qwen3.5:4b",
+          "done": true,
+          "done_reason": "stop",
+          "output_tokens": 1399,
+          "total_seconds": 476.548378012
+        },
+        {
+          "capture_sha256": "aebe2ad6bc8dee81e44fde0e09dfa2490c3f2e90080d4b44ed316f92e17b1854",
+          "stage": "visual_planning",
+          "started_at": "2026-11-08T21:30:07.846015+00:00",
+          "finished_at": "2026-11-08T21:35:42.938992+00:00",
+          "model": "qwen3.5:4b",
+          "done": true,
+          "done_reason": "stop",
+          "output_tokens": 1371,
+          "total_seconds": 335.086360753
+        },
+        {
+          "capture_sha256": "b2cce91cf950f1f56f1bb10945af62c5e7971b4e409916359c2f0f92d17853f4",
+          "stage": "visual_planning",
+          "started_at": "2026-11-08T21:35:42.953098+00:00",
+          "finished_at": "2026-11-08T21:40:48.890578+00:00",
+          "model": "qwen3.5:4b",
+          "done": true,
+          "done_reason": "stop",
+          "output_tokens": 1314,
+          "total_seconds": 305.912438704
+        },
+        {
+          "capture_sha256": "d7a6ab588e8414587f4f248fb5d4e60201fcb8178d216a19d9a1e72323f94ece",
+          "stage": "visual_planning",
+          "started_at": "2026-11-08T21:40:48.909419+00:00",
+          "finished_at": "2026-11-08T21:43:22.399615+00:00",
+          "model": "qwen3.5:4b",
+          "done": true,
+          "done_reason": "stop",
+          "output_tokens": 614,
+          "total_seconds": 153.486987697
+        }
+      ],
+      "report_sha256": "8c79a451dc4e11344acb946fdd80f79a1c827611cb970054dd90b0064af9a263",
+      "status_recorded": "blocked",
+      "blocked_stage": "visual_planning",
+      "message": "No accepted model decisions changed the rendered visual design; a generated response alone is not model-backed direction.",
+      "script_sha256": "6376a718b8b1d76e8ed4c754e0ef5cfb772630dcccadef4a7df04a8e2cdcad71"
+    },
+    {
+      "id": "native-schema-corrected-replay",
+      "outcome": "blocked",
+      "reason": "Explicit recorded-response reapplication after guard correction accepted six source-grounded rows, but none changed consumed non-text controls; strict contribution gate refused success.",
+      "new_visual_inference": false,
+      "generated": 10,
+      "accepted": 6,
+      "rejected": 4,
+      "rendered_nontext": 0,
+      "report_sha256": "9cdd7806e9c7b127bf9aa3c93d0c1639d91e754857c1781290a77757d9540f38",
+      "status_recorded": "blocked",
+      "blocked_stage": "visual_planning",
+      "message": "No accepted model decisions changed the rendered visual design; a generated response alone is not model-backed direction.",
+      "script_sha256": "6376a718b8b1d76e8ed4c754e0ef5cfb772630dcccadef4a7df04a8e2cdcad71"
+    },
+    {
+      "id": "fresh-prompt-interruption",
+      "outcome": "interrupted",
+      "reason": "The execution session and server process disappeared before a complete response capture. No OOM kill was recorded; the cause was not established.",
+      "report_sha256": "d5728e56167a05f862e44331192450c76a3d30da44afa39a37edfc6e66617454",
+      "status_recorded": "running",
+      "blocked_stage": null,
+      "message": null,
+      "script_sha256": "6376a718b8b1d76e8ed4c754e0ef5cfb772630dcccadef4a7df04a8e2cdcad71"
+    },
+    {
+      "id": "fresh-prompt-original-application",
+      "outcome": "blocked",
+      "reason": "Four genuinely fresh response batches were captured. A structurally invalid actor row aborted the then-active application; subsequent correction isolated invalid rows without weakening validators.",
+      "captures": [
+        {
+          "capture_sha256": "3fd49c03004c16653a17fccdbd59605c0e9cb4013c2974fbd63692b1a8fb227d",
+          "stage": "visual_planning",
+          "started_at": "2026-11-08T21:53:57.510908+00:00",
+          "finished_at": "2026-11-08T21:59:41.597281+00:00",
+          "model": "qwen3.5:4b",
+          "done": true,
+          "done_reason": "stop",
+          "output_tokens": 1323,
+          "total_seconds": 344.083311084
+        },
+        {
+          "capture_sha256": "e2a670d713fb45cb49ca6608da77d4821f0954780d47a33256d73e67dfdffe1b",
+          "stage": "visual_planning",
+          "started_at": "2026-11-08T21:59:41.612962+00:00",
+          "finished_at": "2026-11-08T22:02:38.414962+00:00",
+          "model": "qwen3.5:4b",
+          "done": true,
+          "done_reason": "stop",
+          "output_tokens": 735,
+          "total_seconds": 176.788890523
+        },
+        {
+          "capture_sha256": "93be9d54e760794c9ce24c8fa85b99c0464b00923acc85065f8f69662fca2461",
+          "stage": "visual_planning",
+          "started_at": "2026-11-08T22:02:38.431231+00:00",
+          "finished_at": "2026-11-08T22:06:43.127220+00:00",
+          "model": "qwen3.5:4b",
+          "done": true,
+          "done_reason": "stop",
+          "output_tokens": 1254,
+          "total_seconds": 244.686032202
+        },
+        {
+          "capture_sha256": "eff5c042815ebfce61b5fb666dbe940d95719f91742d725daff236d8733394d9",
+          "stage": "visual_planning",
+          "started_at": "2026-11-08T22:06:43.139397+00:00",
+          "finished_at": "2026-11-08T22:09:01.732283+00:00",
+          "model": "qwen3.5:4b",
+          "done": true,
+          "done_reason": "stop",
+          "output_tokens": 645,
+          "total_seconds": 138.58794413
+        }
+      ],
+      "report_sha256": "9e5fd18552a4bd88e9a910e898fdf84216ad1f806a4979492988c9242c644177",
+      "status_recorded": "blocked",
+      "blocked_stage": "visual_planning",
+      "message": "The visual planner did not return an accepted model response; local template output is not a model-backed demonstration.",
+      "script_sha256": "6376a718b8b1d76e8ed4c754e0ef5cfb772630dcccadef4a7df04a8e2cdcad71"
+    },
+    {
+      "id": "fresh-response-replay-unavailable-sound",
+      "outcome": "blocked",
+      "reason": "Explicit immutable visual replay accepted four actual rendered model choices and rejected six rows. Fresh sound inference requested recordings unavailable through the ordinary acquisition path; no additional layer was applied.",
+      "new_visual_inference": false,
+      "generated": 10,
+      "accepted": 4,
+      "rejected": 6,
+      "rendered_nontext": 4,
+      "captures": [
+        {
+          "capture_sha256": "b4fd8aaf2556aec91dcefc69e06a051f8224753484afb1624e15dce6b86eec0e",
+          "stage": "automatic_sound",
+          "started_at": "2026-11-08T22:09:33.435737+00:00",
+          "finished_at": "2026-11-08T22:11:01.900763+00:00",
+          "model": "qwen3.5:4b",
+          "done": true,
+          "done_reason": "stop",
+          "output_tokens": 291,
+          "total_seconds": 88.463518557
+        }
+      ],
+      "report_sha256": "604d499c7e90ae319a90dd52ac5cfd473ab088f17eb7f365d72618536821056a",
+      "status_recorded": "blocked",
+      "blocked_stage": "automatic_sound",
+      "message": "Automatic sound selected no usable added recordings; narration alone does not demonstrate the requested sound design.",
+      "script_sha256": "6376a718b8b1d76e8ed4c754e0ef5cfb772630dcccadef4a7df04a8e2cdcad71"
+    },
+    {
+      "id": "encoded-baseline-timing-and-subject-failure",
+      "outcome": "failed_decoded_review",
+      "reason": "Verified real bundled options let fresh sound inference acquire and mix a music bed plus metal contact. Production encoded all 885 frames. Decoded inspection found subject-irrelevant closing cubes and clipped prose; measured contact audio was 1.401124667 s early; a payoff repeated contact. Full local semantic review was deliberately cancelled before rerendering the repaired ordinary pipeline.",
+      "new_visual_inference": false,
+      "captures": [
+        {
+          "capture_sha256": "39b6a5706d12a756aef2c619b6962dc1cafe4dd1b3725b0cf8a745469df6c754",
+          "stage": "automatic_sound",
+          "started_at": "2026-11-08T22:17:05.592711+00:00",
+          "finished_at": "2026-11-08T22:18:42.263721+00:00",
+          "model": "qwen3.5:4b",
+          "done": true,
+          "done_reason": "stop",
+          "output_tokens": 177,
+          "total_seconds": 96.666101701
+        }
+      ],
+      "movie_sha256": "c9abd0e1e9427867d0852067a78b6eacceeced0ab3e15e1f44d200b1635729b1",
+      "format": {
+        "width": 1080,
+        "height": 1920,
+        "fps": 30,
+        "frames": 885,
+        "duration_seconds": 29.5
+      },
+      "sample_count": 30,
+      "semantic_approval": false,
+      "audio_listened": false
+    },
+    {
+      "id": "fresh-encoded-independent-editorial-findings",
+      "outcome": "interrupted_before_complete_semantic_review",
+      "reason": "Fresh full planning, sound and 885-frame encoding completed. Independent decoded inspection found unsupported closing labels, overly broad proof headings, and a repeated frontal plate view. Two local vision replies were uncertain and could not approve the film. Remaining semantic calls were stopped to apply distinct normal storyboard editorial repairs; the original harness was not relabelled as passed.",
+      "new_visual_inference": true,
+      "generated": 10,
+      "accepted": 7,
+      "rejected": 3,
+      "rendered_nontext": 7,
+      "movie_sha256": "3de99ebe8851c01092145513f8035db8c30d099ed7e2ed291e080c70f8c99ce9",
+      "original_harness_report_sha256": "117ae6fe30924157cf4029333d998e85a2fcb28dd967411012e3053df9680ff6",
+      "captures": [
+        {
+          "file": "model_responses/response-0011.json",
+          "sha256": "4e45150b6f60a6c04a29425499b9e5b6a23e51b41e9cd50af1f110a03f11be3f",
+          "stage": "visual_planning",
+          "status": "received",
+          "started_at": "2026-11-08T22:34:01.056470+00:00",
+          "finished_at": "2026-11-08T22:40:37.764447+00:00",
+          "output_tokens": 1318,
+          "seconds": 396.703479437,
+          "done": true,
+          "image_count": 0
+        },
+        {
+          "file": "model_responses/response-0012.json",
+          "sha256": "5d28099d0130dd841ba9df7ddd649f0d02d9d2951423df3fbd9ee26f5803322a",
+          "stage": "visual_planning",
+          "status": "received",
+          "started_at": "2026-11-08T22:40:37.803986+00:00",
+          "finished_at": "2026-11-08T22:45:07.558527+00:00",
+          "output_tokens": 1399,
+          "seconds": 269.750131662,
+          "done": true,
+          "image_count": 0
+        },
+        {
+          "file": "model_responses/response-0013.json",
+          "sha256": "15457a4964f7322f5969e3a2dd67f6ed8eae9183126d25736ad07190d61ae645",
+          "stage": "visual_planning",
+          "status": "received",
+          "started_at": "2026-11-08T22:45:07.570730+00:00",
+          "finished_at": "2026-11-08T22:49:16.103257+00:00",
+          "output_tokens": 1365,
+          "seconds": 248.526676133,
+          "done": true,
+          "image_count": 0
+        },
+        {
+          "file": "model_responses/response-0014.json",
+          "sha256": "5a798cda88819fb7291a6f16e4acffda0db2a827d33706bf9130d6c6bfbc5421",
+          "stage": "visual_planning",
+          "status": "received",
+          "started_at": "2026-11-08T22:49:16.121482+00:00",
+          "finished_at": "2026-11-08T22:51:32.798669+00:00",
+          "output_tokens": 608,
+          "seconds": 136.675139208,
+          "done": true,
+          "image_count": 0
+        },
+        {
+          "file": "model_responses/response-0015.json",
+          "sha256": "e8719b0ba9e7a9657752eeaa2a8356cc4629a846b7ade15893d98242bab195c9",
+          "stage": "automatic_sound",
+          "status": "received",
+          "started_at": "2026-11-08T22:51:32.879119+00:00",
+          "finished_at": "2026-11-08T22:52:42.212182+00:00",
+          "output_tokens": 203,
+          "seconds": 69.320220831,
+          "done": true,
+          "image_count": 0
+        },
+        {
+          "file": "model_responses/response-0016.json",
+          "sha256": "865b132c224547516516dc02b5744a03762d3c2f897730b519de28ac0ee6f9f7",
+          "stage": "render_review",
+          "status": "received",
+          "started_at": "2026-11-08T22:55:03.984705+00:00",
+          "finished_at": "2026-11-08T22:56:36.143605+00:00",
+          "output_tokens": 466,
+          "seconds": 92.154518446,
+          "done": true,
+          "image_count": 3
+        },
+        {
+          "file": "model_responses/response-0017.json",
+          "sha256": "9632a463a2651730f797363e4f23de362beed2d42c22cd9eb6cadd6a53f564da",
+          "stage": "render_review",
+          "status": "received",
+          "started_at": "2026-11-08T22:56:36.168601+00:00",
+          "finished_at": "2026-11-08T22:57:54.767239+00:00",
+          "output_tokens": 380,
+          "seconds": 78.590728933,
+          "done": true,
+          "image_count": 3
+        }
+      ],
+      "semantic_approval": false,
+      "final_sound": {
+        "music": "Cylinder One \u2014 45-second excerpt",
+        "effect": "Metal surface impact",
+        "effect_start": 4.6,
+        "effect_section": "construction",
+        "timing_source": "section_boundary",
+        "qualification": "A fresh model-selected material accent, not a proof-contact cue; it does not exercise automatic hit-word anchoring."
+      }
+    },
+    {
+      "id": "final-editorial-encode-complete-review",
+      "outcome": "rendered_needs_review",
+      "comparison_complete": false,
+      "new_full_storyboard_inference": false,
+      "new_sound_inference": false,
+      "reason": "Four inspection-directed normal local-model edits were accepted from five actual responses, including one rejected incidental heading-size change and its bounded retry. The ordinary production encoder retained the recordings and film clock, then all ten configured local vision calls completed. One reply passed reliably, seven accepted replies remained uncertain, and two inconsistent replies were rejected. No review finding had trusted repair authority, so the normal one-repair bound proposed no repair. The completed movie remains unapproved by the strict semantic gate.",
+      "editorial_requests": 5,
+      "accepted_editorial_shots": 4,
+      "final_vision_requests": 10,
+      "accepted_evidence_shapes": 8,
+      "reliable_full_passes": 1,
+      "unreliable_validated_replies": 7,
+      "inconsistent_replies_rejected": 2,
+      "automatic_repair_history": [],
+      "movie_sha256": "a8cc826624ba496307f5baebd6445de92712b6197164a1f4bca1a3b0d2c0f290",
+      "comparison_report_file": "comparison.json",
+      "comparison_report_sha256": "c59518b19e5bf8e4df0f960f593457e15a9515b11ae7d7146894d309ffcc9d67",
+      "qa_report_sha256": "ab9f4e29fea27da6e58337173af1c7666c3227ba7ed302c34d3a08f28dbce565",
+      "requirements_unmet": [
+        "complete_reliable_semantic_review",
+        "render_review_passed"
+      ],
+      "decoded_soundtrack_identical": true,
+      "audio_listened": false
+    }
+  ],
+  "final_outcome": {
+    "status": "rendered_needs_review",
+    "comparison_complete": false,
+    "report": "comparison.json",
+    "qualification": "This preserves failures and interruptions as historical evidence. The final film was produced and reviewed; incomplete/unreliable semantic coverage was not reclassified as approval."
+  }
+}

@@ -30,6 +30,31 @@ _fingerprints = OrderedDict()
 _fingerprint_lock = threading.Lock()
 
 
+def iter_scene_media(scene, *, pictures_only=False):
+    """Yield every trusted media reference, including all collage layers.
+
+    The returned dictionaries are the plan's actual references so archive
+    loading can rebind them without losing their source and license metadata.
+    """
+    if not isinstance(scene, dict):
+        raise ValueError("A saved scene must be an object.")
+    for kind, extensions in (("image", _PICTURES), ("footage", {".mp4"})):
+        if pictures_only and kind == "footage":
+            continue
+        asset = scene.get(kind)
+        if asset is not None:
+            if not isinstance(asset, dict) or not isinstance(asset.get("path"), str):
+                raise ValueError("A saved scene media reference is invalid.")
+            yield asset, extensions
+    layers = scene.get("media_layers", [])
+    if not isinstance(layers, list) or len(layers) > 4:
+        raise ValueError("A saved collage must contain a bounded list of pictures.")
+    for asset in layers:
+        if not isinstance(asset, dict) or not isinstance(asset.get("path"), str):
+            raise ValueError("A saved collage layer is invalid.")
+        yield asset, _PICTURES
+
+
 def has_valid_storyboard(plan):
     if not isinstance(plan, dict) or not plan.get("scenes"):
         return False
@@ -145,12 +170,11 @@ def _binding(snapshot, root):
         return None
     assets = {}
     for scene in (plan or {}).get("scenes", []):
-        for kind, extensions in (("image", _PICTURES), ("footage", {".mp4"})):
-            if scene.get(kind):
-                path = _local_file(root, scene[kind].get("path"), extensions)
-                if not path:
-                    return None
-                assets[path.relative_to(root).as_posix()] = identify(path)
+        for asset, extensions in iter_scene_media(scene):
+            path = _local_file(root, asset["path"], extensions)
+            if not path:
+                return None
+            assets[path.relative_to(root).as_posix()] = identify(path)
     return {"script_signature": signature, "plan_revision": plan_revision(plan),
             "timeline_signature": timeline.get("timeline_signature"),
             "narration": narration_identity, "soundtrack": identify(soundtrack), "assets": assets}
@@ -308,8 +332,8 @@ def restore_workspace(output_dir=None):
                     warnings.append("The saved storyboard is incomplete or no longer matches narration. Run the Visuals step to rebuild it.")
                 else:
                     for scene in plan["scenes"]:
-                        for kind, extensions in (("image", _PICTURES), ("footage", {".mp4"})):
-                            if scene.get(kind) and not _local_file(root, scene[kind].get("path"), extensions):
+                        for asset, extensions in iter_scene_media(scene):
+                            if not _local_file(root, asset["path"], extensions):
                                 warnings.append("Some saved scene media is missing or outside this project. Restore its pictures or run Visuals again before rendering.")
             elif os.path.lexists(root / "scene_plan.json"):
                 warnings.append("The saved storyboard could not be read. Run the Visuals step to rebuild it.")
@@ -342,8 +366,9 @@ def restore_workspace(output_dir=None):
                         # Old storyboards may predate image_map.json. Their
                         # exact references remain legacy, requiring photo opt-in
                         # for a new plan; no filename discovery is performed.
-                        images = _image_map(root, {section["id"]: [scene["image"]["path"] for scene in plan["scenes"]
-                                                 if scene["section_id"] == section["id"] and scene.get("image")]
+                        images = _image_map(root, {section["id"]: [asset["path"] for scene in plan["scenes"]
+                                                 if scene["section_id"] == section["id"]
+                                                 for asset, _ in iter_scene_media(scene, pictures_only=True)]
                                                  for section in plan["sections"]})
             video_type = "shorts" if timeline and timeline["height"] > timeline["width"] else (script or {}).get("video_type", "normal")
             if video_type not in {"normal", "shorts"}:

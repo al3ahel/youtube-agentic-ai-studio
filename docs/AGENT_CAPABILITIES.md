@@ -9,9 +9,10 @@ YAAS uses bounded specialist agents around a deterministic media pipeline. A mod
 | Researcher — `agents/researcher.py` | Selected channel description/preset, requested topic or topic-selection context, retrieved background excerpts. May select an angle and supported key points. | Research JSON, actual source references, and the distinction between dated news evidence and background material. | Requires a nonempty topic/title and typed key-point/tag lists. Missing source evidence stays missing; the built-in Wikipedia/arXiv adapter is not a live newsroom. If no text provider succeeds, research fails visibly. |
 | Scriptwriter — `agents/scriptwriter.py` | Research, channel tone, format, target length. May write spoken sections and descriptive image queries. | Script JSON with stable normalized section IDs, narration and estimated durations. | Checks section count and narration size/content; computes duration estimates from words. Estimates are never labeled measured. Provider failure stops writing rather than inventing a completed script. |
 | Script editor — `agents/script_editor.py` | Original sections, source material, profile and local editorial checks. May revise general narration within the original subject and length; news receives suggestions while its narration stays unchanged. | Script plus `quality_review`, including whether a rewrite was accepted or only suggestions were supplied. | Preserves IDs/order; rejects new numbers or quotations, changed negation/uncertainty terms, invalid structure, excessive length changes and a lower local rubric score. On unavailable/invalid AI output, retains the original. These checks cannot prove semantic equivalence or factual truth and do not predict views. |
-| Visual director — `agents/visual_director.py`, `agents/art_direction.py` | Script, measured timeline, mode, photo policy, trusted media and an optional edit request. May choose supported templates, labels, composition, look and rhythm. | Validated `scene_plan.json`: scene identities, measured boundaries, beats, media references and creative direction. | Strict JSON/schema and plan validation; numbers must come from source material and charts need actual data. Missing/invalid AI uses deterministic local direction/templates. It cannot invent local files, rewrite narration timing, or execute generated HTML/JS. |
+| Visual director — `agents/visual_director.py`, `agents/art_direction.py` | Script, measured timeline, mode, photo policy, trusted media and an optional edit request. May choose supported templates, labels, composition, look, rhythm and shot framing/camera/technique. | Validated `scene_plan.json`: scene identities, measured boundaries, beats, media references, creative direction and a journal of accepted and surviving model decisions. | Strict JSON/schema and plan validation; numbers must come from source material and charts need actual data. Missing/invalid AI uses deterministic local direction/templates. It cannot invent local files, rewrite narration timing, or execute generated HTML/JS. |
 | Sound director — `agents/audio_director.py` | Script, measured sections, channel preset/intensity, compatible included recordings and the selected profile's audio library. May choose a music bed or ambience and a bounded number of purposeful accents. | Sound-design plan, privately resolved local recordings and exact attribution metadata. | Validates IDs and event count; the app resolves section IDs to measured times. Library access remains profile-bound. Included assets are hash/size/duration/license checked; other requests use bounded licensed search. Missing recordings are omitted with a warning; conservative local choices remain available when AI fails. |
-| Optional frame critic — `apis/openrouter.py:review_frames` | Bounded samples of the rendered video and a visual-review request. May report visible readability, overlap, clipping or contrast issues. | Review status, issue list and nullable `passed`. | Validates image bounds and a strict response schema. Disabled, unavailable and Local-only results are not passes. It does not hear sound, verify facts, inspect every frame or rewrite the project. |
+| Shot planner — `agents/shot_planner.py` | Measured narration, source-supported mechanisms and trusted media. Selects individual views inside a section. | Versioned role, framing, technique, camera, transition and visible action, plus optional material mechanism or existing collage layers. | Keeps the narration clock; rejects unsupported materials/outcomes and untrusted assets. Existing saved plans retain their renderer. |
+| Encoded reviewer and repair worker — `agents/render_review.py`, `apis/local_vision.py` | Actual decoded shot phases, encoded audio measurements and optional configured vision inference. | Evidence-bound review, nullable `passed`, targeted repair history and accepted/restored movie. | Checks strict frame identities, uncertainty, source grounding, bounded coverage, unchanged narration, actual decoded pixel change and cleared review findings. Local-only can use installed vision-capable weights; it never falls back to hosted inference. Sound is measured, not listened to. |
 
 The pipeline worker in `studio/runner.py` owns execution, cancellation, project ownership and reuse. Narration/timeline code owns the measured clock. `video/renderers/html.py` validates and prepares local assets, invokes the pinned renderer and verifies the resulting media. Mixers and `video/audio_master.py` apply and measure sound. These are executable capabilities, not model instructions.
 
@@ -25,8 +26,17 @@ The renderer supports `flow`, `comparison`, `timeline`, `chart`, `explain`, `tex
 
 The saved `visual_direction` has its own version and rationale. Scene-level choices are validated against the same catalogue. A change must reach the renderer payload and the actual HTML/CSS/GSAP behavior to count as a capability. A rationale or `visual_goal` alone does not animate anything.
 
-New or explicitly rebuilt scenes use `graphics_version: 2`. The director supplies
-grounded item `symbol` and `role` values and a versioned `staging` contract with a
+The provenance journal distinguishes generated responses, accepted changes,
+deterministic fallback and surviving renderer-affecting choices. The strict
+comparison requires accepted, surviving non-text model decisions;
+`ai_status.status = planned` alone does not establish an applied model design.
+This provenance is separate from approval of the decoded result.
+
+New or explicitly rebuilt actor-based 2D scenes use `graphics_version: 2`. Scenes
+with versioned shot direction dispatch through `shots.js`; generic actor shots
+delegate to `worlds.js`, while media and material mechanisms use their own builders.
+For actor scenes, the director supplies grounded item `symbol` and `role` values
+and a versioned `staging` contract with a
 world, action and camera choice. `templates/worlds.js` places actors in one scene
 space and animates the requested action. The renderer consumes those decisions;
 it does not reassign every AI subject by scanning for the first matching noun.
@@ -35,12 +45,16 @@ palette. A scene can have a palette override without restyling the other scenes.
 
 The supported world/action vocabulary includes rising floodwater, adaptation,
 source-explicit floating homes, census recording/gaps, mining extraction/transfer,
-and general actor reveal/assembly/connection/comparison. Camera choices are
-locked, wide, detail, follow and reveal. Shared actors include census/undercount,
-people, mining, solar, battery, circuit, water, plant, network, trade, conflict,
-document, orbit and buildings. Unknown subjects remain labeled abstract diagrams.
+and general actor reveal/assembly/connection/comparison. World-staging camera
+choices are locked, wide, detail, follow and reveal. Shot cameras use locked,
+push, orbit and track, with unsupported orbit normalized to push outside 3D.
+Shared actors include census/undercount, people, mining, solar, battery, circuit,
+water, plant, network, trade, conflict,
+document, orbit, buildings, armour and firearms. Unknown subjects remain labeled abstract diagrams.
 These are qualitative drawings, not inferred statistics, accurate maps, arbitrary
-3D worlds or generated character films. Grounding is a bounded lexical check,
+3D worlds or generated character films. The newer `shot` contract additionally
+supports collage, footage composition and bounded Three.js material mechanisms
+(steel plate, mail and protective layers) when the source supports them. Grounding is a bounded lexical check,
 not a factual or perceptual proof. Old `graphics_version: 1` scenes retain their
 `templates/objects.js` renderer until explicitly rebuilt.
 
@@ -51,7 +65,8 @@ the actual file and decodes samples. Modern assets carry script/channel/scene an
 file fingerprints; the current storyboard determines their credits and active
 archive references. Palette measurement does not establish that a scene is semantically
 correct. See [the scene-direction update](SCENE_DIRECTION_UPDATE.md) for the full
-pipeline map and verification scope.
+pipeline map, and [the shot pipeline update](SHOT_PIPELINE_UPDATE.md) for current
+rendered review and comparison scope.
 
 Motion defaults to graphics without project photos; Hybrid and the explicit photo-animation workflow can use trusted media. Existing photo-based projects retain their saved policy. A motion instruction is not permission to fetch arbitrary URLs, create a fabricated photograph or replace the source narration.
 
@@ -86,9 +101,11 @@ Versioned, repository-owned director prompts are useful for examples, profile to
 
 ## Free and local inference boundaries
 
-`agents/gemini_client.py` is the shared text entry point; `apis/openrouter.py:plan_json` is the strict visual-JSON boundary.
+`agents/gemini_client.py` is the shared text entry point. Visual designs from every
+route pass the bounded schema and plan validators. Native Ollama structured
+requests use `format=schema`; OpenRouter planning uses `apis/openrouter.py:plan_json`.
 
-- **Local-only (`LLM_ROUTE=local`):** text and visual planning use the validated loopback Ollama adapter. It requires evidence of an installed local model, rejects cloud aliases, does not pull models and bounds request size, time and cancellation. Remote frame review is unavailable. A local failure never triggers hosted inference.
+- **Local-only (`LLM_ROUTE=local`):** text and visual planning use the validated loopback Ollama adapter. It requires evidence of an installed local model, rejects cloud aliases, does not pull models and bounds request size, time and cancellation. Encoded semantic review can use an installed vision-capable local model; a text-only model reports unavailable review. A local failure never triggers hosted inference.
 - **Auto:** an explicitly configured local model is tried first. Other text routes use configured Gemini/Groq accounts and verified free OpenRouter choices. Provider limits remain real; quota failure does not upgrade a plan or select a paid OpenRouter model.
 - **OpenRouter:** free selection, schema support where needed, conservative local request budgets and response validation apply at the adapter boundary. Direct calls cannot bypass Local-only. The retired unauthenticated Pollinations text endpoint is not a fallback.
 - **Groq compatibility:** legacy `llama-3.3-70b-versatile` / `llama-3.1-8b-instant` preferences resolve to `openai/gpt-oss-120b` / `openai/gpt-oss-20b`. Other explicit choices are preserved. The adapter logs a migration without rewriting the user's saved settings.

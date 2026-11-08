@@ -431,15 +431,23 @@
     const fullMedia = candidate => candidate.template === "footage" || (candidate.template === "text" && candidate.image) ? "full" : "none";
     // Bounded, zero-time theme changes share the same seekable clock as scenes.
     // fromTo also restores the previous scene's theme when seeking backwards.
-    timeline.fromTo(root, {attr: {"data-look": previousLook, "data-media": fullMedia(previous), "data-world": previous.graphics_version === 2 ? "2" : "0"}},
-      {attr: {"data-look": context.look, "data-media": fullMedia(scene), "data-world": context.worlds ? "2" : "0"}, duration: 0, immediateRender: false}, start);
+    const isShot = candidate => Boolean(candidate.shot) && candidate.template !== "chart";
+    timeline.fromTo(root, {attr: {"data-look": previousLook, "data-media": fullMedia(previous), "data-world": previous.graphics_version === 2 ? "2" : "0", "data-shot": isShot(previous) ? "1" : "0"}},
+      {attr: {"data-look": context.look, "data-media": fullMedia(scene), "data-world": context.worlds ? "2" : "0", "data-shot": context.cinematic ? "1" : "0"}, duration: 0, immediateRender: false}, start);
     if (plan.palette_colors) {
       const colors = source => Object.fromEntries(Object.entries(source.palette_colors || plan.palette_colors).map(([key, value]) => [`--film-world-${key}`, value]));
       timeline.fromTo(root, colors(previous), {...colors(scene), duration: 0, immediateRender: false}, start);
     }
-    gsap.set(node, {opacity: 0});
-    timeline.fromTo(node, {opacity: 0}, {opacity: 1, duration: context.objects ? 0 : .00001, immediateRender: false}, start);
-    timeline.fromTo(node, {opacity: 1}, {opacity: 0, duration: .00001, immediateRender: false}, end - .00001);
+    const visibleAtStart = context.index === 0 && context.cinematic;
+    gsap.set(node, {opacity: visibleAtStart ? 1 : 0});
+    const dissolve = context.cinematic && scene.shot.transition === "dissolve" && context.index > 0
+      ? Math.min(.22, scene.duration * .1) : 0;
+    const next = plan.scenes[context.index + 1];
+    const hold = next?.shot?.transition === "dissolve" ? Math.min(.22, next.duration * .1) : 0;
+    if (!visibleAtStart) timeline.fromTo(node, {opacity: 0}, {opacity: 1, duration: dissolve || (context.objects ? 0 : .00001), immediateRender: false}, start);
+    // An editorial dissolve overlaps the preceding final pose. The voice,
+    // captions, shot boundaries and final duration keep their saved timings.
+    timeline.fromTo(node, {opacity: 1}, {opacity: 0, duration: .00001, immediateRender: false}, end + hold - .00001);
     gsap.set(title, {y: lift, opacity: 0});
     const titleBeat = scene.beats.find(beat => beat.target === "title" && beat.action === "reveal");
     const titleAt = Math.min(end, start + (titleBeat ? titleBeat.time : .04));
@@ -508,8 +516,11 @@
     const look = looks.has(scene.look) ? scene.look : planLook;
     const rhythm = rhythms.has(scene.rhythm) ? scene.rhythm : planRhythm;
     const composition = compositions.has(scene.composition) ? scene.composition : "default";
-    const worlds = scene.graphics_version === 2 && !scene.image && !["footage", "chart"].includes(scene.template);
-    const objects = [1, 2].includes(scene.graphics_version) && !scene.image && !["footage", "chart"].includes(scene.template);
+    // Exact numerical charts retain their established chart builder. All
+    // cinematic scene geometry is selected by the bounded shot contract.
+    const cinematic = Boolean(scene.shot) && scene.template !== "chart";
+    const worlds = !cinematic && scene.graphics_version === 2 && !scene.image && !["footage", "chart"].includes(scene.template);
+    const objects = cinematic || [1, 2].includes(scene.graphics_version) && !scene.image && !["footage", "chart"].includes(scene.template);
     node.classList.toggle("object-scene", objects);
     node.classList.toggle("world-scene", worlds);
     node.classList.add(`composition-${composition}`);
@@ -527,7 +538,7 @@
     const stage = element("div", "scene-visual");
     node.append(header, element("div", "scene-number", `${String(index + 1).padStart(2, "0")} / ${String(plan.scenes.length).padStart(2, "0")}`), stage);
     mount.append(node);
-    return {scene, index, node, header, title, stage, look, rhythm, composition, objects, worlds, items: [], links: [], draws: [], width: visualWidth, height: portrait ? 970 : 400};
+    return {scene, index, node, header, title, stage, look, rhythm, composition, objects, worlds, cinematic, items: [], links: [], draws: [], width: visualWidth, height: portrait ? 970 : 400};
   }
 
   function buildCaptions() {
@@ -631,6 +642,7 @@
     await document.fonts.load('600 72px "Inter Variable"', allText);
     await document.fonts.ready;
     await Promise.all([...document.querySelectorAll("#media-bank img")].map(image => image.decode()));
+    if (plan.scenes.some(scene => scene.shot)) await window.YAASShots.prepare(plan);
     for (const context of scenes) {
       root.dataset.look = context.look;
       if (context.objects) {
@@ -640,15 +652,17 @@
           size -= 2; context.title.style.fontSize = `${size}px`;
         }
       }
-      if (context.objects || !["text", "footage"].includes(context.scene.template)) {
+      if (!context.cinematic && (context.objects || !["text", "footage"].includes(context.scene.template))) {
         const top = Math.max(context.worlds ? (portrait ? 350 : 255) : context.objects ? (portrait ? 410 : 300) : (portrait ? 560 : 390), context.header.offsetTop + context.header.offsetHeight + (context.worlds ? 10 : context.objects ? 22 : 38));
         const bottom = context.worlds ? (portrait ? 1510 : 855) : context.objects ? (portrait ? 1490 : 835) : (portrait ? 1530 : 800);
         context.stage.style.top = `${top}px`;
         context.height = Math.max(portrait ? 500 : 220, bottom - top);
         context.stage.style.height = `${context.height}px`;
       }
-      if (context.scene.image && !["chart", "footage"].includes(context.scene.template)) picture(context);
-      if (context.worlds) window.YAASWorlds.build(context, {portrait, timeline, beatTime, palette: context.scene.palette_colors || plan.palette_colors});
+      if (context.cinematic) window.YAASShots.build(context, {portrait, timeline, beatTime, palette: context.scene.palette_colors || plan.palette_colors});
+      else if (context.scene.image && !["chart", "footage"].includes(context.scene.template)) picture(context);
+      if (context.cinematic) { /* The shot builder owns its media and geometry. */ }
+      else if (context.worlds) window.YAASWorlds.build(context, {portrait, timeline, beatTime, palette: context.scene.palette_colors || plan.palette_colors});
       else if (context.objects) window.YAASObjects.build(context, {portrait, timeline, beatTime});
       else { builders[context.scene.template](context); fitArrangedContent(context); }
       animate(context);
@@ -657,9 +671,11 @@
     timeline.fromTo(document.getElementById("film-progress-fill"), {scaleX: 0}, {scaleX: 1, duration: plan.duration, ease: "none", immediateRender: false}, 0);
     // Keep the playhead exactly as long as narration, even when the final visual is still.
     timeline.to({time: 0}, {time: plan.duration, duration: plan.duration, ease: "none"}, 0);
+    if (plan.scenes.some(scene => scene.shot)) window.YAASShots.bind(timeline, plan);
     document.getElementById("chapter-count").textContent = `${String(plan.scenes.length).padStart(2, "0")} SCENES`;
     root.dataset.look = scenes[0].look;
     root.dataset.world = scenes[0].worlds ? "2" : "0";
+    root.dataset.shot = scenes[0].cinematic ? "1" : "0";
     root.dataset.media = scenes[0].scene.template === "footage" || (scenes[0].scene.template === "text" && scenes[0].scene.image) ? "full" : "none";
     timeline.pause(0);
     window.__timelines = window.__timelines || {};

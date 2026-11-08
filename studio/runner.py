@@ -97,7 +97,7 @@ def _invalidate(output, *, script=False, audio=False, visuals=False):
     if audio:
         state.update(audio_path=None, render_audio_path=None)
         names += ["narration.wav", "narration.mp3", "narration_mixed.mp3", "narration_mixed.wav",
-                  "narration_effects.wav", "narration.srt", "narration.timings.json", "render_audio.json",
+                  "narration_effects.wav", "narration.srt", "narration.timings.json", "narration.service.json", "render_audio.json",
                   "audio_credits.json", "sound_design.json", "audio_master.json", "narration_ambience.wav", "narration_mastered.wav"]
         # These assets belong to the old script, even when a user unchecks the
         # Images step on the next run. Never reuse them as the new script's B-roll.
@@ -402,6 +402,39 @@ def _review_video(video_path, plan, output):
     except (OSError, ValueError, TypeError, subprocess.SubprocessError) as exc:
         log(f"Visual review unavailable: {exc}", "warn")
         return {"status": "unavailable", "reason": "frame_review_failed", "passed": None, "issues": []}
+
+
+def _review_and_repair_video(video_path, plan, output, script, audio_path, *, video_type="normal", preview=False):
+    """Inspect the encoded artifact, then verify at most one targeted repair.
+
+    The repair callback uses the same production renderer and immutable audio.
+    Missing vision remains needs_review, never an automatic quality approval.
+    """
+    from agents.render_review import review_and_repair
+    from video.renderers.html import render_motion_video, prepare_motion_project
+
+    def render(candidate):
+        return render_motion_video(script, audio_path, str(output), candidate,
+                                   video_type=video_type, preview=preview, stop_event=stop_event, progress=log)
+
+    try:
+        path, updated, review = review_and_repair(video_path, plan, str(output), render=render, script=script,
+            max_repairs=1 if getattr(config, "RENDER_REPAIR_ENABLED", True) else 0, stop_event=stop_event, progress=log)
+    except Exception:
+        # The review loop restores the prior MP4 if an attempt fails. Restore
+        # the corresponding editable preview as well, then preserve the error.
+        prepare_motion_project(plan, audio_path, str(output))
+        raise
+    if updated != plan:
+        from agents.shot_planner import report as shot_report
+        if any(scene.get("shot") for scene in updated.get("scenes", [])):
+            updated["shot_report"] = shot_report(updated)
+        _save_json(output / "scene_plan.json", updated)
+    # A rejected candidate's HTML must not remain as the review preview.
+    if review.get("repair_history"):
+        prepare_motion_project(updated, audio_path, str(output))
+    state["visual_plan"] = updated
+    return path, updated, review
 
 
 def run_pipeline_thread(steps: list, topic_override: str = "", video_type: str = "normal",
@@ -779,15 +812,19 @@ def _run_pipeline(steps, topic_override, video_type, focus_angle, use_trends,
                 video_path = render_motion_video(
                     script, final_audio, str(output), plan, video_type=video_type,
                     preview=preview_only, stop_event=stop_event, progress=log)
+                video_path, plan, review = _review_and_repair_video(
+                    video_path, plan, output, script, final_audio, video_type=video_type, preview=preview_only)
                 if preview_only:
                     state["preview_path"] = video_path
                 else:
                     state["video_path"] = video_path
                 checkpoint_workspace(output, rendered_kind="draft" if preview_only else "final")
-                state["visual_qa"] = _review_video(video_path, plan, output)
+                state["visual_qa"] = review
                 _save_json(output / "visual_qa.json", state["visual_qa"])
                 if state["visual_qa"].get("passed") is False:
                     log("Visual review flagged issues. Inspect the storyboard before publishing.", "warn")
+                elif state["visual_qa"].get("passed") is None:
+                    log("Rendered technical checks are saved; visual approval still requires review.", "warn")
             else:
                 from video.creator import create_video
                 image_map = state.get("image_map", {})

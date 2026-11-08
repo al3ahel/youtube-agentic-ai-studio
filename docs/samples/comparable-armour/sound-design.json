@@ -1,0 +1,127 @@
+{
+  "version": 1,
+  "mode": "auto",
+  "intensity": "low",
+  "profile_id": "default",
+  "preset": "general",
+  "planner": {
+    "status": "ai",
+    "prompt_sha256": "85fa5811102b3fbfc7085e88d87437f91a7b2dc54e9289dae48352195083d1f0",
+    "provider": "Ollama · qwen3.5:4b"
+  },
+  "available_recordings": [
+    {
+      "query": "ambient electronic instrumental music",
+      "kind": "music",
+      "title": "Cylinder Five — 45-second excerpt",
+      "creator": "Chris Zabriskie",
+      "license": "CC BY 4.0",
+      "license_url": "https://creativecommons.org/licenses/by/4.0/",
+      "source_url": "https://chriszabriskie.com/cylinders/",
+      "sha256": "1988826849f18012f116950234ec906c31c17e8156ec09394197682743f95c0d"
+    },
+    {
+      "query": "calm minimal ambient music",
+      "kind": "music",
+      "title": "Cylinder One — 45-second excerpt",
+      "creator": "Chris Zabriskie",
+      "license": "CC BY 4.0",
+      "license_url": "https://creativecommons.org/licenses/by/4.0/",
+      "source_url": "https://chriszabriskie.com/cylinders/",
+      "sha256": "6d533867d180381fab2f7583d90db46bc7dc06b5a5cf4f25251e681c450fe9cc"
+    },
+    {
+      "query": "paper turn",
+      "kind": "sfx",
+      "title": "Book page turn — excerpt",
+      "creator": "Oculus VR, LLC",
+      "license": "CC BY 4.0",
+      "license_url": "https://creativecommons.org/licenses/by/4.0/",
+      "source_url": "https://github.com/facebookincubator/Meta-open-sound/blob/251c0be57d5d1b3242b91f53e0cde62ab1cb42d9/corpora/oculus-audio-pack/index/PAPR.json",
+      "sha256": "e5860afcf2bdedb824aba1aafed92b699b67459979cee69dd87c2c5e6d3695b6"
+    },
+    {
+      "query": "small whoosh",
+      "kind": "sfx",
+      "title": "Small whoosh",
+      "creator": "Oculus VR, LLC",
+      "license": "CC BY 4.0",
+      "license_url": "https://creativecommons.org/licenses/by/4.0/",
+      "source_url": "https://github.com/facebookincubator/Meta-open-sound/blob/251c0be57d5d1b3242b91f53e0cde62ab1cb42d9/corpora/oculus-audio-pack/index/WHSH.json",
+      "sha256": "606f8d0b2b022f1470466e250613bd067ccff7697d58a2518661d1e5eaa8f153"
+    },
+    {
+      "query": "metal contact",
+      "kind": "sfx",
+      "title": "Metal surface impact",
+      "creator": "Oculus VR, LLC",
+      "license": "CC BY 4.0",
+      "license_url": "https://creativecommons.org/licenses/by/4.0/",
+      "source_url": "https://github.com/facebookincubator/Meta-open-sound/blob/251c0be57d5d1b3242b91f53e0cde62ab1cb42d9/corpora/oculus-audio-pack/index/METL.json",
+      "sha256": "f372bda70ca1a66650270022c82634b87ff40d15b061f1e988fa40e00a066233"
+    }
+  ],
+  "intent": "A quiet, contemplative instrumental bed grounds the existential science tone; soft page turns accent transitions without disrupting narration.",
+  "summary": "Applied a quiet music bed and 1 timed effect; narration remains the focus.",
+  "audio_sha256": "c76d1f3e4ec8a586b4fe12464daead2c91d29ab862900efaa80362f45646850c",
+  "script_signature": "6376a718b8b1d76e8ed4c754e0ef5cfb772630dcccadef4a7df04a8e2cdcad71",
+  "music": {
+    "asset": {
+      "id": "8dfed4a4f345073a2cb50069fa21f9d1",
+      "kind": "music",
+      "title": "Cylinder One — 45-second excerpt",
+      "filename": "8dfed4a4f345073a2cb50069fa21f9d1.ogg",
+      "source_url": "https://chriszabriskie.com/cylinders/",
+      "creator": "Chris Zabriskie",
+      "license_note": "CC BY 4.0; https://creativecommons.org/licenses/by/4.0/",
+      "content_id": "unknown",
+      "provider": "bundled",
+      "provider_id": "chris-zabriskie/cylinder-one/45s-v1",
+      "license": "CC BY 4.0",
+      "license_url": "https://creativecommons.org/licenses/by/4.0/",
+      "attribution": "\"Cylinder One\" by Chris Zabriskie, from Cylinders (2014), © 2014 Chris Zabriskie. https://chriszabriskie.com/cylinders/ — Licensed under Creative Commons Attribution 4.0: https://creativecommons.org/licenses/by/4.0/ Excerpted, crossfaded into a loop, level reduced and transcoded for this video. No endorsement is implied.",
+      "selection_source": "bundled_catalog",
+      "changes": "Excerpted source seconds 12–58; a 1-second linear head/tail crossfade makes a 45-second loop. Level reduced by 3 dB; resampled to 48 kHz stereo and encoded as Ogg Vorbis quality 4."
+    },
+    "label": "Music",
+    "reason": "Gentle electronic texture fits the deep scientific inquiry style without dramatic interference.",
+    "start": 0,
+    "duration": 29.5,
+    "volume": 0.14
+  },
+  "ambience": null,
+  "events": [
+    {
+      "section_id": "construction",
+      "start": 4.6,
+      "duration": 1.132583,
+      "label": "Visual cue",
+      "reason": "Subtle metal impact aligns with the discussion of steel rings and plate armour mechanics.",
+      "volume": 0.22,
+      "asset": {
+        "id": "0decacf58988cd1dfaf662b29242091e",
+        "kind": "sfx",
+        "title": "Metal surface impact",
+        "filename": "0decacf58988cd1dfaf662b29242091e.ogg",
+        "source_url": "https://github.com/facebookincubator/Meta-open-sound/blob/251c0be57d5d1b3242b91f53e0cde62ab1cb42d9/corpora/oculus-audio-pack/index/METL.json",
+        "creator": "Oculus VR, LLC",
+        "license_note": "CC BY 4.0; https://creativecommons.org/licenses/by/4.0/",
+        "content_id": "unknown",
+        "provider": "bundled",
+        "provider_id": "oculus-audio-pack/METLImpt_MetalHitSurface_OS_01/v1",
+        "license": "CC BY 4.0",
+        "license_url": "https://creativecommons.org/licenses/by/4.0/",
+        "attribution": "\"Oculus Audio Pack 01\" by Oculus VR, LLC (https://developers.meta.com/vr/downloads/package/oculus-audio-pack-1/), licensed under CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/). Files renamed to the UCS naming convention; OGG previews transcoded from the original WAVs. Metal surface impact OGG copied without further audio changes; level and timing may be adjusted in the finished soundtrack.",
+        "selection_source": "bundled_catalog",
+        "changes": "No audio changes to the upstream Ogg preview; only the local filename changed. Generic metal-contact foley, not an authenticated recording of a gunshot or armour test."
+      },
+      "timing_source": "section_boundary",
+      "timing_provenance": {
+        "method": "section_boundary",
+        "reason": "source_contact_not_unique"
+      }
+    }
+  ],
+  "warnings": [],
+  "path": "soundtracks/5fd0c8429b054c5593f13ba1af9cf0c2.wav"
+}

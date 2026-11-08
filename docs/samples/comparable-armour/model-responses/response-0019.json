@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "endpoint": "/api/chat",
+  "stage": "editorial_edit_scene-007",
+  "model": "qwen3.5:4b",
+  "started_at": "2026-11-08T23:03:38.600655+00:00",
+  "native_json_schema": true,
+  "image_count": 0,
+  "status": "received",
+  "finished_at": "2026-11-08T23:05:40.271211+00:00",
+  "response_text": "{\"model\":\"qwen3.5:4b\",\"created_at\":\"2026-11-08T23:05:40.266827976Z\",\"message\":{\"role\":\"assistant\",\"content\":\"{\\\"scenes\\\":[{\\\"id\\\":\\\"scene-007\\\",\\\"template\\\":\\\"explain\\\",\\\"title\\\":\\\"A particular proof test\\\",\\\"visual_goal\\\":\\\"Show steel plate deformation under bullet impact\\\",\\\"composition\\\":\\\"focus\\\",\\\"look\\\":\\\"blueprint\\\",\\\"rhythm\\\":\\\"measured\\\",\\\"palette\\\":\\\"sand\\\",\\\"staging\\\":{\\\"version\\\":1,\\\"world\\\":\\\"generic\\\",\\\"action\\\":\\\"reveal\\\",\\\"camera\\\":\\\"detail\\\"},\\\"stock_subjects\\\":[\\\"steel breastplate\\\",\\\"concrete target\\\",\\\"ballistic test\\\"],\\\"items\\\":[{\\\"label\\\":\\\"steel plate deformed\\\",\\\"symbol\\\":\\\"armour\\\",\\\"role\\\":\\\"subject\\\"},{\\\"label\\\":\\\"concrete bullet dent\\\",\\\"symbol\\\":\\\"document\\\",\\\"role\\\":\\\"support\\\"}],\\\"shot\\\":{\\\"role\\\":\\\"detail\\\",\\\"framing\\\":\\\"close\\\",\\\"technique\\\":\\\"stage2d\\\",\\\"camera\\\":\\\"locked\\\",\\\"transition\\\":\\\"cut\\\",\\\"version\\\":1,\\\"focus\\\":\\\"steel plate deformed\\\",\\\"action\\\":\\\"bullet impacts surface leaving dent\\\"},\\\"mechanisms\\\":[{\\\"version\\\":1,\\\"kind\\\":\\\"armour\\\",\\\"material\\\":\\\"steel\\\",\\\"action\\\":\\\"impact\\\"}] }],\\\"visual_direction\\\":{\\\"version\\\":1,\\\"look\\\":\\\"blueprint\\\",\\\"rhythm\\\":\\\"measured\\\",\\\"rationale\\\":\\\"Technical lines and grid emphasize the structural failure point without narrative distraction\\\"},\\\"creative_brief\\\":{\\\"version\\\":1,\\\"theme\\\":\\\"A particular proof test\\\",\\\"premise\\\":\\\"In proof tests bullets hit some steel breastplates A surviving\\\",\\\"continuity\\\":\\\"Keep the subject and palette consistent. Show each narrated change through the actors, their relationship and the camera, rather than repeating an unrelated icon.\\\",\\\"palette\\\":\\\"sand\\\"}}\"},\"done\":true,\"done_reason\":\"stop\",\"total_duration\":121665554564,\"load_duration\":6058918,\"prompt_eval_count\":3053,\"prompt_eval_cached_count\":0,\"prompt_eval_duration\":57522144000,\"eval_count\":290,\"eval_duration\":63845935000}",
+  "redacted": true,
+  "truncated": false,
+  "redacted_response_json_sha256": "5b965774d819a92cfe7086792522269fc3fef7a2781df215b6560aec5e28dee5"
+}

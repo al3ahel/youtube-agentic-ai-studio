@@ -18,9 +18,67 @@ from video.renderers.html import _validate_plan
     ("Mining industry", "This narration describes a garden, without any mining claim.", "concept"),
     ("Flying satellite", "Trees hold the soil and shelter birds.", "concept"),
     ("School buildings", "School buildings serve the community.", "building"),
+    ("Armour", "Armour and firearms evolved together.", "armour"),
+    ("Breastplate", "A breastplate covered the torso.", "armour"),
+    ("Cuirass", "The cuirass was worn over clothing.", "armour"),
+    ("Firearms", "Armour and firearms evolved together.", "firearm"),
+    ("Arquebus", "An arquebus appears in the collection.", "firearm"),
+    ("Firearm", "A projectile meets armour.", "concept"),
+    ("Firearms", "No firearms were used. Armour remained on display.", "concept"),
+    ("Armour", "This section is about confidence, without armour or weapons.", "concept"),
+    ("Rifle", "Researchers rifle through the documents.", "concept"),
 ])
 def test_subject_requires_support_in_its_own_narration(label, source, expected):
     assert object_direction.symbol_for_item(label, source) == expected
+
+
+@pytest.mark.parametrize("narration,expected", [
+    ("Armour and firearms evolved together for centuries; protection always had limits.",
+     [("Armour", "armour"), ("Firearms", "firearm")]),
+    ("Solar panels feed batteries.", [("Solar panels", "solar"), ("Batteries", "battery")]),
+])
+def test_concrete_local_subjects_are_not_crowded_out_by_four_narration_fragments(narration, expected):
+    scene = {"template": "explain", "title": "Supported subjects", "items": [
+        {"label": label} for label in ("A specific test is not a", "No universal guarantee",
+                                      "This explanation has limits", "An additional thought")]}
+    object_direction.apply_staging(scene, narration)
+    assert [(item["label"], item["symbol"]) for item in scene["items"]] == expected
+    assert len([item for item in scene["items"] if item["role"] == "subject"]) == 1
+    assert not object_direction.grounding_issues(scene, narration)
+    if expected[0][1] == "armour":
+        assert scene["staging"]["action"] == "reveal"
+        assert "mechanism" not in scene
+
+
+def test_unknown_local_subject_does_not_invent_equipment():
+    scene = {"template": "explain", "title": "A philosophical question",
+             "items": [{"label": "A philosophical question"}]}
+    object_direction.apply_staging(scene, "A philosophical question concerns the nature of certainty.")
+    assert all(item["symbol"] == "concept" for item in scene["items"])
+
+
+def test_equipment_vocabulary_survives_normal_planning_schema_and_legacy_validation(monkeypatch):
+    monkeypatch.setattr(visual_director.config, "SHOT_PLANNING_ENABLED", True)
+    narration = "Armour and firearms evolved together for centuries; protection always had limits."
+    script = {"title": "Protection had limits", "sections": [{"id": "limits", "title": "Protection had limits", "narration": narration}]}
+    timeline = {"fps": 30, "width": 1080, "height": 1920, "duration": 4,
+                "sections": [{"id": "limits", "start": 0, "duration": 4}], "captions": [], "words": []}
+    plan = visual_director.plan_scenes(script, timeline, use_ai=False)
+    scene = plan["scenes"][0]
+    assert [item["symbol"] for item in scene["items"]] == ["armour", "firearm"]
+    assert scene["staging"]["action"] == "reveal" and "mechanism" not in scene
+    assert _validate_plan(plan)["scenes"][0]["items"] == scene["items"]
+    schema = visual_director._ai_schema([scene["id"]], shots_enabled=True)
+    symbols = schema["properties"]["scenes"]["items"]["properties"]["items"]["items"]["properties"]["symbol"]["enum"]
+    assert {"armour", "firearm"} <= set(symbols)
+    legacy = deepcopy(plan)
+    old = legacy["scenes"][0]
+    old.pop("shot"); old.pop("staging")
+    for item in old["items"]:
+        item.pop("role")
+    object_direction.apply_objects(old, narration)
+    assert visual_director.validate_plan(legacy)["scenes"][0]["graphics_version"] == 1
+    assert _validate_plan(legacy)["scenes"][0]["items"] == old["items"]
 
 
 def source():
@@ -40,7 +98,9 @@ def source():
     return script, timeline
 
 
-def test_new_plan_persists_grounded_graphics_and_leaves_source_timing_unchanged():
+def test_new_plan_persists_grounded_graphics_and_leaves_source_timing_unchanged(monkeypatch):
+    # The two legacy object scenes map one-to-one to the two source sections.
+    monkeypatch.setattr(visual_director.config, "SHOT_PLANNING_ENABLED", False)
     script, timeline = source()
     before = deepcopy((script, timeline))
     plan = visual_director.plan_scenes(script, timeline, use_ai=False)

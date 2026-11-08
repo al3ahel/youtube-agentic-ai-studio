@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "status": "target_shortfall",
+  "preset": "general",
+  "normalization": "constant_gain",
+  "target_lufs": -16.0,
+  "true_peak_limit_dbtp": -1.5,
+  "max_boost_db": 9.0,
+  "duration": 29.5,
+  "sample_rate": 48000,
+  "input_lufs": -20.28,
+  "input_true_peak_dbtp": -4.95,
+  "output_lufs": -16.93,
+  "output_true_peak_dbtp": -1.6,
+  "applied_gain_db": 3.35,
+  "warnings": [
+    "Kept the soundtrack dynamics and peak headroom; finished at -16.9 LUFS instead of forcing -16 LUFS."
+  ],
+  "limited_by": [
+    "true_peak_headroom"
+  ],
+  "path": "soundtracks/5fd0c8429b054c5593f13ba1af9cf0c2.wav",
+  "audio_sha256": "c76d1f3e4ec8a586b4fe12464daead2c91d29ab862900efaa80362f45646850c"
+}

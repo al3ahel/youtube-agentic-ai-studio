@@ -32,7 +32,7 @@ https://github.com/user-attachments/assets/e94dab2d-3110-440c-b82e-b9289c0e6b51
 
 ### Motion Studio and channel profiles
 
-This fork adds **animated HTML/SVG scenes**, **separate YouTube channel profiles**,
+This fork adds **shot-based HTML/SVG/Three.js scenes**, **separate YouTube channel profiles**,
 and **recurring video generation**. These features are on this fork's **main** branch.
 
 **Motion** creates illustrated moving subjects, diagrams, timelines and comparisons, without
@@ -56,12 +56,29 @@ live account is shown. The schedule is paused in this demonstration.*
 
 #### Rendered video samples
 
-**Directed scenes with real licensed sound:**
+**Full narrated armour comparison with local model direction and automatic sound:**
+[Watch the 29.5-second MP4](docs/samples/comparable-armour/video.mp4) ·
+[Run, review and provenance](docs/samples/comparable-armour/README.md) ·
+[Decoded before/after evidence](docs/samples/comparable-armour/before-after.jpg).
+
+The 1080 × 1920, 30 fps H.264/AAC film contains all 84 narrated words and ten
+shots across five narration sections: two collages, six 2D views and two 3D views.
+The actual local `qwen3.5:4b` run retained non-text decisions in seven shots;
+four subsequent scene-editor corrections followed inspection of the encoded
+movie. Edge TTS supplies the complete voice, and the automatic sound director
+selected real licensed music and a metal accent. The package keeps automatic
+vision findings, independent frame observations and technical checks distinct.
+The final strict review returned **rendered, needs review**: one reliable shot
+pass, seven uncertain judgments and two rejected inconsistent replies. The film
+is complete; automatic semantic approval remains unmet. See the sample report
+for the evidence and remaining visual limitations.
+
+**Earlier deterministic scene fixtures with real licensed sound:**
 [Landscape](docs/samples/directed-motion-landscape.mp4) ·
 [Portrait](docs/samples/directed-motion-portrait.mp4) ·
 [Audio credits](docs/samples/directed-motion-audio-credits.txt).
 These 14-second clips show water reaching coastal homes, floating homes rising
-with water, and a solar-panel/battery/home connection. The normal local planner
+with water, and a solar-panel/battery/home connection. The deterministic local planner
 chooses the actors, actions, camera and shared palette. Each has **168 frames at 12 fps**.
 They contain no narration; phrase cues and the music-only listening balance are
 authored for the example. They demonstrate the renderer and real recordings, not
@@ -69,6 +86,7 @@ speech quality or measured word alignment.
 
 ![Floating homes from the encoded directed Motion sample](docs/screenshots/directed-motion-landscape.png)
 
+[Shot planning, richer scenes and encoded review](docs/SHOT_PIPELINE_UPDATE.md) ·
 [How scene direction and Pixabay video selection work](docs/SCENE_DIRECTION_UPDATE.md) ·
 [Review of the three requested animation skill libraries](docs/ANIMATION_SKILL_REFERENCES.md).
 The earlier census/mining samples remain in the [sample archive](docs/samples/README.md).
@@ -178,8 +196,9 @@ Storing the source on GitHub does not run jobs by itself.
 Visual planning can use the configured local/free text model, including Gemini
 without an OpenRouter key. Without available inference, local art direction and
 animated templates still work with an existing script and narration. The free router is
-`openrouter/free`; explicit model choices are checked against the live catalogue.
-Only free text output models are used for planning and optional frame review.
+`openrouter/free`; OpenRouter model choices are checked against the live catalogue
+for free pricing and the required capabilities. Optional semantic review can also
+use the configured installed local model when its weights support vision.
 This does not provide a free generative video model or remove provider quotas.
 
 Use **Python 3.10, 3.11 or 3.12**. Python 3.13+ isn't supported yet (the pinned `numpy<2` has no prebuilt wheels for it).
@@ -252,9 +271,10 @@ This fork adds the HyperFrames path while keeping original picture acquisition
 in **Hybrid** and **Classic**. Ordinary **Motion** uses graphics only; the explicit
 saved-photo workflow can animate an existing project's pictures. **Classic**
 renders pictures and narration with MoviePy. Old captions or audio-duration estimates can supply an explicitly labelled
-timeline when a legacy project lacks measured timing metadata. Optional
-OpenRouter frame review runs after rendering; it is separate from both the
-renderer and the interactive Review screen.
+timeline when a legacy project lacks measured timing metadata. Encoded shot and
+soundtrack checks run after rendering. Optional semantic review uses the configured
+local vision model or verified free hosted route, with bounded repair and
+rechecking. This is separate from the interactive Review screen.
 
 ### Channels, schedules and sound
 
@@ -266,7 +286,7 @@ script and voice; it does not synthesize binaural recordings or authentic ASMR t
 
 **Automatic sound design** is the default for new profiles. The agent chooses
 music, relevant ambience and sparse effects itself, using the script and measured
-narration. Compatible ambient music, paper-turn and short whoosh requests use a
+narration. Compatible ambient music, paper-turn, short whoosh and metal-contact requests use a
 small included collection of real CC BY 4.0 recordings. Other requests can search
 Wikimedia Commons without a key. Complete source/license information stays with
 the applied soundtrack. You do not need to import or choose every track.
@@ -351,7 +371,7 @@ See [the schedule lifecycle and hosting instructions](docs/CHANNELS_AND_SCHEDULE
 | 🎙️ **Voice audition** | Preview an Edge neural voice with your unsaved speed and pitch before recording. Fresh narration stores measured section timing and available word events; legacy recordings can reuse captions or clearly labelled timing estimates. |
 | 🎞️ **Motion / Hybrid / Classic** | Motion animates grounded illustrated subjects, paths and supplied-data diagrams with five art directions; Hybrid adds current project photos/footage; Classic retains the original photo renderer. Existing card drafts can rebuild animation and sound without recording the voice again. All support 16:9 or 9:16. |
 | 🎛️ **Editable storyboard** | Scrub the local HTML preview, regenerate one scene and render a draft or final MP4 from the same plan. Full projects, narration, timing, media and credits are archived for reopening. |
-| 👁️ **Optional visual review** | An explicitly enabled free vision model checks a few rendered frames for visible layout problems. Review is advisory and does not certify factual accuracy. |
+| 👁️ **Encoded checks and optional visual review** | Encoded checks inspect three phases per sampled shot and measure the soundtrack. Optional local/free vision review checks subject relevance, composition and action; bounded repairs are retained only after re-encoding and rechecking. Missing semantic review remains needs review. These checks do not certify factual accuracy. |
 | 🏷️ **Your brand** | Your channel name appears in the intro, on Shorts and on thumbnails. Change the text or switch it off in Settings. |
 | 📺 **Channel profiles** | Sidebar/mobile selector, fetched YouTube identity, separate sign-ins, channel-bound projects, and editable General, News and ASMR/calm defaults. |
 | ✦ **Title Lab** | 6 alternative titles written from what people actually search, each scored. |
@@ -381,14 +401,14 @@ be unavailable or limited. The app does not silently substitute a paid model.
 | Google Gemini | Research, scripts, titles | free key, recommended |
 | Groq | Fast backup AI | free key, optional |
 | OpenRouter | Free text planning, backup AI and optional vision review | free key, optional; quotas apply |
-| Local Ollama | Writing, sound and text visual direction | installed local model; no cloud fallback in Local-only |
+| Local Ollama | Writing, sound, visual direction and semantic review with vision-capable weights | installed local model; no cloud fallback in Local-only |
 | Edge TTS | Neural voiceover | keyless |
 | Pexels | Stock photos and real video clips in Hybrid mode | free key, optional |
 | Pixabay | Stock photos and subject-matched video clips in Hybrid mode | free key, optional |
 | NASA Image Library | Public-domain space imagery | keyless |
 | Openverse | Creative Commons images (credited) | keyless |
 | Wikimedia Commons | Automatic licensed music and sound recordings | keyless; suitable licensed match required |
-| Included audio collection | Two ambient instrumental beds, paper turn and short whoosh | offline, CC BY 4.0; actual-use credits added automatically |
+| Included audio collection | Two ambient instrumental beds, paper turn, short whoosh and metal contact | offline, CC BY 4.0; actual-use credits added automatically |
 | Wikipedia | Background sources + trending ideas | keyless |
 | arXiv | Research background + topic ideas | keyless |
 | Google Trends RSS | Search spikes | keyless |

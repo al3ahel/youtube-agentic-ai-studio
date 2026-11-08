@@ -12,8 +12,10 @@ from importlib.metadata import PackageNotFoundError, version
 import json
 import math
 import shutil
+import ssl
 import subprocess
 import tempfile
+import time
 import wave
 import zipfile
 from pathlib import Path
@@ -176,6 +178,29 @@ def _save_voice_section(root, key, wav, srt, timing, stop_event=None):
 # ══════════════════════════════════════════════════════════════
 #  HELPERS
 # ══════════════════════════════════════════════════════════════
+
+def _configure_voice_tls() -> None:
+    """Honor an explicitly configured CA bundle without disabling TLS checks.
+
+    edge-tts 7.3 uses its own certifi context for the WebSocket connection, so
+    the usual SSL_CERT_FILE setting is otherwise ignored. Corporate proxies
+    can supply their trusted CA using that standard environment setting. Add
+    that trust to the existing context; never replace certificate verification
+    or hostname checking with an insecure connector.
+    """
+    bundle = os.getenv("SSL_CERT_FILE") or os.getenv("REQUESTS_CA_BUNDLE")
+    if not bundle:
+        return
+    from importlib import import_module
+    context = getattr(import_module("edge_tts.communicate"), "_SSL_CTX", None)
+    if (not isinstance(context, ssl.SSLContext)
+            or context.verify_mode != ssl.CERT_REQUIRED or not context.check_hostname):
+        raise RuntimeError("This edge-tts version cannot safely apply the configured trusted CA bundle.")
+    try:
+        context.load_verify_locations(cafile=os.path.expanduser(bundle))
+    except (OSError, ssl.SSLError) as exc:
+        raise RuntimeError("The configured trusted CA bundle could not be loaded for narration.") from exc
+
 
 def _format_srt_time(ms: float) -> str:
     """Convert milliseconds → SRT timestamp  HH:MM:SS,mmm"""
@@ -355,6 +380,7 @@ async def _synthesise(text: str, audio_path: str, srt_path: str,
     Returns the number of SRT cues written.
     """
     import edge_tts
+    _configure_voice_tls()
     communicate = edge_tts.Communicate(
         text,
         config.VOICE_ID,
@@ -480,6 +506,42 @@ async def _synthesise(text: str, audio_path: str, srt_path: str,
 #  PUBLIC API
 # ══════════════════════════════════════════════════════════════
 
+def _record_section(text, audio_path, srt_path, timings_path, stop_event=None, *,
+                    section_id=None, attempts=None):
+    """Retry only an empty service stream, using fresh private segment files."""
+    from edge_tts.exceptions import NoAudioReceived
+    attempts = attempts if attempts is not None else []
+    for number, backoff in enumerate((2, 5, 0), 1):
+        if stop_event is not None and stop_event.is_set():
+            raise InterruptedError("Narration stopped by user")
+        record = {"section_id": section_id, "attempt": number, "status": "recording"}
+        attempts.append(record)
+        try:
+            result = asyncio.run(_synthesise(text, audio_path, srt_path, timings_path, stop_event))
+        except NoAudioReceived:
+            record.update(status="no_audio_received", retry_delay_seconds=backoff)
+            # These are private temporary segment paths, never a previously
+            # committed narration or cache entry. A retry cannot splice data
+            # from a failed stream into the successful recording.
+            for path in (audio_path, srt_path, timings_path):
+                Path(path).unlink(missing_ok=True)
+            if not backoff:
+                raise
+            print(f"   → Voice stream was empty; retrying this section in {backoff}s ({number}/2).")
+            if stop_event is not None:
+                if stop_event.wait(backoff):
+                    raise InterruptedError("Narration stopped during a voice retry")
+            else:
+                time.sleep(backoff)
+        except Exception as exc:
+            record.update(status="cancelled" if isinstance(exc, InterruptedError) else "failed",
+                          error_type=type(exc).__name__)
+            raise
+        else:
+            record["status"] = "recorded"
+            return result
+
+
 def _generate_segmented(script: dict, output_dir: str, stop_event=None, *, use_cache=None) -> str:
     """Synthesize each section and join decoded PCM samples without overlaps.
 
@@ -508,6 +570,18 @@ def _generate_segmented(script: dict, output_dir: str, stop_event=None, *, use_c
     sample_rate, cursor_samples = 48000, 0
     cache_root = _voice_cache_root(use_cache)
     cache_hits = 0
+    service_attempts = []
+
+    def service_report(status):
+        return {"version": 1, "script_signature": script_signature(script), "status": status,
+                "attempts": service_attempts,
+                "empty_streams": sum(row["status"] == "no_audio_received" for row in service_attempts)}
+
+    def save_failed_service_report():
+        path = destination / "narration.service.json"
+        temporary = path.with_suffix(".tmp")
+        temporary.write_text(json.dumps(service_report("failed"), ensure_ascii=False, indent=2), encoding="utf-8")
+        os.replace(temporary, path)
 
     def check_stop():
         if stop_event is not None and stop_event.is_set():
@@ -536,8 +610,10 @@ def _generate_segmented(script: dict, output_dir: str, stop_event=None, *, use_c
                 else:
                     print(f"   → Recording section {index + 1}/{len(sections)}: {section.get('title', '')}")
                     try:
-                        asyncio.run(_synthesise(text, str(mp3), str(srt), str(timing), stop_event))
+                        _record_section(text, str(mp3), str(srt), str(timing), stop_event,
+                                        section_id=ids[index], attempts=service_attempts)
                     except Exception as exc:
+                        save_failed_service_report()
                         if "403" in str(exc):
                             raise RuntimeError("The voice service rejected the request. Update edge-tts in this environment or choose another voice.") from exc
                         raise
@@ -581,12 +657,15 @@ def _generate_segmented(script: dict, output_dir: str, stop_event=None, *, use_c
                     "audio_sha256": audio_signature(joined),
                     "duration": cursor_samples / sample_rate, "sample_rate": sample_rate,
                     "timing_source": "measured_sections", "sections": measured, "words": words,
-                    "voice_cache": {"enabled": cache_root is not None, "reused_sections": cache_hits}}
+                    "voice_cache": {"enabled": cache_root is not None, "reused_sections": cache_hits},
+                    "voice_service": service_report("completed")}
         _write_srt_blocks(captions, str(work / "narration.srt"))
         (work / "narration.timings.json").write_text(
             json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+        (work / "narration.service.json").write_text(
+            json.dumps(manifest["voice_service"], ensure_ascii=False, indent=2), encoding="utf-8")
         # Keep old successful files intact until every section has completed.
-        for name in ("narration.wav", "narration.srt", "narration.timings.json"):
+        for name in ("narration.wav", "narration.srt", "narration.timings.json", "narration.service.json"):
             os.replace(work / name, destination / name)
     print(f"   → Narration assembled: {len(measured)}/{len(sections)} sections, "
           f"{manifest['duration']:.2f}s measured audio "

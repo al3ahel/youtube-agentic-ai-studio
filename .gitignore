@@ -49,6 +49,11 @@ output/images/
 # Keep the small, verified README video samples.
 !docs/samples/*.mp4
 !docs/samples/skylab.jpg
+# Preserve the complete narrated comparison and its decoded review evidence.
+!docs/samples/comparable-armour/video.mp4
+!docs/samples/comparable-armour/**/*.jpg
+!docs/samples/comparable-armour/**/*.jpeg
+!docs/samples/comparable-armour/**/*.png
 
 # ── OS junk ──────────────────────────────
 .DS_Store

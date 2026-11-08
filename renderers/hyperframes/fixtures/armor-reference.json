@@ -1,0 +1,96 @@
+{
+  "version": 1,
+  "title": "Could ancient armour stop a bullet?",
+  "author": "Artem Novitckii",
+  "repository": "https://github.com/artemnovitckii/claude-animation-skills",
+  "commit": "5dbea55c23aa6a5c93dc3cfb5583840513b56b94",
+  "showcase_url": "https://novitckii.com/resources/animation-skills/",
+  "timing_source_url": "https://github.com/artemnovitckii/claude-animation-skills/blob/5dbea55c23aa6a5c93dc3cfb5583840513b56b94/skills/zach-d-films/engine/src/shots.js",
+  "render_source_url": "https://github.com/artemnovitckii/claude-animation-skills/blob/5dbea55c23aa6a5c93dc3cfb5583840513b56b94/skills/zach-d-films/SKILL.md",
+  "reference_timeline_seconds": 29.49,
+  "reference_encoded_video_measured": false,
+  "public_showcase_excerpt": {
+    "url": "https://novitckii.com/lib/animation-skills/zach-d-films.mp4",
+    "sha256": "5807fa915f045b25a64cb98995734267e8512691af64db663b96f885a13ab0d5",
+    "measured_dimensions": [540, 960],
+    "measured_duration_seconds": 3.6,
+    "measured_frames": 108,
+    "measured_fps": 30,
+    "audio_stream_present": false,
+    "scope": "The author's website serves a short silent preview. The full comparison target comes from the pinned 29.49-second editable source and its documented delivery format, not this excerpt."
+  },
+  "reference_internal_dimensions": [720, 1280],
+  "target": {
+    "width": 1080,
+    "height": 1920,
+    "fps": 30,
+    "frames": 885,
+    "duration_seconds": 29.5,
+    "video_codec": "h264",
+    "audio_codec": "aac",
+    "container": "mp4",
+    "frame_quantization_difference_seconds": 0.01
+  },
+  "reference_shots": [
+    {"start": 0, "end": 2.42, "purpose": "Establish armour and approaching projectile"},
+    {"start": 2.42, "end": 6.25, "purpose": "Slow-motion impact detail"},
+    {"start": 6.25, "end": 8.75, "purpose": "Sword interaction"},
+    {"start": 8.75, "end": 10.68, "purpose": "Mail detail"},
+    {"start": 10.68, "end": 13, "purpose": "Plate impact and reaction"},
+    {"start": 13, "end": 19.45, "purpose": "Longer force-spread mechanism explanation"},
+    {"start": 19.45, "end": 21.85, "purpose": "Archer release"},
+    {"start": 21.85, "end": 25.4, "purpose": "Impact and consequence"},
+    {"start": 25.4, "end": 29.49, "purpose": "Callback and wider payoff"}
+  ],
+  "comparison_scope": "Match topic, intended duration, portrait format and complete narration. Use the runtime planner to create a new shot sequence; do not feed the reference's shot schema into the renderer. The result is a qualitative explanation, not a ballistic simulation.",
+  "factual_change": "Original narration qualifies the reference's blanket claims about armour and projectiles. Some historical armour was reinforced and proof-tested against contemporary firearms. A successful historical proof test is not a guarantee against every projectile or weapon.",
+  "sources": [
+    {
+      "id": "met-misconceptions",
+      "title": "Arms and Armor—Common Misconceptions and Frequently Asked Questions",
+      "publisher": "The Metropolitan Museum of Art",
+      "url": "https://www.metmuseum.org/essays/arms-and-armor-common-misconceptions-and-frequently-asked-questions",
+      "supports": "Mail consists of interlinked rings; firearms and plate armour coexisted for centuries; hardening, thickening and added reinforcing pieces were used."
+    },
+    {
+      "id": "cleveland-technology",
+      "title": "Armor as Technology and Art",
+      "publisher": "Cleveland Museum of Art",
+      "url": "https://www.clevelandart.org/articles/armor-technology-and-art",
+      "supports": "Plates were shaped to deflect blows; some armour was tested by firing contemporary pistols, leaving proof dents."
+    },
+    {
+      "id": "met-reinforcing-breastplate",
+      "title": "Reinforcing Breastplate, ca. 1625–30",
+      "publisher": "The Metropolitan Museum of Art",
+      "url": "https://www.metmuseum.org/art/collection/search/22318",
+      "supports": "An additional, removable breastplate intended to improve bullet resistance."
+    }
+  ],
+  "museum_assets": [
+    {
+      "object_id": 23944,
+      "title": "Armor of Emperor Ferdinand I (1503–1564)",
+      "object_url": "https://www.metmuseum.org/art/collection/search/23944",
+      "api_url": "https://collectionapi.metmuseum.org/public/collection/v1/objects/23944",
+      "section_ids": ["question"],
+      "use": "Illustrative historical armour, not evidence that this particular suit was shot"
+    },
+    {
+      "object_id": 26849,
+      "title": "Mail Shirt, Bechler, 15th century",
+      "object_url": "https://www.metmuseum.org/art/collection/search/26849",
+      "api_url": "https://collectionapi.metmuseum.org/public/collection/v1/objects/26849",
+      "section_ids": ["question"],
+      "use": "Illustrative comparison of armour construction"
+    },
+    {
+      "object_id": 22318,
+      "title": "Reinforcing Breastplate, ca. 1625–30",
+      "object_url": "https://www.metmuseum.org/art/collection/search/22318",
+      "api_url": "https://collectionapi.metmuseum.org/public/collection/v1/objects/22318",
+      "section_ids": ["question"],
+      "use": "Illustrative example of a separate reinforcing plate"
+    }
+  ]
+}

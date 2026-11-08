@@ -1,0 +1,1001 @@
+{
+  "version": 1,
+  "status": "rendered_needs_review",
+  "packaged_at": "2026-11-08T23:32:53.511255+00:00",
+  "comparison_complete": false,
+  "video": {
+    "file": "video.mp4",
+    "sha256": "a8cc826624ba496307f5baebd6445de92712b6197164a1f4bca1a3b0d2c0f290",
+    "bytes": 7831583
+  },
+  "normal_review_original_plan_sha256": "9b5e90f8818a881a61fd49428b9ccc3fea4e0fe501a04cb786cb2e8e33a2b771",
+  "normal_review_render_sha256": "a8cc826624ba496307f5baebd6445de92712b6197164a1f4bca1a3b0d2c0f290",
+  "plan_path_normalization": {
+    "source_file_sha256": "8083bcb6519bf87ed3547d8ff7678bbe1ad0c05715d2284ab8ce313996f15d00",
+    "portable_file": "scene-plan.json",
+    "portable_file_sha256": "12690d9ecf577abf78f75096d5fa049cd9a03bfc5ddd13afb469e37f978376ab",
+    "path_normalizations": [
+      {
+        "pointer": "/scenes/0/image/path",
+        "original_symbolic_path": "$RUN_OUTPUT/images/met-23944.jpg",
+        "original_string_sha256": "9db90f0dbf3e0048bb4b81e0f1928522dcdfd970c0dfd5a224173e24565f712a",
+        "portable_path": "images/met-23944.jpg",
+        "asset_sha256": "2af9e43ee02ff7d8f89999c8e5c9c59cc80cdf7cf7806b7df8d50e8ffceb5c39"
+      },
+      {
+        "pointer": "/scenes/0/media_layers/0/path",
+        "original_symbolic_path": "$RUN_OUTPUT/images/met-23944.jpg",
+        "original_string_sha256": "9db90f0dbf3e0048bb4b81e0f1928522dcdfd970c0dfd5a224173e24565f712a",
+        "portable_path": "images/met-23944.jpg",
+        "asset_sha256": "2af9e43ee02ff7d8f89999c8e5c9c59cc80cdf7cf7806b7df8d50e8ffceb5c39"
+      },
+      {
+        "pointer": "/scenes/0/media_layers/1/path",
+        "original_symbolic_path": "$RUN_OUTPUT/images/met-26849.jpg",
+        "original_string_sha256": "c0bf08c2066f55b53a4902e0ba41347e91e19fae73527b3615819a1c3603bc28",
+        "portable_path": "images/met-26849.jpg",
+        "asset_sha256": "806ed66b71e5673b8ae2271ddf8d288a97f4e994b06844ba85ae1aebf46944a8"
+      },
+      {
+        "pointer": "/scenes/0/media_layers/2/path",
+        "original_symbolic_path": "$RUN_OUTPUT/images/met-22318.jpg",
+        "original_string_sha256": "e284f9d7946b598023688d9beb0f6b52143086b29638a58b2be24e390ed4aade",
+        "portable_path": "images/met-22318.jpg",
+        "asset_sha256": "e4b46a6db470da9a5d5c8674259653153b7962405a07b9688b4c0ba8feffb7dd"
+      },
+      {
+        "pointer": "/scenes/1/image/path",
+        "original_symbolic_path": "$RUN_OUTPUT/images/met-26849.jpg",
+        "original_string_sha256": "c0bf08c2066f55b53a4902e0ba41347e91e19fae73527b3615819a1c3603bc28",
+        "portable_path": "images/met-26849.jpg",
+        "asset_sha256": "806ed66b71e5673b8ae2271ddf8d288a97f4e994b06844ba85ae1aebf46944a8"
+      },
+      {
+        "pointer": "/scenes/1/media_layers/0/path",
+        "original_symbolic_path": "$RUN_OUTPUT/images/met-26849.jpg",
+        "original_string_sha256": "c0bf08c2066f55b53a4902e0ba41347e91e19fae73527b3615819a1c3603bc28",
+        "portable_path": "images/met-26849.jpg",
+        "asset_sha256": "806ed66b71e5673b8ae2271ddf8d288a97f4e994b06844ba85ae1aebf46944a8"
+      },
+      {
+        "pointer": "/scenes/1/media_layers/1/path",
+        "original_symbolic_path": "$RUN_OUTPUT/images/met-22318.jpg",
+        "original_string_sha256": "e284f9d7946b598023688d9beb0f6b52143086b29638a58b2be24e390ed4aade",
+        "portable_path": "images/met-22318.jpg",
+        "asset_sha256": "e4b46a6db470da9a5d5c8674259653153b7962405a07b9688b4c0ba8feffb7dd"
+      },
+      {
+        "pointer": "/scenes/1/media_layers/2/path",
+        "original_symbolic_path": "$RUN_OUTPUT/images/met-23944.jpg",
+        "original_string_sha256": "9db90f0dbf3e0048bb4b81e0f1928522dcdfd970c0dfd5a224173e24565f712a",
+        "portable_path": "images/met-23944.jpg",
+        "asset_sha256": "2af9e43ee02ff7d8f89999c8e5c9c59cc80cdf7cf7806b7df8d50e8ffceb5c39"
+      }
+    ],
+    "original_canonical_plan_sha256": "9b5e90f8818a881a61fd49428b9ccc3fea4e0fe501a04cb786cb2e8e33a2b771",
+    "portable_canonical_plan_sha256": "cbb843d26b871ab18ab0dadb239d86ad42a0ee548c36dd6d2097e5169c2d3179",
+    "qualification": "Only media path strings changed. The normal review plan hash remains the original canonical hash; path normalization is not a new model decision or render approval."
+  },
+  "review_packaging": {
+    "source_file_sha256": "ab9f4e29fea27da6e58337173af1c7666c3227ba7ed302c34d3a08f28dbce565",
+    "portable_file": "visual-qa.json",
+    "portable_file_sha256": "ab9f4e29fea27da6e58337173af1c7666c3227ba7ed302c34d3a08f28dbce565",
+    "path_normalizations": [],
+    "evidence_plan_copy": {
+      "file": "render_review/3220ca2e748a4ef1acc4e07820dbfe9a/attempt-0/plan.json",
+      "file_sha256": "12690d9ecf577abf78f75096d5fa049cd9a03bfc5ddd13afb469e37f978376ab",
+      "canonical_plan_sha256": "cbb843d26b871ab18ab0dadb239d86ad42a0ee548c36dd6d2097e5169c2d3179",
+      "original_reviewed_canonical_plan_sha256": "9b5e90f8818a881a61fd49428b9ccc3fea4e0fe501a04cb786cb2e8e33a2b771",
+      "qualification": "This is a duplicate of portable scene-plan.json with the same documented path normalizations. It is not the original absolute-path plan used by the reviewer."
+    },
+    "encoded_movie_alias": {
+      "source_relative_file": "final_short.mp4",
+      "packaged_file": "video.mp4",
+      "sha256": "a8cc826624ba496307f5baebd6445de92712b6197164a1f4bca1a3b0d2c0f290",
+      "qualification": "The same encoded bytes are packaged under video.mp4. Original report filename metadata is retained rather than silently rewritten."
+    }
+  },
+  "comparison_packaging": {
+    "source_file_sha256": "eea63144c7c4d6b13f8e84ae10bddb43854dc72fd0345f8dc43d974b08b1977c",
+    "portable_file": "comparison.json",
+    "portable_file_sha256": "c59518b19e5bf8e4df0f960f593457e15a9515b11ae7d7146894d309ffcc9d67",
+    "path_normalizations": [
+      {
+        "pointer": "/stages/encoding/probe/format/filename",
+        "original_symbolic_path": "$RUN_OUTPUT/final_short.mp4",
+        "original_string_sha256": "5b4b59cf5484af1fd403d3abe6d32003e91d88e3df384585d73f79a54d76b116",
+        "portable_path": "final_short.mp4"
+      },
+      {
+        "pointer": "/stages/encoded_verification/probe/format/filename",
+        "original_symbolic_path": "$RUN_OUTPUT/final_short.mp4",
+        "original_string_sha256": "5b4b59cf5484af1fd403d3abe6d32003e91d88e3df384585d73f79a54d76b116",
+        "portable_path": "final_short.mp4"
+      }
+    ]
+  },
+  "editorial_receipt_packaging": {
+    "source_file_sha256": "3a1faef521c003a126ee425d7d96d1f053967ded16919ee7953605b9c90181f0",
+    "portable_file": "editorial-repair.json",
+    "portable_file_sha256": "3a1faef521c003a126ee425d7d96d1f053967ded16919ee7953605b9c90181f0",
+    "path_normalizations": []
+  },
+  "original_planning": {
+    "fresh_inference": true,
+    "response_numbers": [
+      11,
+      12,
+      13,
+      14
+    ],
+    "model": "qwen3.5:4b",
+    "model_digest": "d8b0f5e9760cd1682034f292d7ef72ec46f432149be0df7574bf2d6e92e38c04",
+    "original_generated": 10,
+    "original_accepted": 7,
+    "original_rejected": 3,
+    "original_rendered_nontext": 7,
+    "qualification": "Surviving model choices and decoded quality are separate. Some supported local scene controls remain as fallback."
+  },
+  "remaining_original_model_contribution": {
+    "version": 1,
+    "method": "accepted_decision_journal",
+    "generated_scene_count": 10,
+    "scenes": [
+      {
+        "scene_id": "scene-001",
+        "status": "rejected",
+        "changes": [],
+        "local_fallback_fields": [],
+        "rejected_fields": {},
+        "reason": "unsupported_actors_or_action",
+        "rendered_fields": [],
+        "rendered_nontext_fields": []
+      },
+      {
+        "scene_id": "scene-002",
+        "status": "rejected",
+        "changes": [],
+        "local_fallback_fields": [],
+        "rejected_fields": {},
+        "reason": "invalid_actor_or_staging_structure",
+        "rendered_fields": [],
+        "rendered_nontext_fields": []
+      },
+      {
+        "scene_id": "scene-003",
+        "status": "accepted",
+        "changes": [
+          {
+            "field": "title",
+            "before": "Rings and solid steel",
+            "accepted": "Mail armour uses linked rings"
+          },
+          {
+            "field": "visual_goal",
+            "before": "Explain: Mail armour uses linked rings",
+            "accepted": "Reveal the specific construction of mail armour"
+          },
+          {
+            "field": "rhythm",
+            "before": "brisk",
+            "accepted": "calm"
+          },
+          {
+            "field": "items.labels",
+            "before": [
+              "Armour"
+            ],
+            "accepted": [
+              "linked rings",
+              "breastplate cross"
+            ]
+          },
+          {
+            "field": "items.values",
+            "before": [
+              null
+            ],
+            "accepted": [
+              null,
+              null
+            ]
+          },
+          {
+            "field": "items.actors",
+            "before": [
+              [
+                "armour",
+                "subject"
+              ]
+            ],
+            "accepted": [
+              [
+                "circuit",
+                "subject"
+              ],
+              [
+                "armour",
+                "support"
+              ]
+            ]
+          },
+          {
+            "field": "staging.action",
+            "before": "connect",
+            "accepted": "reveal"
+          },
+          {
+            "field": "staging.camera",
+            "before": "follow",
+            "accepted": "detail"
+          },
+          {
+            "field": "shot.camera",
+            "before": "push",
+            "accepted": "locked"
+          },
+          {
+            "field": "shot.focus",
+            "before": "Rings and solid steel",
+            "accepted": "linked rings"
+          },
+          {
+            "field": "shot.action",
+            "before": "Mail armour uses linked rings",
+            "accepted": "zoom in"
+          }
+        ],
+        "local_fallback_fields": [],
+        "rejected_fields": {},
+        "rendered_fields": [
+          "title",
+          "shot.camera"
+        ],
+        "rendered_nontext_fields": [
+          "shot.camera"
+        ]
+      },
+      {
+        "scene_id": "scene-004",
+        "status": "accepted",
+        "changes": [
+          {
+            "field": "visual_goal",
+            "before": "Explain: Steel plate armour can deflect some blows away from the body",
+            "accepted": "Show how mail and plate armour both deflect blows differently using linked rings versus solid surface."
+          },
+          {
+            "field": "look",
+            "before": "studio",
+            "accepted": "blueprint"
+          },
+          {
+            "field": "rhythm",
+            "before": "brisk",
+            "accepted": "measured"
+          },
+          {
+            "field": "items.labels",
+            "before": [
+              "Armour"
+            ],
+            "accepted": [
+              "linked iron rings",
+              "solid steel plate"
+            ]
+          },
+          {
+            "field": "items.values",
+            "before": [
+              null
+            ],
+            "accepted": [
+              null,
+              null
+            ]
+          },
+          {
+            "field": "items.actors",
+            "before": [
+              [
+                "armour",
+                "subject"
+              ]
+            ],
+            "accepted": [
+              [
+                "armour",
+                "subject"
+              ],
+              [
+                "armour",
+                "support"
+              ]
+            ]
+          },
+          {
+            "field": "staging.camera",
+            "before": "wide",
+            "accepted": "locked"
+          },
+          {
+            "field": "shot.role",
+            "before": "interaction",
+            "accepted": "detail"
+          },
+          {
+            "field": "shot.framing",
+            "before": "medium",
+            "accepted": "close"
+          },
+          {
+            "field": "shot.camera",
+            "before": "track",
+            "accepted": "locked"
+          },
+          {
+            "field": "shot.transition",
+            "before": "match",
+            "accepted": "cut"
+          },
+          {
+            "field": "shot.focus",
+            "before": "Rings and solid steel",
+            "accepted": "linked rings and steel plate"
+          },
+          {
+            "field": "shot.action",
+            "before": "Steel plate armour can deflect some blows away from the body",
+            "accepted": "Two textures show different impact resistance."
+          }
+        ],
+        "local_fallback_fields": [],
+        "rejected_fields": {
+          "mechanism": "unsupported_source_mechanism"
+        },
+        "rendered_fields": [
+          "shot.framing",
+          "shot.camera"
+        ],
+        "rendered_nontext_fields": [
+          "shot.framing",
+          "shot.camera"
+        ]
+      },
+      {
+        "scene_id": "scene-005",
+        "status": "accepted",
+        "changes": [
+          {
+            "field": "title",
+            "before": "Adding another layer",
+            "accepted": "Hardening the metal"
+          },
+          {
+            "field": "visual_goal",
+            "before": "Explain: When firearms spread steel armour was hardened thickened or given",
+            "accepted": "Depict the physical process of hardening and thickening steel armour against fire."
+          },
+          {
+            "field": "look",
+            "before": "studio",
+            "accepted": "blueprint"
+          },
+          {
+            "field": "items.labels",
+            "before": [
+              "Armour",
+              "Firearms"
+            ],
+            "accepted": [
+              "thickened steel block",
+              "hardening furnace"
+            ]
+          },
+          {
+            "field": "items.actors",
+            "before": [
+              [
+                "armour",
+                "subject"
+              ],
+              [
+                "firearm",
+                "support"
+              ]
+            ],
+            "accepted": [
+              [
+                "building",
+                "subject"
+              ],
+              [
+                "plant",
+                "support"
+              ]
+            ]
+          },
+          {
+            "field": "staging.action",
+            "before": "reveal",
+            "accepted": "assemble"
+          },
+          {
+            "field": "staging.camera",
+            "before": "wide",
+            "accepted": "follow"
+          },
+          {
+            "field": "shot.role",
+            "before": "detail",
+            "accepted": "interaction"
+          },
+          {
+            "field": "shot.framing",
+            "before": "macro",
+            "accepted": "medium"
+          },
+          {
+            "field": "shot.transition",
+            "before": "cut",
+            "accepted": "match"
+          },
+          {
+            "field": "shot.focus",
+            "before": "Adding another layer",
+            "accepted": "thickening steel block"
+          },
+          {
+            "field": "shot.action",
+            "before": "When firearms spread steel armour was hardened thickened or given",
+            "accepted": "Metal surface shows increased thickness and hardness."
+          }
+        ],
+        "local_fallback_fields": [],
+        "rejected_fields": {
+          "mechanism": "unsupported_source_mechanism"
+        },
+        "rendered_fields": [
+          "shot.framing"
+        ],
+        "rendered_nontext_fields": [
+          "shot.framing"
+        ]
+      },
+      {
+        "scene_id": "scene-006",
+        "status": "accepted",
+        "changes": [
+          {
+            "field": "title",
+            "before": "Adding another layer",
+            "accepted": "Adding a reinforcing layer"
+          },
+          {
+            "field": "visual_goal",
+            "before": "Explain: was hardened thickened or given a reinforcing layer over the breastplate",
+            "accepted": "Illustrate the addition of a second protective layer over the existing breastplate."
+          },
+          {
+            "field": "look",
+            "before": "studio",
+            "accepted": "blueprint"
+          },
+          {
+            "field": "rhythm",
+            "before": "brisk",
+            "accepted": "calm"
+          },
+          {
+            "field": "items.labels",
+            "before": [
+              "Breastplate"
+            ],
+            "accepted": [
+              "original breastplate",
+              "reinforcing layer"
+            ]
+          },
+          {
+            "field": "items.values",
+            "before": [
+              null
+            ],
+            "accepted": [
+              null,
+              null
+            ]
+          },
+          {
+            "field": "items.actors",
+            "before": [
+              [
+                "armour",
+                "subject"
+              ]
+            ],
+            "accepted": [
+              [
+                "armour",
+                "subject"
+              ],
+              [
+                "armour",
+                "support"
+              ]
+            ]
+          },
+          {
+            "field": "staging.action",
+            "before": "reveal",
+            "accepted": "compare"
+          },
+          {
+            "field": "staging.camera",
+            "before": "wide",
+            "accepted": "locked"
+          },
+          {
+            "field": "shot.role",
+            "before": "interaction",
+            "accepted": "detail"
+          },
+          {
+            "field": "shot.framing",
+            "before": "medium",
+            "accepted": "close"
+          },
+          {
+            "field": "shot.camera",
+            "before": "track",
+            "accepted": "locked"
+          },
+          {
+            "field": "shot.transition",
+            "before": "match",
+            "accepted": "dissolve"
+          },
+          {
+            "field": "shot.focus",
+            "before": "Adding another layer",
+            "accepted": "double layer armor stack"
+          },
+          {
+            "field": "shot.action",
+            "before": "was hardened thickened or given a reinforcing layer over the breastplate",
+            "accepted": "A second steel layer sits atop the first plate."
+          }
+        ],
+        "local_fallback_fields": [],
+        "rejected_fields": {},
+        "rendered_fields": [
+          "title",
+          "items.labels",
+          "shot.framing",
+          "shot.camera",
+          "shot.transition"
+        ],
+        "rendered_nontext_fields": [
+          "shot.framing",
+          "shot.camera",
+          "shot.transition"
+        ]
+      },
+      {
+        "scene_id": "scene-007",
+        "status": "accepted",
+        "changes": [
+          {
+            "field": "title",
+            "before": "The proof was a dent",
+            "accepted": "Dent proves steel holds"
+          },
+          {
+            "field": "visual_goal",
+            "before": "Explain: In proof tests bullets hit some steel breastplates A surviving",
+            "accepted": "Show a bullet impact leaving a clear dent on a steel plate to demonstrate proof."
+          },
+          {
+            "field": "look",
+            "before": "studio",
+            "accepted": "blueprint"
+          },
+          {
+            "field": "rhythm",
+            "before": "brisk",
+            "accepted": "measured"
+          },
+          {
+            "field": "items.labels",
+            "before": [
+              "Breastplates"
+            ],
+            "accepted": [
+              "steel plate deformed",
+              "concrete bullet dent"
+            ]
+          },
+          {
+            "field": "items.values",
+            "before": [
+              null
+            ],
+            "accepted": [
+              null,
+              null
+            ]
+          },
+          {
+            "field": "items.actors",
+            "before": [
+              [
+                "armour",
+                "subject"
+              ]
+            ],
+            "accepted": [
+              [
+                "armour",
+                "subject"
+              ],
+              [
+                "document",
+                "support"
+              ]
+            ]
+          },
+          {
+            "field": "staging.camera",
+            "before": "wide",
+            "accepted": "detail"
+          },
+          {
+            "field": "shot.framing",
+            "before": "macro",
+            "accepted": "close"
+          },
+          {
+            "field": "shot.technique",
+            "before": "diagram3d",
+            "accepted": "stage2d"
+          },
+          {
+            "field": "shot.camera",
+            "before": "orbit",
+            "accepted": "locked"
+          },
+          {
+            "field": "shot.focus",
+            "before": "The proof was a dent",
+            "accepted": "steel plate deformed"
+          },
+          {
+            "field": "shot.action",
+            "before": "In proof tests bullets hit some steel breastplates A surviving",
+            "accepted": "bullet impacts surface leaving dent"
+          }
+        ],
+        "local_fallback_fields": [],
+        "rejected_fields": {},
+        "rendered_fields": [
+          "shot.framing",
+          "shot.technique",
+          "shot.camera"
+        ],
+        "rendered_nontext_fields": [
+          "shot.framing",
+          "shot.technique",
+          "shot.camera"
+        ]
+      },
+      {
+        "scene_id": "scene-008",
+        "status": "accepted",
+        "changes": [
+          {
+            "field": "title",
+            "before": "The proof was a dent",
+            "accepted": "Dent absorbs the blow"
+          },
+          {
+            "field": "visual_goal",
+            "before": "Explain: some steel breastplates A surviving dent showed that particular shot had stopped",
+            "accepted": "Illustrate how the steel plate's deformation absorbs the bullet's energy, stopping it from passing through."
+          },
+          {
+            "field": "look",
+            "before": "studio",
+            "accepted": "blueprint"
+          },
+          {
+            "field": "rhythm",
+            "before": "brisk",
+            "accepted": "measured"
+          },
+          {
+            "field": "items.labels",
+            "before": [
+              "Breastplates"
+            ],
+            "accepted": [
+              "bulleted steel plate",
+              "stopped bullet fragment"
+            ]
+          },
+          {
+            "field": "items.values",
+            "before": [
+              null
+            ],
+            "accepted": [
+              null,
+              null
+            ]
+          },
+          {
+            "field": "items.actors",
+            "before": [
+              [
+                "armour",
+                "subject"
+              ]
+            ],
+            "accepted": [
+              [
+                "armour",
+                "subject"
+              ],
+              [
+                "document",
+                "support"
+              ]
+            ]
+          },
+          {
+            "field": "staging.camera",
+            "before": "wide",
+            "accepted": "detail"
+          },
+          {
+            "field": "shot.role",
+            "before": "interaction",
+            "accepted": "detail"
+          },
+          {
+            "field": "shot.framing",
+            "before": "medium",
+            "accepted": "close"
+          },
+          {
+            "field": "shot.technique",
+            "before": "diagram3d",
+            "accepted": "stage2d"
+          },
+          {
+            "field": "shot.camera",
+            "before": "track",
+            "accepted": "locked"
+          },
+          {
+            "field": "shot.focus",
+            "before": "The proof was a dent",
+            "accepted": "bulleted steel plate"
+          },
+          {
+            "field": "shot.action",
+            "before": "some steel breastplates A surviving dent showed that particular shot had stopped",
+            "accepted": "deformed metal absorbs incoming projectile energy"
+          }
+        ],
+        "local_fallback_fields": [],
+        "rejected_fields": {},
+        "rendered_fields": [
+          "shot.framing",
+          "shot.technique",
+          "shot.camera"
+        ],
+        "rendered_nontext_fields": [
+          "shot.framing",
+          "shot.technique",
+          "shot.camera"
+        ]
+      },
+      {
+        "scene_id": "scene-009",
+        "status": "rejected",
+        "changes": [],
+        "local_fallback_fields": [],
+        "rejected_fields": {},
+        "reason": "unsupported_actors_or_action",
+        "rendered_fields": [],
+        "rendered_nontext_fields": []
+      },
+      {
+        "scene_id": "scene-010",
+        "status": "accepted",
+        "changes": [
+          {
+            "field": "visual_goal",
+            "before": "Explain: no universal guarantee Armour and firearms evolved together for centuries protection always had limits",
+            "accepted": "Show that armour and firearms evolved together with inherent limits"
+          },
+          {
+            "field": "look",
+            "before": "studio",
+            "accepted": "editorial"
+          },
+          {
+            "field": "rhythm",
+            "before": "brisk",
+            "accepted": "measured"
+          },
+          {
+            "field": "items.labels",
+            "before": [
+              "Armour",
+              "Firearms"
+            ],
+            "accepted": [
+              "steel plate deflects bullet",
+              "bullet strikes surface"
+            ]
+          },
+          {
+            "field": "staging.camera",
+            "before": "wide",
+            "accepted": "locked"
+          },
+          {
+            "field": "shot.role",
+            "before": "payoff",
+            "accepted": "detail"
+          },
+          {
+            "field": "shot.framing",
+            "before": "wide",
+            "accepted": "close"
+          },
+          {
+            "field": "shot.transition",
+            "before": "match",
+            "accepted": "cut"
+          },
+          {
+            "field": "shot.focus",
+            "before": "Protection had limits",
+            "accepted": "steel plate deflects bullet"
+          },
+          {
+            "field": "shot.action",
+            "before": "no universal guarantee Armour and firearms evolved together for centuries protection always had limits",
+            "accepted": "bullet strikes and skids off metal surface"
+          }
+        ],
+        "local_fallback_fields": [],
+        "rejected_fields": {
+          "mechanism": "unsupported_source_mechanism"
+        },
+        "rendered_fields": [
+          "staging.camera",
+          "shot.framing"
+        ],
+        "rendered_nontext_fields": [
+          "staging.camera",
+          "shot.framing"
+        ]
+      }
+    ],
+    "global_changes": [
+      {
+        "field": "visual_direction.look",
+        "before": "studio",
+        "accepted": "editorial",
+        "rendered_scene_ids": []
+      },
+      {
+        "field": "visual_direction.rhythm",
+        "before": "brisk",
+        "accepted": "measured",
+        "rendered_scene_ids": []
+      }
+    ],
+    "qualification": "Rendered fields survive validation and are consumed differently by the renderer. This is provenance, not decoded visual approval; local fallback and unchanged source facts are not model changes.",
+    "accepted_scene_count": 7,
+    "rejected_scene_count": 3,
+    "changed_scene_count": 7,
+    "rendered_scene_count": 7,
+    "rendered_nontext_scene_count": 7,
+    "accepted_global_change_count": 2,
+    "rendered_global_decision_count": 0
+  },
+  "actual_model_contribution_survives": true,
+  "actual_shot_techniques": {
+    "collage": 2,
+    "stage2d": 6,
+    "diagram3d": 2
+  },
+  "shot_count": 10,
+  "narration_sections": 5,
+  "footage_in_this_demo": false,
+  "editorial_scope": {
+    "requested_shots": [
+      "scene-005",
+      "scene-007",
+      "scene-008",
+      "scene-010"
+    ],
+    "actually_changed_plan_scene_objects": [
+      "scene-005",
+      "scene-007",
+      "scene-008",
+      "scene-010"
+    ],
+    "unrelated_plan_scene_objects_identical": [
+      "scene-001",
+      "scene-002",
+      "scene-003",
+      "scene-004",
+      "scene-006",
+      "scene-009"
+    ],
+    "renderer_only_visible_repairs": {
+      "scene-001": "Occluded rear photo-identity caption is suppressed until clear.",
+      "scene-002": "Occluded rear photo-identity caption is suppressed until clear."
+    },
+    "qualification": "Unrelated plan objects, movie clocks and recordings are preserved; pixel identity across renderer repairs is not claimed. Normal label edits also recomputed target actor reveal/highlight beats, recorded in editorial-repair.json."
+  },
+  "sound": {
+    "automatic_provider": {
+      "status": "ai",
+      "prompt_sha256": "85fa5811102b3fbfc7085e88d87437f91a7b2dc54e9289dae48352195083d1f0",
+      "provider": "Ollama · qwen3.5:4b"
+    },
+    "music": "Cylinder One — 45-second excerpt",
+    "effects": [
+      {
+        "start": 4.6,
+        "duration": 1.132583,
+        "title": "Metal surface impact",
+        "timing_source": "section_boundary",
+        "timing_provenance": {
+          "method": "section_boundary",
+          "reason": "source_contact_not_unique"
+        }
+      }
+    ],
+    "unchanged_mixed_wav_sha256": "75229d2a1037bd706f0488642f6392ef5b7ef8f62a512192ed105886994e62e6",
+    "decoded_soundtrack_preservation": {
+      "stream": {
+        "codec_name": "aac",
+        "sample_rate": "48000",
+        "channels": 2,
+        "duration": "29.500000"
+      },
+      "decoded_pcm_sha256": "b4027aa9fbf3f3f21d394ed41da74d5a3095cbb987f13bcd6de29f892df8c6cb",
+      "decoded_pcm_bytes": 11329536,
+      "sample_format": "s32le",
+      "method": "ffmpeg AAC decode at native rate and channel count; no resampling or remix",
+      "qualification": "Decoded sample identity, not a listening or intelligibility assessment.",
+      "matches_original_decoded_pcm": true,
+      "original_decoded_pcm_sha256": "b4027aa9fbf3f3f21d394ed41da74d5a3095cbb987f13bcd6de29f892df8c6cb"
+    },
+    "qualification": "The final fresh sound model chose a generic construction accent at 4.6 seconds. It did not select the earlier failed proof cue. No subjective listening or sound-quality approval is claimed."
+  },
+  "reference_limitations": [
+    "Source declares 29.49 seconds; 885 frames at 30fps produces 29.5 seconds.",
+    "Only the author’s 3.6-second silent excerpt was publicly accessible; full-length reference playback or sound parity was not measured.",
+    "No quality-parity claim. This real sample contains collage, expressive 2D and useful 3D, with footage capability tested separately."
+  ],
+  "model_capture_count": 22,
+  "review_limitations": [
+    "Three decoded phases inspect sampled shot progression, not every frame or smooth playback.",
+    "Pixel heuristics do not establish subject relevance, correctness, readability or artistic quality.",
+    "Encoded audio is measured; music suitability, intelligibility and sound aesthetics have not been listened to."
+  ],
+  "package_source_paths": "Private workspace prefixes omitted; exact original string hashes and symbolic path mappings preserve normalization provenance.",
+  "source_capture_directory_alias": {
+    "source_relative_directory": "model_responses",
+    "packaged_directory": "model-responses",
+    "qualification": "Original response-receipt filenames retain their normal pipeline directory. Each included capture is packaged under the hyphenated directory with the same basename and identical bytes."
+  }
+}

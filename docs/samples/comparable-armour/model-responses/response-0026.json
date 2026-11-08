@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "endpoint": "/api/chat",
+  "stage": "editorial_render_review",
+  "model": "qwen3.5:4b",
+  "started_at": "2026-11-08T23:21:35.944220+00:00",
+  "native_json_schema": true,
+  "image_count": 3,
+  "status": "received",
+  "finished_at": "2026-11-08T23:23:01.318030+00:00",
+  "response_text": "{\"model\":\"qwen3.5:4b\",\"created_at\":\"2026-11-08T23:23:01.317145015Z\",\"message\":{\"role\":\"assistant\",\"content\":\"{\\n  \\\"shots\\\": [\\n    {\\n      \\\"shot_id\\\": \\\"scene-004\\\",\\n      \\\"confidence\\\": 1.0,\\n      \\\"observations\\\": [\\n        {\\n          \\\"sample_id\\\": \\\"scene-004:setup\\\",\\n          \\\"visible\\\": \\\"A static illustration of a steel plate shield is centered on screen. The text 'Steel plate armour can deflect' is displayed at the bottom.\\\"\\n        },\\n        {\\n          \\\"sample_id\\\": \\\"scene-004:action\\\",\\n          \\\"visible\\\": \\\"The same static illustration of the steel plate shield is centered on screen. The text 'some blows away from the body' is displayed at the bottom.\\\"\\n        },\\n        {\\n          \\\"sample_id\\\": \\\"scene-004:result\\\",\\n          \\\"visible\\\": \\\"The same static illustration of the steel plate shield is centered on screen. The word 'body' is displayed in a small box at the bottom.\\\"\\n        }\\n      ],\\\"assessments\\\": {\\n        \\\"subject_relevance\\\": \\\"uncertain\\\",\\n        \\\"composition\\\": \\\"uncertain\\\",\\n        \\\"motion\\\": \\\"uncertain\\\"\\n      },\\n      \\\"issues\\\": [\\n        {\\n          \\\"category\\\": \\\"subject_relevance\\\",\\n          \\\"severity\\\": \\\"error\\\",\\n          \\\"message\\\": \\\"The narration states 'Steel plate armour can deflect some blows away from the body', but the visual content is a static image of a shield with no depiction of an impact or deflection.\\\",\\\"samples\\\": [\\n            \\\"scene-004:setup\\\",\\n            \\\"scene-004:action\\\",\\n            \\\"scene-004:result\\\"\\n          ],\\\"repair\\\": \\\"source_direction\\\"\\n        }\\n      ]\\n    }\\n  ]\\n}\"},\"done\":true,\"done_reason\":\"stop\",\"total_duration\":85372183421,\"load_duration\":2134037,\"prompt_eval_count\":1613,\"prompt_eval_cached_count\":0,\"prompt_eval_duration\":33590171000,\"eval_count\":385,\"eval_duration\":51608311000}",
+  "redacted": true,
+  "truncated": false,
+  "redacted_response_json_sha256": "038d0801227e8845f8cb6cd04ad6259366297d749f2fd585bab873e6a477b97c"
+}

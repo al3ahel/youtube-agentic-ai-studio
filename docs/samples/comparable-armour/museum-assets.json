@@ -1,0 +1,53 @@
+[
+  {
+    "object_id": 23944,
+    "object_url": "https://www.metmuseum.org/art/collection/search/23944",
+    "use": "Illustrative historical armour, not evidence that this particular suit was shot",
+    "status": "acquired",
+    "title": "Armor of Emperor Ferdinand I (1503–1564)",
+    "date": "dated 1549",
+    "creator": "Kunz Lochner",
+    "credit_line": "Purchase, Rogers Fund and George D. Pratt Gift, 1933",
+    "image_url": "https://images.metmuseum.org/CRDImages/aa/web-large/DP-12881-007.jpg",
+    "is_public_domain": true,
+    "license": "Public domain / The Met Open Access",
+    "acquired_at": "2026-11-08T20:55:51.382532+00:00",
+    "sha256": "2af9e43ee02ff7d8f89999c8e5c9c59cc80cdf7cf7806b7df8d50e8ffceb5c39",
+    "file": "images/met-23944.jpg",
+    "reused": true
+  },
+  {
+    "object_id": 26849,
+    "object_url": "https://www.metmuseum.org/art/collection/search/26849",
+    "use": "Illustrative comparison of armour construction",
+    "status": "acquired",
+    "title": "Mail Shirt",
+    "date": "15th century",
+    "creator": "Bechler",
+    "credit_line": "Gift of William H. Riggs, 1913",
+    "image_url": "https://images.metmuseum.org/CRDImages/aa/web-large/DT215004.jpg",
+    "is_public_domain": true,
+    "license": "Public domain / The Met Open Access",
+    "acquired_at": "2026-11-08T20:54:11.523975+00:00",
+    "sha256": "806ed66b71e5673b8ae2271ddf8d288a97f4e994b06844ba85ae1aebf46944a8",
+    "file": "images/met-26849.jpg",
+    "reused": true
+  },
+  {
+    "object_id": 22318,
+    "object_url": "https://www.metmuseum.org/art/collection/search/22318",
+    "use": "Illustrative example of a separate reinforcing plate",
+    "status": "acquired",
+    "title": "Reinforcing Breastplate",
+    "date": "ca. 1625–30",
+    "creator": "",
+    "credit_line": "Gift of William H. Riggs, 1913",
+    "image_url": "https://images.metmuseum.org/CRDImages/aa/web-large/sfma14.25.867_142718.jpg",
+    "is_public_domain": true,
+    "license": "Public domain / The Met Open Access",
+    "acquired_at": "2026-11-08T20:54:26.663956+00:00",
+    "sha256": "e4b46a6db470da9a5d5c8674259653153b7962405a07b9688b4c0ba8feffb7dd",
+    "file": "images/met-22318.jpg",
+    "reused": true
+  }
+]

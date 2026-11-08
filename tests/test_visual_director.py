@@ -9,6 +9,9 @@ from agents import visual_director as director
 
 @pytest.fixture(autouse=True)
 def no_network(monkeypatch):
+    # This suite exercises the original storyboard contract and saved-project
+    # editing. Shot planning has separate default-on coverage in test_shot_planner.
+    monkeypatch.setattr(director.config, "SHOT_PLANNING_ENABLED", False)
     for name in ("OPENROUTER_API_KEY", "PEXELS_API_KEY"):
         monkeypatch.setattr(director.config, name, "", raising=False)
         monkeypatch.delenv(name, raising=False)

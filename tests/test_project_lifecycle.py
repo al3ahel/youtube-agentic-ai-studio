@@ -121,6 +121,102 @@ def test_archive_roundtrip_restores_portable_motion_narration_and_timing(project
     assert build_timeline(state["script"], state["audio_path"], str(output))["duration"] == 30
 
 
+def _review_evidence(output):
+    from PIL import Image
+    from agents.render_review import _plan_hash
+    identifier = "a" * 32
+    reports = []
+    for attempt in (0, 1):
+        relative = f"render_review/{identifier}/attempt-{attempt}"
+        folder = output / relative
+        folder.mkdir(parents=True)
+        encoded = (b"first attempted movie" if attempt == 0 else (output / "final_video.mp4").read_bytes())
+        (folder / "encoded.mp4").write_bytes(encoded)
+        frames = []
+        for phase in ("setup", "action", "result"):
+            name = f"scene-001-{phase}.jpg"
+            Image.new("RGB", (48, 32), "navy" if attempt == 0 else "teal").save(folder / name)
+            frames.append({"file": name, "id": f"scene-001:{phase}", "phase": phase,
+                           "sha256": hashlib.sha256((folder / name).read_bytes()).hexdigest()})
+        report = {"version": 1, "run_id": identifier, "attempt": attempt, "evidence_directory": relative,
+                  "plan_sha256": _plan_hash(state["visual_plan"]),
+                  "passed": None, "status": "needs_review", "issues": [],
+                  "samples": [{"shot_id": "scene-001", "frames": frames}],
+                  "render": {"file": "final_video.mp4", "sha256": hashlib.sha256(encoded).hexdigest(),
+                             "snapshot": relative + "/encoded.mp4"}}
+        (folder / "plan.json").write_text(json.dumps(state["visual_plan"]))
+        (folder / "review.json").write_text(json.dumps(report))
+        reports.append(report)
+    state["visual_qa"] = reports[1]
+    return output / "render_review" / identifier
+
+
+def test_review_attempts_and_decoded_evidence_survive_archive_and_load(project):
+    output, client = project
+    _motion_project(output)
+    original = _review_evidence(output)
+    contents = {path.relative_to(original).as_posix(): path.read_bytes() for path in original.rglob("*") if path.is_file()}
+    unrelated = output / "render_review" / ("b" * 32)
+    unrelated.mkdir()
+    (unrelated / "unrelated.json").write_text('{"not_this_project":true}')
+    pid = library.archive_project()
+    archive = Path(library.lib_path(pid))
+    manifest_name = library.read_meta(pid)["files"]["render_review"]
+    assert manifest_name == "render_review/" + "a" * 32 + "/manifest.json"
+    manifest = json.loads((archive / manifest_name).read_text())
+    assert {row["path"] for row in manifest["files"]} == set(contents)
+    assert not (archive / "render_review" / ("b" * 32)).exists()
+    shutil.rmtree(output / "render_review")
+    assert client.post(f"/api/library/{pid}/load", json={}).json == {"ok": True}
+    restored = output / "render_review" / ("a" * 32)
+    assert all((restored / name).read_bytes() == value for name, value in contents.items())
+    assert state["visual_qa"]["run_id"] == "a" * 32
+
+
+def test_changed_decoded_review_frame_cannot_be_archived_as_original_evidence(project):
+    output, _ = project
+    _motion_project(output)
+    root = _review_evidence(output)
+    (root / "attempt-0" / "scene-001-action.jpg").write_bytes(b"changed after review")
+    with pytest.raises(ValueError, match="frame changed"):
+        library.archive_project()
+
+
+@pytest.mark.parametrize("corruption", ["escape", "changed_bytes"])
+def test_archived_review_inventory_cannot_escape_or_restore_modified_evidence(project, corruption):
+    output, client = project
+    _motion_project(output)
+    _review_evidence(output)
+    pid = library.archive_project()
+    archive = Path(library.lib_path(pid))
+    name = library.read_meta(pid)["files"]["render_review"]
+    manifest = json.loads((archive / name).read_text())
+    if corruption == "escape":
+        manifest["files"][0]["path"] = "../../outside.json"
+        (archive / name).write_text(json.dumps(manifest))
+    else:
+        (archive / "render_review" / ("a" * 32) / "attempt-0" / "scene-001-action.jpg").write_bytes(b"changed evidence")
+    previous = deepcopy(state)
+    (output / "script.json").write_text('{"title":"Current project must remain"}')
+    response = client.post(f"/api/library/{pid}/load", json={})
+    assert response.json["ok"] is False and state == previous
+    assert json.loads((output / "script.json").read_text())["title"] == "Current project must remain"
+
+
+def test_evidence_size_limit_keeps_reports_and_records_omitted_attempt_movies(project, monkeypatch):
+    output, _ = project
+    _motion_project(output)
+    root = _review_evidence(output)
+    small_bytes = sum(path.stat().st_size for path in root.rglob("*") if path.is_file() and path.suffix != ".mp4")
+    monkeypatch.setattr(library, "_REVIEW_LIMIT", small_bytes + 1)
+    pid = library.archive_project()
+    archive = Path(library.lib_path(pid))
+    manifest = json.loads((archive / library.read_meta(pid)["files"]["render_review"]).read_text())
+    assert len(manifest["omitted"]) == 2
+    assert all(not row["path"].endswith(".mp4") for row in manifest["files"])
+    assert all((archive / "render_review" / ("a" * 32) / row["path"]).is_file() for row in manifest["files"])
+
+
 def test_loading_legacy_classic_project_clears_stale_motion_audio_and_captions(project):
     output, client = project
     _motion_project(output)

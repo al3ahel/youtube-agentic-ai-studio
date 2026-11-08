@@ -1,0 +1,80 @@
+{
+  "version": 1,
+  "status": "implemented_with_real_film_and_unmet_strict_semantic_gate",
+  "comparison_complete": false,
+  "items": [
+    {
+      "requirement": "Richer scene-building capabilities",
+      "implementation": "Collage, footage composition, expressive 2D actors/material mechanisms and genuine Three.js 3D are integrated into normal rendering.",
+      "demonstrated_in_this_film": {
+        "collage_shots": 2,
+        "stage2d_shots": 6,
+        "diagram3d_shots": 2,
+        "footage_shots": 0
+      },
+      "qualification": "Footage is a separately tested capability, not a selected asset in this film."
+    },
+    {
+      "requirement": "Planning at shot level",
+      "implementation": "Measured narration is divided into source-grounded shot roles and purposes with individual framing, technique, camera and beats.",
+      "observed": {
+        "narration_sections": 5,
+        "shots": 10,
+        "genuine_initial_model_requests": 4,
+        "generated_scene_proposals": 10,
+        "accepted": 7,
+        "rejected": 3,
+        "surviving_original_nontext_decision_scenes": 7
+      }
+    },
+    {
+      "requirement": "Visual review and repair loop",
+      "implementation": "Actual encoded phases, technical/audio measurements and configured vision requests feed bounded repairs with validation, new decoded evidence and rollback.",
+      "observed": {
+        "phase_frames": 30,
+        "independent_editorial_shots_repaired": 4,
+        "editorial_model_requests": 5,
+        "final_vision_requests": 10,
+        "normal_max_repairs": 1,
+        "automatic_repairs_applied": 0
+      },
+      "strict_outcome": "Semantic review remains incomplete and unapproved; uncertain or inconsistent responses did not gain automatic repair authority."
+    },
+    {
+      "requirement": "Comparable real-pipeline demonstration",
+      "observed": {
+        "topic": "Historical armour versus bullets",
+        "source_declared_target_seconds": 29.49,
+        "actual_seconds": 29.5,
+        "frames": 885,
+        "width": 1080,
+        "height": 1920,
+        "fps": 30,
+        "codecs": [
+          "h264",
+          "aac"
+        ],
+        "narration_words": 84,
+        "actual_free_local_model": "qwen3.5:4b",
+        "narration_provider": "Free network Edge TTS",
+        "automatic_sound": "One actual licensed music bed and one model-selected generic metal-contact accent"
+      },
+      "strict_outcome": "The complete film and actual pipeline evidence exist; the strict comparable-demo acceptance flag is false because semantic coverage and approval were not achieved."
+    }
+  ],
+  "unmet_strict_gates": [
+    "complete_reliable_semantic_review",
+    "render_review_passed"
+  ],
+  "gates": {
+    "format": true,
+    "surviving_actual_model_contribution": true,
+    "complete_reliable_semantic_review": false,
+    "render_review_passed": false,
+    "decoded_soundtrack_identical": true,
+    "source_recordings_and_timeline_unchanged": true
+  },
+  "audio_perceptual_quality": "not_assessed",
+  "quality_parity_claimed": false,
+  "qualification": "Implementation, technical validity, model contribution and decoded aesthetic/semantic approval are separate findings. User Windows configuration/credentials were not available; this run used a documented local-model override without changing saved defaults."
+}

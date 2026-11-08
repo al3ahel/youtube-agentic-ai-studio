@@ -21,6 +21,7 @@ sys.path.insert(0, str(ROOT))
 
 from agents.visual_director import plan_scenes
 from agents.object_direction import apply_objects
+import config
 from video.renderers.html import prepare_motion_project, render_motion_video
 
 
@@ -44,7 +45,14 @@ def fixture(output, portrait=False):
             {"start": index * 7, "end": index * 7 + 3.5, "text": first + "."},
             {"start": index * 7 + 3.5, "end": index * 7 + 7, "text": second},
         ])
-    plan = plan_scenes(script, timeline, use_ai=False, use_project_photos=False)
+    # This fixture explicitly verifies the original v1 renderer and its
+    # authored seven-second cues; the shot fixture covers the new default.
+    original_shot_planning = config.SHOT_PLANNING_ENABLED
+    try:
+        config.SHOT_PLANNING_ENABLED = False
+        plan = plan_scenes(script, timeline, use_ai=False, use_project_photos=False)
+    finally:
+        config.SHOT_PLANNING_ENABLED = original_shot_planning
     plan.pop("creative_brief", None)
     # A consistent neutral editorial treatment isolates the structure change.
     plan["visual_direction"] = {"version": 1, "look": "editorial", "rhythm": "measured",

@@ -46,6 +46,7 @@ DEFAULT_CONFIG_MAP = {
     "music_library": "MUSIC_LIBRARY_DIR", "visual_mode": "VISUAL_MODE",
     "visual_ai_enabled": "VISUAL_AI_ENABLED", "visual_planner_model": "VISUAL_PLANNER_MODEL",
     "visual_review_model": "VISUAL_REVIEW_MODEL", "visual_review_enabled": "VISUAL_REVIEW_ENABLED",
+    "shot_planning_enabled": "SHOT_PLANNING_ENABLED", "render_repair_enabled": "RENDER_REPAIR_ENABLED",
     "motion_quality": "MOTION_QUALITY", "motion_workers": "MOTION_WORKERS",
     "privacy": "VIDEO_PRIVACY", "fact_grounding": "FACT_GROUNDING",
     "overlay": "OVERLAY_OPACITY", "kb_start": "KB_ZOOM_START", "kb_end": "KB_ZOOM_END",
@@ -145,7 +146,7 @@ def validate_defaults(values):
         raise ChannelProfileError("Unknown or invalid channel default settings.")
     out = {}
     bools = {"show_brand", "credit_yaas", "music_enabled", "sfx_enabled", "visual_ai_enabled", "audio_mastering", "script_review_enabled", "voice_cache_enabled",
-             "visual_review_enabled", "fact_grounding"}
+             "visual_review_enabled", "fact_grounding", "shot_planning_enabled", "render_repair_enabled"}
     choices = {
         "visual_mode": {"motion", "hybrid", "classic"},
         "video_type": {"normal", "shorts"}, "privacy": {"public", "unlisted", "private"},

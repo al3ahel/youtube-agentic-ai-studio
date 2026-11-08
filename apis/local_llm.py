@@ -20,7 +20,10 @@ import config
 DEFAULT_BASE_URL = "http://127.0.0.1:11434"
 MAX_RESPONSE_BYTES = 2 * 1024 * 1024
 MAX_PROMPT_CHARS = 60000
-MAX_GENERATION_SECONDS = 180
+# Local CPU generation can take several minutes even for a small, installed
+# model. Keep a hard deadline and live cancellation without cutting otherwise
+# valid structured responses off at the old three-minute budget.
+MAX_GENERATION_SECONDS = 600
 _MODEL = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,179}\Z")
 _DIGEST = re.compile(r"(?:sha256:)?[a-f0-9]{64}\Z")
 
@@ -171,7 +174,7 @@ def list_models(base_url=None, stop_event=None):
 
 
 def generate(prompt, model=None, base_url=None, temperature=.7, stop_event=None, *, json_mode=False,
-             provider_info=None):
+             provider_info=None, json_schema=None):
     """Generate text locally after verifying the selected installed model twice."""
     if not isinstance(json_mode, bool):
         raise LocalLLMError("invalid_options", "json_mode must be true or false.")
@@ -179,6 +182,14 @@ def generate(prompt, model=None, base_url=None, temperature=.7, stop_event=None,
         provider_info.clear()
     if not isinstance(prompt, str) or not prompt.strip() or len(prompt) > MAX_PROMPT_CHARS:
         raise LocalLLMError("invalid_prompt", "Provide a nonempty prompt within the local model's input limit.")
+    if json_schema is not None:
+        if not json_mode:
+            raise LocalLLMError("invalid_options", "A structured schema requires JSON mode.")
+        from apis.openrouter import _validate_plan_request
+        # Native constrained decoding avoids spending a long CPU request on
+        # unknown enum values or missing fields. Caller validation still owns
+        # scene identities, source grounding and the complete application contract.
+        json_schema = json.loads(_validate_plan_request(prompt, json_schema))
     if (isinstance(temperature, bool) or not isinstance(temperature, (int, float))
             or not math.isfinite(temperature) or not 0 <= temperature <= 2):
         raise LocalLLMError("invalid_options", "Choose a model temperature from zero to two.")
@@ -209,9 +220,14 @@ def generate(prompt, model=None, base_url=None, temperature=.7, stop_event=None,
     request_body = {"model": selected, "messages": [{"role": "user", "content": _redact(prompt)}],
                     "stream": False, "options": {"temperature": temperature, "num_predict": 8192}, "keep_alive": "5m"}
     if json_mode:
-        request_body["format"] = "json"
+        request_body["format"] = json_schema if json_schema is not None else "json"
+        # Structured scene/sound requests need the complete bounded object.
+        # Thinking-capable local models otherwise may spend the output limit
+        # on hidden reasoning before they emit any usable scene data.
+        if isinstance(capabilities, list) and "thinking" in capabilities:
+            request_body["think"] = False
         request_body["messages"].insert(0, {"role": "system", "content":
-            "Return one complete JSON object without Markdown or other text."})
+            "Return one compact, complete JSON object without Markdown or other text. Follow the supplied schema exactly."})
     result = _request_json(origin, "/api/chat", body=request_body, stop_event=stop_event,
                            timeout=MAX_GENERATION_SECONDS)
     if result.get("remote_host") or result.get("remote_model"):

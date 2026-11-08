@@ -29,6 +29,7 @@ from typing import Callable
 import config
 from agents.art_direction import PALETTES, palette_colors, validate_brief
 from agents.object_direction import SYMBOLS, validate_actors, validate_staging
+from agents import shot_planner
 from apis.stock_video import validate_selection, verify_footage
 
 
@@ -160,7 +161,7 @@ def _validate_plan(scene_plan: dict) -> dict:
         if not isinstance(original, dict):
             raise ValueError("Each scene must be an object")
         if source.get("use_project_photos") is False:
-            if original.get("image") is not None:
+            if original.get("image") is not None or original.get("media_layers") is not None:
                 raise ValueError("This storyboard does not use photos. Rebuild its scenes before rendering.")
             if plan["mode"] == "motion" and original.get("footage") is not None:
                 raise ValueError("Motion uses animated graphics. Choose Hybrid to use footage.")
@@ -174,6 +175,10 @@ def _validate_plan(scene_plan: dict) -> dict:
             "visual_goal": _text(original.get("visual_goal", ""), "visual_goal", 2000),
             "items": [], "beats": [],
         }
+        shot_planner.validate_scene(original)
+        for key in ("shot", "mechanism"):
+            if key in original:
+                scene[key] = copy.deepcopy(original[key])
         if "graphics_version" in original:
             if type(original["graphics_version"]) is not int or original["graphics_version"] not in {1, 2}:
                 raise ValueError("Unsupported object graphics version")
@@ -260,6 +265,13 @@ def _validate_plan(scene_plan: dict) -> dict:
                 "credit": _text(asset.get("credit", ""), "image.credit", 200),
                 "license": _text(asset.get("license", ""), "image.license", 160),
             }
+        if "media_layers" in original:
+            scene["media_layers"] = []
+            for asset in original["media_layers"]:
+                if set(asset) - {"path", "source_url", "source", "credit", "license"}:
+                    raise ValueError("Collage image contains unsupported fields")
+                scene["media_layers"].append({key: _text(asset.get(key, ""), "layer." + key, limit)
+                    for key, limit in (("path", 4096), ("source_url", 2000), ("source", 80), ("credit", 200), ("license", 160))})
         if original.get("footage") is not None:
             footage = original["footage"]
             if not isinstance(footage, dict):
@@ -420,6 +432,12 @@ def _copy_vendor(project: Path) -> None:
     _atomic_copy(font / "LICENSE", vendor / "INTER-LICENSE.txt")
     for path in (font / "files").glob("*-wght-normal.woff2"):
         _atomic_copy(path, files / path.name)
+    three = dependencies / "three"
+    for filename in ("three.module.js", "three.core.js"):
+        if not (three / "build" / filename).is_file():
+            raise MotionRenderError("The 3D renderer dependency is missing. Run npm ci in renderers/hyperframes.")
+        _atomic_copy(three / "build" / filename, vendor / filename)
+    _atomic_copy(three / "LICENSE", vendor / "THREE-LICENSE.txt")
 
 
 def prepare_motion_project(scene_plan: dict, audio_path: str, output_dir: str) -> Path:
@@ -431,10 +449,15 @@ def prepare_motion_project(scene_plan: dict, audio_path: str, output_dir: str) -
     composition. An empty audio_path is allowed only for silent authoring previews.
     """
     plan = _validate_plan(scene_plan)
+    result_views = shot_planner.result_view_scene_ids(plan)
+    for scene in plan["scenes"]:
+        if scene["id"] in result_views:
+            scene["mechanism_result_view"] = True
     output = Path(output_dir).expanduser().resolve()
     audio = _media_path(audio_path, output, AUDIO_EXTENSIONS) if audio_path else None
     footage_sources = {}
     image_sources = {}
+    layer_sources = {}
     for index, scene in enumerate(plan["scenes"]):
         if scene.get("footage"):
             footage_sources[index] = _footage_path(scene, plan, output)
@@ -443,6 +466,10 @@ def prepare_motion_project(scene_plan: dict, audio_path: str, output_dir: str) -
                 scene["image"]["path"], output, IMAGE_EXTENSIONS, restrict=True,
             )
             _validate_image(image_sources[index])
+        for layer_index, layer in enumerate(scene.get("media_layers", [])):
+            source = _media_path(layer["path"], output, IMAGE_EXTENSIONS, restrict=True)
+            _validate_image(source)
+            layer_sources[index, layer_index] = source
     project = output / "motion"
     if project.is_symlink():
         raise ValueError("The generated motion directory cannot be a symbolic link")
@@ -451,7 +478,7 @@ def prepare_motion_project(scene_plan: dict, audio_path: str, output_dir: str) -
             raise ValueError("Motion output asset directories cannot be symbolic links")
         folder.mkdir(parents=True, exist_ok=True)
     _copy_vendor(project)
-    for filename in ("scene.js", "scene.css", "objects.js", "worlds.js", "worlds.css", "preview.js"):
+    for filename in ("scene.js", "scene.css", "objects.js", "worlds.js", "worlds.css", "shots.js", "shots.css", "preview.js"):
         _atomic_copy(RENDERER_DIR / "templates" / filename, project / filename)
     media_markup = []
     if audio:
@@ -476,6 +503,10 @@ def prepare_motion_project(scene_plan: dict, audio_path: str, output_dir: str) -
             f'<img id="image-{index}" src="{asset["path"]}" alt="" '
             'decoding="sync" loading="eager">'
         )
+    for (index, layer_index), source in layer_sources.items():
+        asset = plan["scenes"][index]["media_layers"][layer_index]
+        asset["path"] = _copy_image(source, project / "assets")
+        media_markup.append(f'<img id="layer-{index}-{layer_index}" src="{asset["path"]}" alt="" decoding="sync" loading="eager">')
     plan["renderer"] = {"name": "hyperframes", "version": HYPERFRAMES_VERSION}
     payload = json.dumps(plan, ensure_ascii=False, allow_nan=False, separators=(",", ":"))
     embedded = (payload.replace("&", "\\u0026").replace("<", "\\u003c")

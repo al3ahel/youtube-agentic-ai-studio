@@ -1,13 +1,47 @@
 # Renderer verification samples
 
-## Current directed scenes with licensed sound
+## Narrated local-model armour comparison
+
+[Watch video.mp4](comparable-armour/video.mp4) ·
+[Detailed run and limitations](comparable-armour/README.md) ·
+[Ten-shot overview](comparable-armour/overview.jpg) ·
+[Before/after frames](comparable-armour/before-after.jpg) ·
+[All decoded shot phases](comparable-armour/contact-sheet.jpg).
+
+| Property | Measured or recorded result |
+| --- | --- |
+| Encoded delivery | 1080 × 1920, 30 fps, 885 frames, 29.5 seconds, H.264/AAC MP4 |
+| Narration | Complete 84-word script; all returned word events match the script in order |
+| Sequence | Ten shots in five narration sections; two collages, six 2D views, two 3D views |
+| Planning | Real local `qwen3.5:4b` generation; seven accepted proposals retain renderer-affecting non-text choices |
+| Sound | Real local-model Automatic sound direction; licensed music and a construction-section metal accent |
+| Editorial loop | Four checked per-scene model edits after decoded inspection, plus a general collage-caption occlusion repair |
+| Evidence | Complete movie, decoded phases, original/portable plan bindings, actual response captures, credits and measured checks |
+
+The original source target is Artem Novitckii's **Could ancient armour stop a
+bullet?**, pinned to its 29.49-second editable source and documented delivery
+format. 885 frames rounds that duration to 29.5 seconds. The available public
+excerpt is only 3.6 seconds and silent; this sample does not establish parity
+with the full reference's production quality.
+
+The [comparison report](comparable-armour/comparison.json) and
+[visual QA](comparable-armour/visual-qa.json) retain the actual automatic-review
+status: **rendered, needs review**, with one reliable shot pass, seven uncertain
+judgments and two rejected inconsistent replies. `comparison_complete` is false.
+Independent frame inspection and audio measurements do not turn an unreliable
+model verdict into an approval.
+Sound has not received a perceptual listening assessment. Reproduction and the
+exact editorial requests are documented with the sample and in the
+[pipeline update](../SHOT_PIPELINE_UPDATE.md).
+
+## Earlier deterministic scene fixtures with licensed sound
 
 | File | Dimensions | Duration | Frame rate | Decoded video frames | Streams |
 | --- | --- | --- | --- | --- | --- |
 | [directed-motion-landscape.mp4](directed-motion-landscape.mp4) | 640 × 360 | 14 seconds | 12 fps | 168 | H.264 + AAC |
 | [directed-motion-portrait.mp4](directed-motion-portrait.mp4) | 360 × 640 | 14 seconds | 12 fps | 168 | H.264 + AAC |
 
-The actual local planner produces three connected ideas: floodwater reaches
+The deterministic local planner produces three connected ideas: floodwater reaches
 coastal homes, a floating home rises with water, and solar panels feed a battery
 and home. It selects the actors, their roles, the action, camera and a shared
 palette. The fixture does not manually substitute an ideal storyboard after

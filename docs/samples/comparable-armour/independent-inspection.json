@@ -1,0 +1,155 @@
+{
+  "version": 1,
+  "status": "independent_sampled_observations_recorded",
+  "video_sha256": "a8cc826624ba496307f5baebd6445de92712b6197164a1f4bca1a3b0d2c0f290",
+  "observer": "independent assistant decoded-frame inspection",
+  "shot_count": 10,
+  "inspected_frame_count": 13,
+  "observations": [
+    {
+      "shot_id": "scene-001",
+      "inspected_frames": [
+        {
+          "phase": "setup",
+          "time": 0.366667,
+          "file": "render_review/3220ca2e748a4ef1acc4e07820dbfe9a/attempt-0/scene-001-setup.jpg",
+          "sha256": "b9602210e8d3e2303c08c28c0d28a900ea50f0aa3a0a92c463dd7d769411662a"
+        },
+        {
+          "phase": "result",
+          "time": 1.933333,
+          "file": "render_review/3220ca2e748a4ef1acc4e07820dbfe9a/attempt-0/scene-001-result.jpg",
+          "sha256": "ab5d0f230bacf4b3a080007881ed9504af362cb150312729fda132e3f99189de"
+        }
+      ],
+      "observation": "A single plate-armour museum photograph builds into three overlapping photographs of armour, mail and a reinforcing breastplate. The sampled front identity caption is complete; occluded rear captions do not leave fragments."
+    },
+    {
+      "shot_id": "scene-002",
+      "inspected_frames": [
+        {
+          "phase": "action",
+          "time": 3.466667,
+          "file": "render_review/3220ca2e748a4ef1acc4e07820dbfe9a/attempt-0/scene-002-action.jpg",
+          "sha256": "2678cab7fa2bd61867f8070341b904ecef7068680534afe2092a1c311a1fbff3"
+        }
+      ],
+      "observation": "The collage rearranges the same actual museum images. The foreground Ferdinand I armour identity is complete in the inspected sample; no clipped rear identity fragment is visible."
+    },
+    {
+      "shot_id": "scene-003",
+      "inspected_frames": [
+        {
+          "phase": "action",
+          "time": 5.466667,
+          "file": "render_review/3220ca2e748a4ef1acc4e07820dbfe9a/attempt-0/scene-003-action.jpg",
+          "sha256": "0b4d379856da6ae8559d5befcc5c42a1a382dd2bd16861e1ea638a31ffdfef40"
+        }
+      ],
+      "observation": "The subject is a clearly drawn set of interlinked rings, matching the mail-armour statement."
+    },
+    {
+      "shot_id": "scene-004",
+      "inspected_frames": [
+        {
+          "phase": "action",
+          "time": 7.933333,
+          "file": "render_review/3220ca2e748a4ef1acc4e07820dbfe9a/attempt-0/scene-004-action.jpg",
+          "sha256": "96231fb1b217d203b5833eed5fa97b4eb8317c445d16f749416449f97077c872"
+        }
+      ],
+      "observation": "A literal steel breastplate is visible. This sampled material view does not itself demonstrate a deflection; the narration states a qualified capability."
+    },
+    {
+      "shot_id": "scene-005",
+      "inspected_frames": [
+        {
+          "phase": "setup",
+          "time": 10.033333,
+          "file": "render_review/3220ca2e748a4ef1acc4e07820dbfe9a/attempt-0/scene-005-setup.jpg",
+          "sha256": "7d1aae094da36aed7d7b7ac452be5959ca73c58cb30fc9ce8ac405b7bb282347"
+        },
+        {
+          "phase": "result",
+          "time": 11.9,
+          "file": "render_review/3220ca2e748a4ef1acc4e07820dbfe9a/attempt-0/scene-005-result.jpg",
+          "sha256": "d851432e4cf5dfa19a430923f55643d548e27c2ae49b0bb16fc126fe9538090c"
+        }
+      ],
+      "observation": "The medium 3D breastplate changes orientation between samples and exposes a side edge/depth. The heading reads Harder, thicker armour; the view does not claim to animate a hardening process."
+    },
+    {
+      "shot_id": "scene-006",
+      "inspected_frames": [
+        {
+          "phase": "action",
+          "time": 14.066667,
+          "file": "render_review/3220ca2e748a4ef1acc4e07820dbfe9a/attempt-0/scene-006-action.jpg",
+          "sha256": "97fb9186a81c2d6e526524e301e5c6f4bcac6f56191b56792c99cc40078d4632"
+        }
+      ],
+      "observation": "Two offset layers with depth are labeled original breastplate and reinforcing layer. They illustrate the relationship described in narration."
+    },
+    {
+      "shot_id": "scene-007",
+      "inspected_frames": [
+        {
+          "phase": "result",
+          "time": 18.166667,
+          "file": "render_review/3220ca2e748a4ef1acc4e07820dbfe9a/attempt-0/scene-007-result.jpg",
+          "sha256": "c08b5ff9e26991df058c3f3c2ddbdba953c70a93653a1a9e4e84a0bffd541010"
+        }
+      ],
+      "observation": "The sampled result shows a bent plate profile and a projectile at its surface. The heading A particular proof test avoids a universal protection claim."
+    },
+    {
+      "shot_id": "scene-008",
+      "inspected_frames": [
+        {
+          "phase": "setup",
+          "time": 19.033333,
+          "file": "render_review/3220ca2e748a4ef1acc4e07820dbfe9a/attempt-0/scene-008-setup.jpg",
+          "sha256": "62009849ed9d84aab305419b8f95030399dd58410c402a1696d2f26becc69d3d"
+        },
+        {
+          "phase": "result",
+          "time": 21.1,
+          "file": "render_review/3220ca2e748a4ef1acc4e07820dbfe9a/attempt-0/scene-008-result.jpg",
+          "sha256": "853353e0133941c901505f67d47542940db4392b9a08fce2040fdbd6d87bad1c"
+        }
+      ],
+      "observation": "Both inspected samples show the same settled bent plate without a new projectile. The heading reads A surviving dent."
+    },
+    {
+      "shot_id": "scene-009",
+      "inspected_frames": [
+        {
+          "phase": "action",
+          "time": 23.3,
+          "file": "render_review/3220ca2e748a4ef1acc4e07820dbfe9a/attempt-0/scene-009-action.jpg",
+          "sha256": "42dd3481d2e857789e1183bdcc92fe998debc1bc8e1ba3a10d8efaed64eb14d7"
+        }
+      ],
+      "observation": "A literal armour shape and Armour label replace the earlier generic cube. The shape is pale at this sampled phase, so emphasis is weaker than adjacent shots."
+    },
+    {
+      "shot_id": "scene-010",
+      "inspected_frames": [
+        {
+          "phase": "action",
+          "time": 27.266667,
+          "file": "render_review/3220ca2e748a4ef1acc4e07820dbfe9a/attempt-0/scene-010-action.jpg",
+          "sha256": "a83bf16ac23046d45ec902e40d5c6361e511e427778692d2b9df946e7d5cc677"
+        }
+      ],
+      "observation": "Literal armour and firearm shapes carry the source-noun labels Armour and Firearms. The earlier unsupported deflection/strike labels are absent."
+    }
+  ],
+  "remaining_limitations": [
+    "Scene009 subject opacity is weak in the inspected middle sample; this lower-priority emphasis issue was retained without an additional style change.",
+    "This record inspects decoded still phases, not every frame or smooth real-time playback.",
+    "No subjective audio listening, sound aesthetics or intelligibility approval is claimed."
+  ],
+  "semantic_gate_override": false,
+  "qualification": "These observations document independent review of actual decoded pixels and the editorial repairs. They do not replace or reinterpret the configured local vision model response, uncertainty or strict comparison gates."
+}

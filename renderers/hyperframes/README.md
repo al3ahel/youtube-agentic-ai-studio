@@ -1,7 +1,7 @@
 # YAAS motion renderer
 
 This directory contains the **pinned HyperFrames 0.9.19 renderer** and fixed
-HTML/SVG/GSAP templates. Python supplies a validated storyboard, narration and
+HTML/SVG/GSAP/Three.js templates. Python supplies a validated storyboard, narration and
 downloaded footage. The browser receives data, not generated JavaScript.
 
 ## Install once
@@ -72,7 +72,8 @@ video_path = render_motion_video(
 
 `prepare_motion_project` returns `output_dir/motion/index.html` and writes
 `project.json`, `scene.js`, `objects.js`, `scene.css`, `preview.js`, local GSAP, Inter font files
-and copied media. It does not mutate the input plan. Text is inserted with
+and copied media, plus `shots.js`, `shots.css` and local Three.js modules for
+shot compositions. It does not mutate the input plan. Text is inserted with
 `textContent`; the embedded JSON escapes HTML delimiters. No remote asset URL is
 loaded by the composition. Footage must already exist under the job directory
 or configured output directory. Credits and source URLs remain in the manifest.
@@ -88,13 +89,24 @@ by the director in the section's narration. Actors, progressive paths and labels
 use the same paused timeline, including arbitrary reverse seeks. Missing versions
 retain legacy card layouts; charts and footage keep their existing semantics.
 
-New `graphics_version: 2` scenes use `worlds.js` and `worlds.css`. Their validated
-`staging` data selects a supported world/action/camera; one to four actor items
+Actor-based `graphics_version: 2` scenes without shot-specific rendering use
+`worlds.js` and `worlds.css`; generic 2D shot builders also delegate to these modules.
+Their validated `staging` data selects a supported world/action/camera; one to four actor items
 have a single subject and optional support/context roles. The film's validated
 creative brief supplies palette tokens, with optional per-scene overrides.
 All actor poses and camera movement use the same seekable GSAP clock. The normal
 planner fixture is `directed_demo.py`; `objects_demo.py` explicitly preserves
-version-1 regression coverage. [Current capability map](../../docs/SCENE_DIRECTION_UPDATE.md).
+version-1 regression coverage. [Current shot pipeline](../../docs/SHOT_PIPELINE_UPDATE.md).
+
+Scenes with versioned `shot` direction use `shots.js`: individual framing,
+transitions, multi-picture collage, footage composition and staged 2D or 3D
+mechanisms. A `diagram3d` shot requires a validated source-grounded `mechanism`.
+It is rendered with actual local Three.js geometry on the same seekable clock.
+`media_layers` contains two to four distinct trusted local pictures; it cannot
+contain model-provided paths. `shot_smoke.py` exercises these renderers in both
+orientations. `comparable_demo.py` runs the strict narrated reference-comparison
+pipeline and writes a blocked or incomplete report when applied model direction,
+sound, output checks or semantic review do not satisfy its gates.
 
 For the separate 14-second illustrated example, run `objects_demo.py` in both
 orientations, then `objects_sound_demo.py --input <output-directory>` to add real
@@ -174,6 +186,8 @@ at most 0.5% of pixels, rather than claiming every browser repaint is byte-ident
   restrictions still apply; it is not an MIT dependency.
 - [Inter](https://github.com/rsms/inter): SIL Open Font License 1.1. The font
   license is copied with each generated project.
+- [Three.js](https://github.com/mrdoob/three.js), pinned at 0.187.0: MIT. The local
+  module dependencies and license are copied with each generated project.
 - The implementation uses the installed CLI's `render --help`, its audio/data
   attribute documentation, and the official
   [GSAP guide](https://hyperframes.heygen.com/guides/gsap-animation) and

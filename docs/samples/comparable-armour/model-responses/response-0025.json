@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "endpoint": "/api/chat",
+  "stage": "editorial_render_review",
+  "model": "qwen3.5:4b",
+  "started_at": "2026-11-08T23:20:05.351108+00:00",
+  "native_json_schema": true,
+  "image_count": 3,
+  "status": "received",
+  "finished_at": "2026-11-08T23:21:35.915145+00:00",
+  "response_text": "{\"model\":\"qwen3.5:4b\",\"created_at\":\"2026-11-08T23:21:35.914059084Z\",\"message\":{\"role\":\"assistant\",\"content\":\"{\\n  \\\"shots\\\": [\\n    {\\n      \\\"shot_id\\\": \\\"scene-003\\\",\\n      \\\"confidence\\\": 1.0,\\n      \\\"observations\\\": [\\n        {\\n          \\\"sample_id\\\": \\\"scene-003:setup\\\",\\n          \\\"visible\\\": \\\"A static, centered illustration of a mail armour pattern on a beige background. The text 'Mail armour uses linked rings' appears at the top and bottom (unhighlighted). No motion or action is depicted.\\\"\\n        },\\n        {\\n          \\\"sample_id\\\": \\\"scene-003:action\\\",\\n          \\\"visible\\\": \\\"A static, centered illustration of a mail armour pattern on a beige background. The text 'Mail armour uses linked rings' appears at the top and bottom. The word 'linked' is highlighted in yellow.\\\"\\n        },\\n        {\\n          \\\"sample_id\\\": \\\"scene-003:result\\\",\\n          \\\"visible\\\": \\\"A static, centered illustration of a mail armour pattern on a beige background. The text 'Mail armour uses linked rings' appears at the top and bottom. The word 'rings' is highlighted in yellow.\\\"\\n        }\\n      ],\\n      \\\"assessments\\\": {\\n        \\\"subject_relevance\\\": \\\"fail\\\",\\n        \\\"composition\\\": \\\"pass\\\",\\n        \\\"motion\\\": \\\"fail\\\"\\n      },\\n      \\\"issues\\\": [\\n        {\\n          \\\"category\\\": \\\"motion\\\",\\n          \\\"severity\\\": \\\"error\\\",\\n          \\\"message\\\": \\\"The shot is a static illustration with no physical action or consequence. The 'action' and 'result' samples are identical in content, differing only by the highlighted word in the caption.\\\",\\\"samples\\\": [\\n            \\\"scene-003:setup\\\",\\n            \\\"scene-003:action\\\",\\n            \\\"scene-003:result\\\"\\n          ],\\\"repair\\\": \\\"source_direction\\\"}\\n        ]\\n      }\\n    ]\\n  }\"},\"done\":true,\"done_reason\":\"stop\",\"total_duration\":90554067877,\"load_duration\":6966977,\"prompt_eval_count\":1586,\"prompt_eval_cached_count\":0,\"prompt_eval_duration\":34803355000,\"eval_count\":417,\"eval_duration\":55557206000}",
+  "redacted": true,
+  "truncated": false,
+  "redacted_response_json_sha256": "42a30b569bf6b2dff324fe640ecf30a85cd79eb225897171ad18ab9dc03630a4"
+}

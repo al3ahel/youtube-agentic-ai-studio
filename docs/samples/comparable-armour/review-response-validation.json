@@ -1,0 +1,242 @@
+{
+  "version": 1,
+  "status": "read_only_production_validator_audit",
+  "original_plan_sha256": "9b5e90f8818a881a61fd49428b9ccc3fea4e0fe501a04cb786cb2e8e33a2b771",
+  "source_module_sha256": "c3ccf93b9c85466fe66edd72c695c4f50d5090bb27c9b0b9b865e16315946fcc",
+  "source_function_sha256": "a5435c58c83a2eadb8ee380461cbb02af11713c8c675f77b7b8740bcd51c22bf",
+  "captured_reply_count": 10,
+  "accepted_evidence_shapes": 8,
+  "reliable_reply_count": 1,
+  "all_categories_pass_reply_count": 1,
+  "replies": [
+    {
+      "capture": "model-responses/response-0023.json",
+      "capture_sha256": "25312b78931994ac93a725fef1feb18dd8d4365fff3e7de68c70be687238eb3a",
+      "shot_ids": [
+        "scene-001"
+      ],
+      "raw_assessments": {
+        "scene-001": {
+          "subject_relevance": "uncertain",
+          "composition": "uncertain",
+          "motion": "uncertain"
+        }
+      },
+      "validator_status": "accepted_evidence_shape",
+      "validated_assessments": {
+        "scene-001": {
+          "subject_relevance": "uncertain",
+          "composition": "uncertain",
+          "motion": "uncertain"
+        }
+      },
+      "reliable": false,
+      "all_categories_pass": false
+    },
+    {
+      "capture": "model-responses/response-0024.json",
+      "capture_sha256": "7f70d868539b5a84d8c9ca04d938026f83209720cd748f45bfa03978eadba4be",
+      "shot_ids": [
+        "scene-002"
+      ],
+      "raw_assessments": {
+        "scene-002": {
+          "subject_relevance": "uncertain",
+          "composition": "uncertain",
+          "motion": "uncertain"
+        }
+      },
+      "validator_status": "accepted_evidence_shape",
+      "validated_assessments": {
+        "scene-002": {
+          "subject_relevance": "uncertain",
+          "composition": "uncertain",
+          "motion": "uncertain"
+        }
+      },
+      "reliable": false,
+      "all_categories_pass": false
+    },
+    {
+      "capture": "model-responses/response-0025.json",
+      "capture_sha256": "97f48210b338df5dea56be69a171e9dfe3c60a473ecb9c52cf1bbac62d4ef9ba",
+      "shot_ids": [
+        "scene-003"
+      ],
+      "raw_assessments": {
+        "scene-003": {
+          "subject_relevance": "fail",
+          "composition": "pass",
+          "motion": "fail"
+        }
+      },
+      "validator_status": "rejected",
+      "reason": "Vision reported a failure without an evidenced issue.",
+      "reliable": false,
+      "all_categories_pass": false
+    },
+    {
+      "capture": "model-responses/response-0026.json",
+      "capture_sha256": "0df2f2ed41d59637850bb9bc7eff4273afef0f0eb449c89535b8aa993c14ef54",
+      "shot_ids": [
+        "scene-004"
+      ],
+      "raw_assessments": {
+        "scene-004": {
+          "subject_relevance": "uncertain",
+          "composition": "uncertain",
+          "motion": "uncertain"
+        }
+      },
+      "validator_status": "accepted_evidence_shape",
+      "validated_assessments": {
+        "scene-004": {
+          "subject_relevance": "fail",
+          "composition": "uncertain",
+          "motion": "uncertain"
+        }
+      },
+      "reliable": false,
+      "all_categories_pass": false
+    },
+    {
+      "capture": "model-responses/response-0027.json",
+      "capture_sha256": "105d70fa75b85875beaad0bdfb87a4ba77a54a70a6a2228dfcbb42ece53463b7",
+      "shot_ids": [
+        "scene-005"
+      ],
+      "raw_assessments": {
+        "scene-005": {
+          "subject_relevance": "uncertain",
+          "composition": "uncertain",
+          "motion": "uncertain"
+        }
+      },
+      "validator_status": "accepted_evidence_shape",
+      "validated_assessments": {
+        "scene-005": {
+          "subject_relevance": "uncertain",
+          "composition": "uncertain",
+          "motion": "uncertain"
+        }
+      },
+      "reliable": false,
+      "all_categories_pass": false
+    },
+    {
+      "capture": "model-responses/response-0028.json",
+      "capture_sha256": "e8590bd3b47dccbeaa1e8f7166d373b958a24860dc9fd295bd213e71290184cd",
+      "shot_ids": [
+        "scene-006"
+      ],
+      "raw_assessments": {
+        "scene-006": {
+          "subject_relevance": "uncertain",
+          "composition": "uncertain",
+          "motion": "uncertain"
+        }
+      },
+      "validator_status": "accepted_evidence_shape",
+      "validated_assessments": {
+        "scene-006": {
+          "subject_relevance": "fail",
+          "composition": "uncertain",
+          "motion": "uncertain"
+        }
+      },
+      "reliable": false,
+      "all_categories_pass": false
+    },
+    {
+      "capture": "model-responses/response-0029.json",
+      "capture_sha256": "e1fdcc49313fd7d446b1bdfffbce8bbf71fd0b5d0626ef95f3ca3a55ca1d3dd6",
+      "shot_ids": [
+        "scene-007"
+      ],
+      "raw_assessments": {
+        "scene-007": {
+          "subject_relevance": "pass",
+          "composition": "pass",
+          "motion": "pass"
+        }
+      },
+      "validator_status": "accepted_evidence_shape",
+      "validated_assessments": {
+        "scene-007": {
+          "subject_relevance": "pass",
+          "composition": "pass",
+          "motion": "pass"
+        }
+      },
+      "reliable": true,
+      "all_categories_pass": true
+    },
+    {
+      "capture": "model-responses/response-0030.json",
+      "capture_sha256": "4bcc6827a164884194b4f29c6fe21362da6a861c4452b554b60cfbc248663f3b",
+      "shot_ids": [
+        "scene-008"
+      ],
+      "raw_assessments": {
+        "scene-008": {
+          "subject_relevance": "fail",
+          "composition": "pass",
+          "motion": "fail"
+        }
+      },
+      "validator_status": "rejected",
+      "reason": "Vision reported a failure without an evidenced issue.",
+      "reliable": false,
+      "all_categories_pass": false
+    },
+    {
+      "capture": "model-responses/response-0031.json",
+      "capture_sha256": "8146270012c7716f339a09ef7a40d74eb9ff51bbb86d754b04e01a8799467f6a",
+      "shot_ids": [
+        "scene-009"
+      ],
+      "raw_assessments": {
+        "scene-009": {
+          "subject_relevance": "pass",
+          "composition": "pass",
+          "motion": "uncertain"
+        }
+      },
+      "validator_status": "accepted_evidence_shape",
+      "validated_assessments": {
+        "scene-009": {
+          "subject_relevance": "pass",
+          "composition": "pass",
+          "motion": "uncertain"
+        }
+      },
+      "reliable": false,
+      "all_categories_pass": false
+    },
+    {
+      "capture": "model-responses/response-0032.json",
+      "capture_sha256": "66c655641209d70f8689b11e41e2047dec77f99083fca987545207affce57f63",
+      "shot_ids": [
+        "scene-010"
+      ],
+      "raw_assessments": {
+        "scene-010": {
+          "subject_relevance": "uncertain",
+          "composition": "uncertain",
+          "motion": "uncertain"
+        }
+      },
+      "validator_status": "accepted_evidence_shape",
+      "validated_assessments": {
+        "scene-010": {
+          "subject_relevance": "uncertain",
+          "composition": "uncertain",
+          "motion": "uncertain"
+        }
+      },
+      "reliable": false,
+      "all_categories_pass": false
+    }
+  ],
+  "qualification": "The actual captured JSON was read and passed through the unchanged production evidence validator in a separate read-only audit. No response was rewritten or sent to the model again. These are initial final-review calls23\u201332; the ordinary final visual-qa.json remains authoritative for source/phase coverage, technical/audio checks and any bounded repair."
+}

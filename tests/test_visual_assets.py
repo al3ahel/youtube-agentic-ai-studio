@@ -12,6 +12,7 @@ import pytest
 
 import config
 from agents.visual_director import plan_scenes
+from agents import visual_director as director
 from studio import channels, create_app, library, visual_assets, workspace
 from studio.project_identity import write_project_identity
 from studio.state import fresh_project_state, state, stop_event
@@ -82,6 +83,106 @@ def test_binding_is_portable_and_does_not_change_the_legacy_map_format(project, 
     shutil.copytree(output, moved)
     assert _valid(project, output=moved, images=portable) is True
     assert _valid(project, output=moved) is False  # Absolute old-workspace paths cannot migrate.
+
+
+def _collage_project(project, monkeypatch):
+    monkeypatch.setattr(config, "SHOT_PLANNING_ENABLED", True)
+    monkeypatch.setattr(config, "VISUAL_AI_ENABLED", False)
+    monkeypatch.setattr(config, "CHANNEL_PRESET", "general")
+    credits = [{"file": photo.name, "source": "Example collection", "credit": credit,
+                "license": "CC0", "source_url": "https://example.com/collection"}
+               for photo, credit in zip(project["photos"], ("Garden detail · Example collection", "River view · Example collection"))]
+    _json(project["output"] / "credits.json", credits)
+    timeline = {"duration": 8, "fps": 24, "width": 128, "height": 72,
+                "sections": [{"id": 1, "start": 0, "duration": 4}, {"id": "river", "start": 4, "duration": 4}]}
+    plan = plan_scenes(project["script"], timeline, mode="hybrid", use_ai=False,
+                       output_dir=project["output"], image_map=project["images"])
+    scene = plan["scenes"][0]
+    assert scene["shot"]["technique"] == "collage"
+    scene["items"][0]["label"] = "Observe a quiet garden with water and leaves"
+    scene.update(look="studio", rhythm="measured", palette="ocean")
+    scene["shot"].update(framing="wide", camera="locked")
+    return plan
+
+
+def test_collage_shortening_hidden_narration_labels_is_a_no_op(project, monkeypatch):
+    plan = _collage_project(project, monkeypatch)
+    before = deepcopy(plan)
+    credits_before = (project["output"] / "credits.json").read_bytes()
+    with pytest.raises(ValueError, match="visible design is unchanged"):
+        director.regenerate_scene(plan, plan["scenes"][0]["id"], project["script"], "Shorter labels")
+    assert plan == before
+    assert (project["output"] / "credits.json").read_bytes() == credits_before
+
+
+@pytest.mark.parametrize("actual_change", [None, "framing", "role"])
+def test_collage_model_label_edit_is_uncredited_and_preserves_media(project, monkeypatch, actual_change):
+    plan = _collage_project(project, monkeypatch)
+    original = plan["scenes"][0]
+    saved = deepcopy(plan)
+    response = {key: deepcopy(original[key]) for key in
+                ("id", "template", "title", "visual_goal", "items", "composition", "shot")}
+    response["items"] = [{"label": "Garden view"}]
+    if actual_change:
+        response["shot"][actual_change] = "close" if actual_change == "framing" else "payoff"
+    monkeypatch.setattr(config, "VISUAL_AI_ENABLED", True)
+    monkeypatch.setattr(director, "_visual_ai_available", lambda: True)
+    monkeypatch.setattr(director, "_request_design", lambda *args, **kwargs: {"scenes": [response]})
+    if actual_change is None:
+        with pytest.raises(ValueError, match="visible design is unchanged"):
+            director.regenerate_scene(plan, original["id"], project["script"], "Clarify the photo description")
+    else:
+        edited = director.regenerate_scene(plan, original["id"], project["script"], "Clarify the photo description")
+        assert edited["scenes"][0]["items"] == response["items"]
+        assert edited["scenes"][0]["image"] == original["image"]
+        assert edited["scenes"][0]["media_layers"] == original["media_layers"]
+        assert edited["last_edit"]["changes"] == ["Updated the shot framing, technique or camera direction."]
+        assert edited["scenes"][1:] == saved["scenes"][1:]
+    assert plan == saved
+
+
+@pytest.mark.parametrize("instruction,field,expected", [
+    ("closer framing and stack composition", "framing", "close"),
+    ("track camera", "camera", "track"),
+    ("warmer colors", "palette", "ember"),
+    ("brisk rhythm", "rhythm", "brisk"),
+    ("poster look", "look", "poster"),
+    ("editorial look", "look", "editorial"),
+])
+def test_collage_visible_edits_retain_source_identity(project, monkeypatch, instruction, field, expected):
+    plan = _collage_project(project, monkeypatch)
+    original = plan["scenes"][0]
+    before = deepcopy(plan)
+    edited = director.regenerate_scene(plan, original["id"], project["script"], instruction)
+    replacement = edited["scenes"][0]
+    assert (replacement["shot"][field] if field in {"framing", "camera"} else replacement[field]) == expected
+    assert replacement["media_layers"] == original["media_layers"]
+    assert replacement["image"] == original["image"]
+    assert edited["last_edit"]["changes"]
+    assert not any(change.startswith("Composition:") for change in edited["last_edit"]["changes"])
+    assert edited["sections"] == plan["sections"] and edited["captions"] == plan["captions"]
+    assert plan == before
+
+
+def test_collage_visible_identity_uses_trusted_credit_not_items_or_attribution_urls(project, monkeypatch):
+    plan = _collage_project(project, monkeypatch)
+    scene = plan["scenes"][0]
+    before = director._visible_design(scene)
+    changed = deepcopy(scene)
+    changed["items"] = [{"label": "Unrelated hidden narration fragments"}]
+    changed["media_layers"][0]["source_url"] = "https://example.com/updated-attribution"
+    changed["media_layers"][0]["credit"] = "Garden detail · Corrected attribution"
+    assert director._visible_design(changed) == before
+    changed["media_layers"][0]["credit"] = "Another actual object · Example collection"
+    assert director._visible_design(changed) != before
+    changed = deepcopy(scene)
+    changed["media_layers"][0]["path"] = str(project["photos"][1])
+    assert director._visible_design(changed) != before
+    blank = deepcopy(scene)
+    blank["media_layers"][0]["credit"] = " \n\t "
+    explicit_source = deepcopy(blank)
+    explicit_source["media_layers"][0]["credit"] = blank["media_layers"][0]["source"]
+    assert director._visible_design(blank) == director._visible_design(explicit_source)
 
 
 @pytest.mark.parametrize("change", ["script", "profile", "section", "order", "path", "removed"])
@@ -407,7 +508,9 @@ def test_photo_scene_edit_rejects_a_broken_binding_before_mutation(project, monk
 
 
 @pytest.mark.parametrize("receipt", ["absent", "declared_map", "declared_binding", "invalid_map", "invalid_binding"])
-def test_legacy_archive_recovers_exact_scene_photos_only_without_any_map_receipt(project, receipt):
+def test_legacy_archive_recovers_exact_scene_photos_only_without_any_map_receipt(project, receipt, monkeypatch):
+    # This older archive has one primary photo per scene and predates collages.
+    monkeypatch.setattr(config, "SHOT_PLANNING_ENABLED", False)
     audio, timeline, plan = _recorded_project(project)
     expected = {scene["section_id"]: Path(scene["image"]["path"]).read_bytes()
                 for scene in plan["scenes"] if scene.get("image")}

@@ -2,7 +2,7 @@
 
 Motion Studio adds a narration-driven video path to YAAS. The app researches a
 topic, writes a script and records narration. A visual director produces a
-constrained JSON storyboard. Fixed HTML/SVG templates animate explanatory graphics
+constrained JSON storyboard. Fixed HTML/SVG/Three.js templates animate explanatory graphics
 on a paused GSAP timeline, and HyperFrames captures it as an MP4. Hybrid and
 Classic also use the original stock-picture pipeline; saved pictures can be
 animated through the explicit **Animate these photos** action.
@@ -10,6 +10,20 @@ animated through the explicit **Animate these photos** action.
 The storyboard in **Review** is part of that same pipeline. HyperFrames already
 runs during **Make video** in Motion and Hybrid modes; Review lets you inspect,
 change and render the saved composition again.
+
+New storyboards plan individual establishing views, details, interactions and
+payoffs inside each narration section. Depending on the subject and available
+media, a shot can use 2D animation, a real-photo collage, composed footage or a
+supported explanatory 3D mechanism. Review shows its role, framing, technique and
+camera. See [the shot pipeline update](SHOT_PIPELINE_UPDATE.md) for the supported
+vocabulary, complete reference-comparison command and evidence limits.
+
+After encoding, YAAS inspects decoded shot phases and soundtrack measurements.
+Optional **AI visual review** adds subject/composition observations from the
+configured free or local vision model. **Repair and check rendered shots** enables a bounded
+repair and rerender, accepted only after checking the new movie. Missing or
+inconclusive semantic review remains **needs review**; audio measurements still
+need a listening check.
 
 ## Choose a mode
 
@@ -35,8 +49,9 @@ or footage project without changing the script or recording, choose **Rebuild as
 Motion graphics** in Review. The project is replanned as graphics and a new draft
 MP4 is rendered. **Animate these photos** explicitly keeps the project's pictures.
 
-Older Motion/Hybrid plans built from text cards or version-1 illustrations expose **Update this draft's
-animation → Rebuild animation + sound**. This replans the graphics and applies the
+Older Motion/Hybrid plans without individual shot direction, or using legacy
+card/version-1 illustration scenes, expose **Update this draft's animation → Rebuild
+animation + sound**. This replans the graphics and applies the
 selected channel's current sound design, then renders a draft. Script, voice,
 measured section timing and publishing prose remain intact; existing scene designs
 are intentionally replaced. Select Automatic in Sound design first if the profile
@@ -93,6 +108,11 @@ This working copy is separate from **My videos** and is replaced when you start 
 new project. Review shows a loading error with a retry action if its data cannot be
 loaded. Each page loads one version of the interface assets so an update does not
 mix old preview code with new Review code.
+
+If executable Python or a dependency manifest changes while the server is running,
+project-changing requests return a restart-required error (HTTP 409) until the
+server is restarted. Documentation and browser-asset changes do not require a
+Python restart; reload the page to load updated interface assets.
 
 ## Animate an existing photo project
 
@@ -167,7 +187,7 @@ to future narration; it does not alter an already recorded project.
 **Automatic sound design** is the default for new profiles. The sound agent chooses
 one suitable music/ambience bed and sparse contextual accents, using measured
 section boundaries. Compatible requests first use the included CC BY 4.0 ambient
-instrumentals, page turn or short whoosh. Other requests use bounded keyless
+instrumentals, page turn, short whoosh or metal contact. Other requests use bounded keyless
 Commons searches for declared-license recordings. Source/licensing metadata stays
 with the actual mix.
 No manual import is required. Missing appropriate audio is omitted with a clear
@@ -180,13 +200,14 @@ or a failed mix is not counted as an applied layer. Review labels the agent's
 proposal separately from **In this soundtrack**, and the exact applied credits can
 be copied or downloaded under **Audio credits — added to the video description**.
 
-New Motion plans also carry a coherent visual look (editorial, blueprint, studio,
-botanical or poster), supported composition alternatives and a bounded motion
-rhythm. These fields affect actual frames. A saved plan is stable across rerenders;
+Actor/template scenes support a coherent visual look (editorial, blueprint, studio,
+botanical or poster), composition alternatives and motion rhythm. Material and
+media shots use their supported framing, camera, palette and transition controls;
+some legacy styling fields do not affect those builders. A saved plan is stable across rerenders;
 old plans without them retain their original appearance. Selected-scene edits show
 what changed; unsupported instructions do not trigger an unrelated template swap.
 
-New and explicitly rebuilt scenes additionally use versioned illustrated subjects.
+New and explicitly rebuilt actor-based 2D scenes additionally use versioned illustrated subjects.
 For example, a census scanner connects people to a ledger, a mining cutaway moves
 ore up a conveyor, and sunlight travels toward a solar panel. The selected subject
 must be supported by that section's narration. Qualitative schematics do not invent
@@ -287,21 +308,24 @@ and no arbitrary remote URLs in generated scenes.
 
 ## Free OpenRouter use
 
-`openrouter/free` is the default planner and reviewer. A chosen model ID is checked
+`openrouter/free` is the default OpenRouter planner and reviewer. A chosen model ID is checked
 against the live catalogue for zero pricing and appropriate capabilities. Planning
 requires schema support; reviewing frames also requires image input. Explicit paid
 models are rejected, including a paid sibling of a model whose free ID disappeared.
 OpenRouter text fallback uses the same free-only validation.
 
-Without a key, planning uses local templates. Provider errors, rate limits and
-invalid output fall back to those templates. Attempts and local request budgets
-are bounded. The model chooses an animation plan and local code renders it; this
+Without an OpenRouter key, planning can use an installed local model or another
+configured free text provider. If no usable inference succeeds, deterministic
+local templates remain available. Attempts and local request budgets are bounded.
+The model chooses an animation plan and local code renders it; this
 integration does not promise access to a free generative video service. Provider
 availability and quotas remain external constraints.
 
-Frame review is **off by default**. Enabling it sends up to four sampled rendered
-frames to the selected free vision model. Its layout findings are advisory; local
-MP4 checks independently verify dimensions, duration and presence of audio.
+**AI visual review** is off by default. Encoded technical checks sample three phases
+per shot, covering up to 24 shots. Optional semantic review covers up to 12 shots,
+with one shot/three frames per local request or up to two shots/six frames per hosted
+request. Local-only keeps review on the computer. Missing, incomplete or uncertain
+semantic review is not approval; sound measurements still require a listening check.
 Neither a visual review nor retrieved background sources verify live breaking news.
 
 ## Important files

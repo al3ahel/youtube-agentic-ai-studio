@@ -24,6 +24,7 @@ from studio.description import build_description, load_credits, with_credit
 from studio.files import send, slug
 from studio.state import job_lock, log, state
 from studio.thumbs import thumb_backgrounds, thumb_settings
+from studio.workspace import iter_scene_media
 
 bp = Blueprint("library", __name__)
 
@@ -115,6 +116,158 @@ def _archived_media(root, relative):
         raise ValueError("Archived footage must be a local media asset")
     return source
 
+
+_REVIEW_LIMIT = 1024 * 1024 * 1024
+_REVIEW_SMALL_FILE_LIMIT = 8 * 1024 * 1024
+_REVIEW_PATH = re.compile(r"attempt-[0-2]/(?:plan\.json|review\.json|encoded\.mp4|[A-Za-z0-9_-]{1,80}-(?:setup|action|result)\.jpg)\Z")
+
+
+def _review_identity(qa):
+    """Legacy QA has no evidence tree; new reviews have an exact bounded run."""
+    if not isinstance(qa, dict) or "run_id" not in qa:
+        return None
+    identifier, attempt = qa.get("run_id"), qa.get("attempt")
+    if (qa.get("version") != 1 or not isinstance(identifier, str) or not re.fullmatch(r"[a-f0-9]{32}", identifier)
+            or type(attempt) is not int or not 0 <= attempt <= 2
+            or qa.get("evidence_directory") != f"render_review/{identifier}/attempt-{attempt}"):
+        raise ValueError("The rendered-review evidence identity is invalid.")
+    return identifier
+
+
+def _review_source(root, relative):
+    path = _relative_file(root, relative)
+    if path != (root / relative).absolute():
+        raise ValueError("Rendered-review evidence cannot contain symbolic links.")
+    return path
+
+
+def _archive_review_evidence(output, destination, qa):
+    """Archive only this review's three bounded attempts, never a loose tree.
+
+    At most 225 files/1 GiB are copied. Oversized encoded attempts are explicitly
+    omitted in the inventory; the actual project video remains separately saved.
+    JSON and decoded evidence frames always have an 8 MiB per-file limit.
+    """
+    from studio.workspace import _fingerprint
+    from agents.render_review import _plan_hash
+
+    identifier = _review_identity(qa)
+    if identifier is None:
+        return None
+    relative_root = Path("render_review") / identifier
+    source_root = output / relative_root
+    if source_root.resolve() != source_root.absolute() or not source_root.is_dir():
+        raise ValueError("The current render-review evidence is missing or linked.")
+    entries, omitted, total, encoded_attempts, current_found = [], [], 0, [], False
+    for attempt in range(3):
+        prefix = f"attempt-{attempt}"
+        if not (source_root / prefix).exists():
+            continue
+        report_path = _review_source(source_root, prefix + "/review.json")
+        if report_path.stat().st_size > _REVIEW_SMALL_FILE_LIMIT:
+            raise ValueError("The rendered-review report exceeds its archive limit.")
+        report = json.loads(report_path.read_text(encoding="utf-8"))
+        if _review_identity(report) != identifier or report["attempt"] != attempt:
+            raise ValueError("A review attempt belongs to another rendered project.")
+        current_found = current_found or attempt == qa["attempt"]
+        samples = report.get("samples", [])
+        if not isinstance(samples, list) or len(samples) > 24:
+            raise ValueError("The decoded review sample list is invalid.")
+        names = [prefix + "/plan.json", prefix + "/review.json"]
+        frame_hashes = {}
+        for sample in samples:
+            if not isinstance(sample, dict) or not isinstance(sample.get("frames"), list) or len(sample["frames"]) > 3:
+                raise ValueError("A decoded review shot has an invalid frame list.")
+            for frame in sample["frames"]:
+                name = frame.get("file") if isinstance(frame, dict) else None
+                if not isinstance(name, str) or not _REVIEW_PATH.fullmatch(prefix + "/" + name) or not name.endswith(".jpg"):
+                    raise ValueError("A decoded review frame path escapes its attempt.")
+                if not isinstance(frame.get("sha256"), str) or not re.fullmatch(r"[a-f0-9]{64}", frame["sha256"]):
+                    raise ValueError("A decoded review frame has no valid content identity.")
+                names.append(prefix + "/" + name)
+                frame_hashes[prefix + "/" + name] = frame["sha256"]
+        if (source_root / prefix / "encoded.mp4").exists():
+            encoded_attempts.append((prefix + "/encoded.mp4", report.get("render", {}).get("sha256")))
+        for name in dict.fromkeys(names):
+            source = _review_source(source_root, name)
+            size = source.stat().st_size
+            if not 0 < size or total + size > _REVIEW_LIMIT or size > _REVIEW_SMALL_FILE_LIMIT:
+                raise ValueError("Rendered-review evidence exceeds its bounded archive limit.")
+            identity = _fingerprint(source_root, source)
+            if name in frame_hashes and identity["sha256"] != frame_hashes[name]:
+                raise ValueError("A decoded frame changed after it was reviewed.")
+            if name == prefix + "/plan.json" and _plan_hash(json.loads(source.read_text(encoding="utf-8"))) != report.get("plan_sha256"):
+                raise ValueError("A retained storyboard changed after its rendered review.")
+            target = destination / relative_root / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, target)
+            entries.append(identity)
+            total += size
+    # Reserve space for every report and decoded sample before large movies.
+    for name, expected_hash in encoded_attempts:
+        source = _review_source(source_root, name)
+        size = source.stat().st_size
+        if total + size > _REVIEW_LIMIT:
+            omitted.append({"path": name, "reason": "encoded_attempt_exceeds_archive_evidence_limit"})
+            continue
+        identity = _fingerprint(source_root, source)
+        if identity["sha256"] != expected_hash:
+            raise ValueError("A retained review movie changed after it was inspected.")
+        target = destination / relative_root / name
+        shutil.copy2(source, target)
+        entries.append(identity)
+        total += size
+    if not current_found or not entries or len(entries) > 225:
+        raise ValueError("The render-review evidence inventory is missing or too large.")
+    manifest = relative_root / "manifest.json"
+    _write_json(destination / manifest, {"version": 1, "run_id": identifier, "files": entries, "omitted": omitted})
+    return manifest.as_posix()
+
+
+def _restore_review_evidence(archive, staging, qa, manifest_name):
+    """Validate the complete portable evidence inventory before cache replacement."""
+    from studio.workspace import _fingerprint
+
+    identifier = _review_identity(qa)
+    if identifier is None or manifest_name != f"render_review/{identifier}/manifest.json":
+        raise ValueError("The archived review manifest does not match this project.")
+    source_root = archive / "render_review" / identifier
+    manifest_path = _review_source(archive, manifest_name)
+    if manifest_path.stat().st_size > _REVIEW_SMALL_FILE_LIMIT:
+        raise ValueError("The archived review inventory is too large.")
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    entries = manifest.get("files") if isinstance(manifest, dict) else None
+    if (not isinstance(manifest, dict) or manifest.get("version") != 1 or manifest.get("run_id") != identifier
+            or not isinstance(entries, list) or not 1 <= len(entries) <= 225):
+        raise ValueError("The archived review evidence inventory is invalid.")
+    verified, seen, total = [], set(), 0
+    for entry in entries:
+        name = entry.get("path") if isinstance(entry, dict) else None
+        if (not isinstance(entry, dict) or set(entry) != {"path", "bytes", "sha256"}
+                or not isinstance(name, str) or not _REVIEW_PATH.fullmatch(name) or name in seen
+                or type(entry.get("bytes")) is not int or not 0 < entry["bytes"] <= _REVIEW_LIMIT
+                or not isinstance(entry.get("sha256"), str) or not re.fullmatch(r"[a-f0-9]{64}", entry["sha256"])):
+            raise ValueError("An archived review file has an invalid or escaping path.")
+        source = _review_source(source_root, name)
+        total += entry["bytes"]
+        if total > _REVIEW_LIMIT or (source.suffix.lower() != ".mp4" and entry["bytes"] > _REVIEW_SMALL_FILE_LIMIT):
+            raise ValueError("The archived review exceeds its bounded evidence limit.")
+        if _fingerprint(source_root, source) != entry:
+            raise ValueError("Archived review evidence changed after it was saved.")
+        seen.add(name)
+        verified.append((source, staging / "render_review" / identifier / name))
+    attempts = {name.split("/", 1)[0] for name in seen}
+    required = {f"{attempt}/{name}.json" for attempt in attempts for name in ("plan", "review")}
+    required.update({f"attempt-{qa['attempt']}/plan.json", f"attempt-{qa['attempt']}/review.json"})
+    if not required <= seen:
+        raise ValueError("The archived review inventory omits a required attempt report or storyboard.")
+    for source, destination in verified:
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, destination)
+    target_manifest = staging / manifest_name
+    target_manifest.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(manifest_path, target_manifest)
+
 def read_meta(pid):
     with open(lib_path(pid, "meta.json"), encoding="utf-8") as f:
         return json.load(f)
@@ -138,6 +291,24 @@ def archive_project(allow_draft=False):
     owner = state.get("profile_id") or "default"
     if image_sources and validate_binding(config.OUTPUT_DIR, image_sources, script, owner) is False:
         raise ValueError("Saved photos no longer match this project. Reload its archive or regenerate its images before archiving.")
+    if not image_sources and plan_uses_project_photos(state.get("visual_plan")):
+        if validate_binding(config.OUTPUT_DIR, {}, script, owner) is False:
+            raise ValueError("The saved photo map failed validation; it cannot be replaced by storyboard references.")
+        # An explicit archive action can preserve a legacy plan's exact scene
+        # references when its original section map did not exist. Never scan
+        # filenames or adopt another scene/section's pictures.
+        sections = {str(row.get("id", index + 1)) for index, row in enumerate(script.get("sections", []))}
+        for scene in state["visual_plan"].get("scenes", []):
+            pictures = list(iter_scene_media(scene, pictures_only=True))
+            section = str(scene.get("section_id", ""))
+            if pictures and section not in sections:
+                raise ValueError("A saved collage does not belong to a current script section.")
+            for image, _ in pictures:
+                supplied = Path(image["path"])
+                source = str(supplied if supplied.is_absolute() else Path(config.OUTPUT_DIR) / supplied)
+                paths = image_sources.setdefault(section, [])
+                if source not in paths:
+                    paths.append(source)
     from studio.footage_assets import credits_for_plan, validate_bound_footage
     from video.timeline import script_signature
     validate_bound_footage(state.get("visual_plan"), config.OUTPUT_DIR,
@@ -193,15 +364,19 @@ def archive_project(allow_draft=False):
     visual_plan = deepcopy(state.get("visual_plan"))
     if visual_plan:
         for scene in visual_plan.get("scenes", []):
-            for kind in ("footage", "image"):
-                if scene.get(kind):
-                    scene[kind]["path"] = _portable_media(scene[kind]["path"], Path(d), copied)
+            for asset, extensions in iter_scene_media(scene):
+                if Path(asset["path"]).suffix.lower() not in extensions:
+                    raise ValueError("A collage layer must reference an actual picture.")
+                asset["path"] = _portable_media(asset["path"], Path(d), copied)
         _write_json(Path(d) / "scene_plan.json", visual_plan)
         files["scene_plan"] = "scene_plan.json"
         source_motion = Path(config.OUTPUT_DIR) / "motion"
         _copy_local_tree(source_motion, Path(d) / "motion")
         if (Path(d) / "motion" / "index.html").is_file():
             files["motion"] = "motion/index.html"
+        evidence = _archive_review_evidence(Path(config.OUTPUT_DIR).resolve(), Path(d), state.get("visual_qa"))
+        if evidence:
+            files["render_review"] = evidence
     video_credits = used_video_credits
     if isinstance(video_credits, list):
         portable_credits = []
@@ -382,8 +557,8 @@ def library_load(pid):
 
 
 _PROJECT_CACHE = ("script.json", "research.json", "project_profile.json", "workspace.json", "image_map.json", "image_binding.json", "credits.json", "video_credits.json", "audio_credits.json", "sound_design.json", "audio_master.json", "narration.srt",
-                  "narration.wav", "narration.mp3", "narration.m4a", "narration.ogg", "narration.timings.json",
-                  "timeline.json", "scene_plan.json", "visual_qa.json", "motion", "assets", "images", "soundtracks",
+                  "narration.wav", "narration.mp3", "narration.m4a", "narration.ogg", "narration.timings.json", "narration.service.json",
+                  "timeline.json", "scene_plan.json", "visual_qa.json", "motion", "assets", "images", "soundtracks", "render_review",
                   "motion_preview.mp4", "narration_with_music.mp3", "narration_mixed.mp3", "narration_mixed.wav", "narration_effects.wav", "audio_mixed.mp3",
                   "narration_ambience.wav", "narration_mastered.wav",
                   "render_audio.wav", "render_audio.mp3", "render_audio.m4a", "render_audio.ogg", "render_audio.json")
@@ -511,19 +686,23 @@ def _load_project(pid):
                 validate_bound_footage(plan, archive, script_signature=script_signature(script),
                                        profile_id=profile["id"])
                 for scene in plan["scenes"]:
-                    for kind in ("footage", "image"):
-                        if scene.get(kind):
-                            relative = scene[kind]["path"]
-                            source = _archived_media(archive, relative)
-                            destination = staging / relative
-                            destination.parent.mkdir(parents=True, exist_ok=True)
+                    for asset, extensions in iter_scene_media(scene):
+                        relative = asset["path"]
+                        source = _archived_media(archive, relative)
+                        if source.suffix.lower() not in extensions:
+                            raise ValueError("An archived collage layer must be a picture.")
+                        destination = staging / relative
+                        destination.parent.mkdir(parents=True, exist_ok=True)
+                        if not destination.exists():
                             shutil.copy2(source, destination)
-                            scene[kind]["path"] = str(output / relative)
+                        asset["path"] = str(output / relative)
                 _write_json(staging / "scene_plan.json", plan)
                 _copy_local_tree(archive / "motion", staging / "motion")
                 if (archive / "visual_qa.json").exists():
                     qa = json.loads(_relative_file(archive, "visual_qa.json").read_text(encoding="utf-8"))
                     _write_json(staging / "visual_qa.json", qa)
+                if files.get("render_review"):
+                    _restore_review_evidence(archive, staging, qa, files["render_review"])
             raw_image_map = _json(archive / "image_map.json")
             from studio.visual_assets import save_binding, validate_binding
             if isinstance(raw_image_map, dict):
@@ -565,22 +744,21 @@ def _load_project(pid):
                     section_ids = {str(section.get("id", index + 1))
                                    for index, section in enumerate(script.get("sections", []))}
                     for scene in plan["scenes"]:
-                        image = scene.get("image")
-                        if not image:
-                            continue
                         section_id = str(scene.get("section_id", ""))
-                        if section_id not in section_ids:
+                        pictures = list(iter_scene_media(scene, pictures_only=True))
+                        if pictures and section_id not in section_ids:
                             raise ValueError("An archived photo scene does not match the saved script sections")
                         # These are the exact scene references already checked
                         # and copied above, not guessed thumbnail/section files.
-                        relative = Path(image["path"]).relative_to(output)
-                        source = _relative_file(staging, relative.as_posix())
-                        if source.suffix.lower() not in {".jpg", ".jpeg", ".png", ".webp"}:
-                            raise ValueError("An archived photo scene must reference a picture")
-                        restored = str(output / relative)
-                        photos = restored_images.setdefault(section_id, [])
-                        if restored not in photos:
-                            photos.append(restored)
+                        for image, _ in pictures:
+                            relative = Path(image["path"]).relative_to(output)
+                            source = _relative_file(staging, relative.as_posix())
+                            if source.suffix.lower() not in {".jpg", ".jpeg", ".png", ".webp"}:
+                                raise ValueError("An archived photo scene must reference a picture")
+                            restored = str(output / relative)
+                            photos = restored_images.setdefault(section_id, [])
+                            if restored not in photos:
+                                photos.append(restored)
                     if restored_images:
                         image_reuse_note = "This older storyboard had no photo map. Its exact saved scene pictures were restored to their original sections."
             staged_images = {

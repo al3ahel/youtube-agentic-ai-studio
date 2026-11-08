@@ -10,8 +10,18 @@ import config
 from agents import art_direction, gemini_client, visual_director
 
 
+def _routing_status(plan):
+    """Routing identity stays exact while the separate provenance journal grows."""
+    status = plan["ai_status"]
+    assert status["provenance"]["version"] == 1
+    assert status["provenance"]["generated_scene_count"] == len(plan["scenes"])
+    return {key: value for key, value in status.items() if key != "provenance"}
+
+
 @pytest.fixture
 def project(monkeypatch):
+    # This fixture exercises saved, pre-shot layout/edit contracts.
+    monkeypatch.setattr(config, "SHOT_PLANNING_ENABLED", False)
     for name in ("GEMINI_API_KEY", "OPENROUTER_API_KEY", "GROQ_API_KEY"):
         monkeypatch.setattr(config, name, "")
         monkeypatch.delenv(name, raising=False)
@@ -279,7 +289,7 @@ def test_unavailable_selected_openrouter_planner_uses_working_gemini(project, mo
 
     assert preferred == ["example/chosen-director:free"]
     assert calls == ["gemini-2.5-flash"]
-    assert updated["ai_status"] == {"status": "planned", "provider": "gemini", "model": "gemini-2.5-flash",
+    assert _routing_status(updated) == {"status": "planned", "provider": "gemini", "model": "gemini-2.5-flash",
                                      "fallback_from": "openrouter", "fallback_reason": code}
     assert updated["scenes"][0]["look"] == "editorial"
     assert updated["sections"] == old["sections"]
@@ -346,7 +356,7 @@ def test_successful_selected_openrouter_planner_keeps_precedence(project, monkey
     monkeypatch.setattr(gemini_client, "generate", lambda *a, **kw: pytest.fail("Successful selected planner was overridden"))
     result = visual_director.plan_scenes(script, timeline)
     assert calls == ["example/chosen-director:free"]
-    assert result["ai_status"] == {"status": "planned", "provider": "openrouter", "model": "example/chosen-director:free"}
+    assert _routing_status(result) == {"status": "planned", "provider": "openrouter", "model": "example/chosen-director:free"}
 
 
 @pytest.mark.parametrize("returns_design", [True, False])
@@ -384,7 +394,7 @@ def test_local_only_visual_planning_never_uses_configured_cloud_keys(project, mo
     monkeypatch.setattr(gemini_client, "_get_client", lambda: pytest.fail("Local-only used Gemini"))
     monkeypatch.setattr(llm, "post_json", lambda *a, **kw: pytest.fail("Local-only used hosted fallback"))
     result = visual_director.plan_scenes(script, timeline)
-    assert result["ai_status"] == {"status": "planned", "provider": "ollama", "model": "local:small"}
+    assert _routing_status(result) == {"status": "planned", "provider": "ollama", "model": "local:small"}
 
 
 def test_scene_edit_recovers_from_openrouter_failure_with_actual_alternate_identity(project, monkeypatch):

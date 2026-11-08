@@ -1,0 +1,228 @@
+{
+  "version": 1,
+  "status": "additional_independent_sampled_observations_recorded",
+  "observer": "independent assistant frame reviewer",
+  "review_scope": "All 30 individual decoded phase JPEGs; separate from the reference agent's 13-frame inspection and from root's contact-sheet overview.",
+  "video_sha256": "a8cc826624ba496307f5baebd6445de92712b6197164a1f4bca1a3b0d2c0f290",
+  "frame_count": 30,
+  "frames": [
+    {
+      "phase": "setup",
+      "time": 0.366667,
+      "file": "render_review/3220ca2e748a4ef1acc4e07820dbfe9a/attempt-0/scene-001-setup.jpg",
+      "sha256": "b9602210e8d3e2303c08c28c0d28a900ea50f0aa3a0a92c463dd7d769411662a",
+      "shot_id": "scene-001"
+    },
+    {
+      "phase": "action",
+      "time": 1.166667,
+      "file": "render_review/3220ca2e748a4ef1acc4e07820dbfe9a/attempt-0/scene-001-action.jpg",
+      "sha256": "8c8bf26b389d2d464524882e047900578c0b5f668e1ca801bdeed65997f78b69",
+      "shot_id": "scene-001"
+    },
+    {
+      "phase": "result",
+      "time": 1.933333,
+      "file": "render_review/3220ca2e748a4ef1acc4e07820dbfe9a/attempt-0/scene-001-result.jpg",
+      "sha256": "ab5d0f230bacf4b3a080007881ed9504af362cb150312729fda132e3f99189de",
+      "shot_id": "scene-001"
+    },
+    {
+      "phase": "setup",
+      "time": 2.666667,
+      "file": "render_review/3220ca2e748a4ef1acc4e07820dbfe9a/attempt-0/scene-002-setup.jpg",
+      "sha256": "936ae2d5413dfa6e856c24a1109445f8ab30db0afe838bc64c886c00a8d144ab",
+      "shot_id": "scene-002"
+    },
+    {
+      "phase": "action",
+      "time": 3.466667,
+      "file": "render_review/3220ca2e748a4ef1acc4e07820dbfe9a/attempt-0/scene-002-action.jpg",
+      "sha256": "2678cab7fa2bd61867f8070341b904ecef7068680534afe2092a1c311a1fbff3",
+      "shot_id": "scene-002"
+    },
+    {
+      "phase": "result",
+      "time": 4.233333,
+      "file": "render_review/3220ca2e748a4ef1acc4e07820dbfe9a/attempt-0/scene-002-result.jpg",
+      "sha256": "4037977e9af5679239724d633aa1724a89715edab284af52b926a4e4ab6c40c1",
+      "shot_id": "scene-002"
+    },
+    {
+      "phase": "setup",
+      "time": 4.9,
+      "file": "render_review/3220ca2e748a4ef1acc4e07820dbfe9a/attempt-0/scene-003-setup.jpg",
+      "sha256": "aaacbf663d97dd48a6c37c45f2c4d5e0be32db899fd60034a2017d954c14cf88",
+      "shot_id": "scene-003"
+    },
+    {
+      "phase": "action",
+      "time": 5.466667,
+      "file": "render_review/3220ca2e748a4ef1acc4e07820dbfe9a/attempt-0/scene-003-action.jpg",
+      "sha256": "0b4d379856da6ae8559d5befcc5c42a1a382dd2bd16861e1ea638a31ffdfef40",
+      "shot_id": "scene-003"
+    },
+    {
+      "phase": "result",
+      "time": 6.033333,
+      "file": "render_review/3220ca2e748a4ef1acc4e07820dbfe9a/attempt-0/scene-003-result.jpg",
+      "sha256": "5d2dcb608b2d6f9d38f0ed9132997d1a7edc6d9a6f1d023556dd596a18f59cb9",
+      "shot_id": "scene-003"
+    },
+    {
+      "phase": "setup",
+      "time": 6.8,
+      "file": "render_review/3220ca2e748a4ef1acc4e07820dbfe9a/attempt-0/scene-004-setup.jpg",
+      "sha256": "5166744b7f5323b8b653a29df663067b9004e80aa723b8ba98a7925bdfa0dfae",
+      "shot_id": "scene-004"
+    },
+    {
+      "phase": "action",
+      "time": 7.933333,
+      "file": "render_review/3220ca2e748a4ef1acc4e07820dbfe9a/attempt-0/scene-004-action.jpg",
+      "sha256": "96231fb1b217d203b5833eed5fa97b4eb8317c445d16f749416449f97077c872",
+      "shot_id": "scene-004"
+    },
+    {
+      "phase": "result",
+      "time": 9.066667,
+      "file": "render_review/3220ca2e748a4ef1acc4e07820dbfe9a/attempt-0/scene-004-result.jpg",
+      "sha256": "5787520a79024fdd9df1e2f7f22f1de2dbc9c3f3913836f9b1d4c17a355a55e8",
+      "shot_id": "scene-004"
+    },
+    {
+      "phase": "setup",
+      "time": 10.033333,
+      "file": "render_review/3220ca2e748a4ef1acc4e07820dbfe9a/attempt-0/scene-005-setup.jpg",
+      "sha256": "7d1aae094da36aed7d7b7ac452be5959ca73c58cb30fc9ce8ac405b7bb282347",
+      "shot_id": "scene-005"
+    },
+    {
+      "phase": "action",
+      "time": 10.966667,
+      "file": "render_review/3220ca2e748a4ef1acc4e07820dbfe9a/attempt-0/scene-005-action.jpg",
+      "sha256": "33db4e4ab4d93d79a1ce513e80e0c88c0b9e82f5434fd8a71dd793d64885be66",
+      "shot_id": "scene-005"
+    },
+    {
+      "phase": "result",
+      "time": 11.9,
+      "file": "render_review/3220ca2e748a4ef1acc4e07820dbfe9a/attempt-0/scene-005-result.jpg",
+      "sha256": "d851432e4cf5dfa19a430923f55643d548e27c2ae49b0bb16fc126fe9538090c",
+      "shot_id": "scene-005"
+    },
+    {
+      "phase": "setup",
+      "time": 12.9,
+      "file": "render_review/3220ca2e748a4ef1acc4e07820dbfe9a/attempt-0/scene-006-setup.jpg",
+      "sha256": "4a382cb19a739c30cd727563d2e37c7020c1c4857e7c3fc4b23f63bd32f32664",
+      "shot_id": "scene-006"
+    },
+    {
+      "phase": "action",
+      "time": 14.066667,
+      "file": "render_review/3220ca2e748a4ef1acc4e07820dbfe9a/attempt-0/scene-006-action.jpg",
+      "sha256": "97fb9186a81c2d6e526524e301e5c6f4bcac6f56191b56792c99cc40078d4632",
+      "shot_id": "scene-006"
+    },
+    {
+      "phase": "result",
+      "time": 15.2,
+      "file": "render_review/3220ca2e748a4ef1acc4e07820dbfe9a/attempt-0/scene-006-result.jpg",
+      "sha256": "5e29906952b84f89a1ae9e854984caf53dd5b7f5aab3d66d4c7a556006bcde83",
+      "shot_id": "scene-006"
+    },
+    {
+      "phase": "setup",
+      "time": 16.366667,
+      "file": "render_review/3220ca2e748a4ef1acc4e07820dbfe9a/attempt-0/scene-007-setup.jpg",
+      "sha256": "c0fa8050d94789ae4aba23aef535af32e04fb34f0fd4809436cdc611e3d37ab8",
+      "shot_id": "scene-007"
+    },
+    {
+      "phase": "action",
+      "time": 17.166667,
+      "file": "render_review/3220ca2e748a4ef1acc4e07820dbfe9a/attempt-0/scene-007-action.jpg",
+      "sha256": "c8b7fbabaa99482f6a507c19dbfe188183dc7145dcfbaef69eb969117c095c35",
+      "shot_id": "scene-007"
+    },
+    {
+      "phase": "result",
+      "time": 18.166667,
+      "file": "render_review/3220ca2e748a4ef1acc4e07820dbfe9a/attempt-0/scene-007-result.jpg",
+      "sha256": "c08b5ff9e26991df058c3f3c2ddbdba953c70a93653a1a9e4e84a0bffd541010",
+      "shot_id": "scene-007"
+    },
+    {
+      "phase": "setup",
+      "time": 19.033333,
+      "file": "render_review/3220ca2e748a4ef1acc4e07820dbfe9a/attempt-0/scene-008-setup.jpg",
+      "sha256": "62009849ed9d84aab305419b8f95030399dd58410c402a1696d2f26becc69d3d",
+      "shot_id": "scene-008"
+    },
+    {
+      "phase": "action",
+      "time": 20.066667,
+      "file": "render_review/3220ca2e748a4ef1acc4e07820dbfe9a/attempt-0/scene-008-action.jpg",
+      "sha256": "c26b3a26de3920839c2c2cd1dfc31295d1d961f50873f5bbcb899c5ee555acc4",
+      "shot_id": "scene-008"
+    },
+    {
+      "phase": "result",
+      "time": 21.1,
+      "file": "render_review/3220ca2e748a4ef1acc4e07820dbfe9a/attempt-0/scene-008-result.jpg",
+      "sha256": "853353e0133941c901505f67d47542940db4392b9a08fce2040fdbd6d87bad1c",
+      "shot_id": "scene-008"
+    },
+    {
+      "phase": "setup",
+      "time": 22.133333,
+      "file": "render_review/3220ca2e748a4ef1acc4e07820dbfe9a/attempt-0/scene-009-setup.jpg",
+      "sha256": "21727e5ede035142d21a65936416605dd5000e315ae9a3668c3f88858a992a35",
+      "shot_id": "scene-009"
+    },
+    {
+      "phase": "action",
+      "time": 23.3,
+      "file": "render_review/3220ca2e748a4ef1acc4e07820dbfe9a/attempt-0/scene-009-action.jpg",
+      "sha256": "42dd3481d2e857789e1183bdcc92fe998debc1bc8e1ba3a10d8efaed64eb14d7",
+      "shot_id": "scene-009"
+    },
+    {
+      "phase": "result",
+      "time": 24.433333,
+      "file": "render_review/3220ca2e748a4ef1acc4e07820dbfe9a/attempt-0/scene-009-result.jpg",
+      "sha256": "544d19a62bd195d24dc38aa9bf70efd3f483febe57d1e2a6a7e21a788e261d2b",
+      "shot_id": "scene-009"
+    },
+    {
+      "phase": "setup",
+      "time": 25.7,
+      "file": "render_review/3220ca2e748a4ef1acc4e07820dbfe9a/attempt-0/scene-010-setup.jpg",
+      "sha256": "cce51cba46efcbd971fdf818620f9b032070ed7c65f8718665bbff81cd4086a7",
+      "shot_id": "scene-010"
+    },
+    {
+      "phase": "action",
+      "time": 27.266667,
+      "file": "render_review/3220ca2e748a4ef1acc4e07820dbfe9a/attempt-0/scene-010-action.jpg",
+      "sha256": "a83bf16ac23046d45ec902e40d5c6361e511e427778692d2b9df946e7d5cc677",
+      "shot_id": "scene-010"
+    },
+    {
+      "phase": "result",
+      "time": 28.8,
+      "file": "render_review/3220ca2e748a4ef1acc4e07820dbfe9a/attempt-0/scene-010-result.jpg",
+      "sha256": "d2d7ea803f07e60dedd474e9ce20b965a3b9d2710628850be3d9c026dfb4175c",
+      "shot_id": "scene-010"
+    }
+  ],
+  "reported_observations": [
+    "The targeted repairs are visible in the actual encoded samples: collage caption fragments are suppressed, scene005 exposes plate depth, proof headings are qualified, the settled dent is retained, and scene010 uses literal subjects with source-noun labels.",
+    "Scene004 remains a held illustration while the narration states a qualified deflection capability; it does not demonstrate deflection in the sampled phases.",
+    "Scene005 shows a faceted 3D depth view rather than a material-hardening transformation.",
+    "Scene009 has weak visual emphasis because its subject remains pale in sampled frames."
+  ],
+  "semantic_gate_override": false,
+  "qualification": "Independent assistant inspection of decoded still samples. This is not a claim of human listening, every-frame review, smooth full-sequence playback, reference-quality parity, or a replacement of the actual configured local model's results."
+}

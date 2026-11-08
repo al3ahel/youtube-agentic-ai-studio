@@ -1,0 +1,70 @@
+{
+  "title": "Could old armour stop a bullet?",
+  "video_type": "shorts",
+  "description": "A qualified historical explanation of armour and firearms. Original narration; the museum objects are illustrative examples, not recordings of a ballistic test.",
+  "sections": [
+    {
+      "id": "question",
+      "title": "Could armour stop a bullet?",
+      "narration": "Could old armour stop a bullet? Sometimes. The answer depends on the armour and the weapon.",
+      "bullet_points": [
+        "Armour and the weapon both matter"
+      ],
+      "source_ids": [
+        "met-misconceptions",
+        "cleveland-technology"
+      ]
+    },
+    {
+      "id": "construction",
+      "title": "Rings and solid steel",
+      "narration": "Mail armour uses linked rings. Steel plate armour can deflect some blows away from the body.",
+      "bullet_points": [
+        "Linked rings",
+        "Shaped steel plate"
+      ],
+      "source_ids": [
+        "met-misconceptions",
+        "cleveland-technology"
+      ]
+    },
+    {
+      "id": "reinforcement",
+      "title": "Adding another layer",
+      "narration": "When firearms spread, steel armour was hardened, thickened, or given a reinforcing layer over the breastplate.",
+      "bullet_points": [
+        "Hardening",
+        "Thickening",
+        "Reinforcing layers"
+      ],
+      "source_ids": [
+        "met-misconceptions",
+        "met-reinforcing-breastplate"
+      ]
+    },
+    {
+      "id": "proof",
+      "title": "The proof was a dent",
+      "narration": "In proof tests, bullets hit some steel breastplates. A surviving dent showed that particular shot had stopped.",
+      "bullet_points": [
+        "Proof test",
+        "Visible dent"
+      ],
+      "source_ids": [
+        "cleveland-technology"
+      ]
+    },
+    {
+      "id": "answer",
+      "title": "Protection had limits",
+      "narration": "But one successful test was no universal guarantee. Armour and firearms evolved together for centuries; protection always had limits.",
+      "bullet_points": [
+        "A specific test is not a universal guarantee"
+      ],
+      "source_ids": [
+        "met-misconceptions",
+        "cleveland-technology"
+      ]
+    }
+  ]
+}

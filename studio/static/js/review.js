@@ -340,13 +340,13 @@ $("#upload-btn").onclick = async () => {
 
 function updateRebuildControls(st) {
   const photos = st.visual_mode === "classic" || storyboardUsesProjectPhotos() || Number(st.photo_count) > 0;
-  const oldGraphics = ["motion", "hybrid"].includes(st.visual_mode) && storyboardData?.plan?.scenes?.some(scene => !scene.image && !["footage", "chart"].includes(scene.template) && scene.graphics_version !== 2);
+  const oldGraphics = ["motion", "hybrid"].includes(st.visual_mode) && storyboardData?.plan?.scenes?.some(scene => !scene.shot || !scene.image && !["footage", "chart"].includes(scene.template) && scene.graphics_version !== 2);
   $("#legacy-motion-card").hidden = !st.has_audio || !st.has_script || !(photos || oldGraphics);
   $("#animate-legacy").hidden = !photos;
   $("#rebuild-motion-and-sound").hidden = !oldGraphics;
   $("#rebuild-visuals-title").textContent = oldGraphics ? "Update this draft's animation" : "Rebuild this project's visuals";
   $("#rebuild-visuals-note").textContent = oldGraphics
-    ? "This draft uses the earlier scene design. Rebuild its animation with subjects, actions and camera framing while keeping the script and recorded voice. Animation + sound also reapplies this channel's saved sound direction. Existing scene designs are replaced."
+    ? "This draft uses the earlier scene design. Rebuild individual shots with subjects, actions and camera framing while keeping the script and recorded voice. Animation + sound also reapplies this channel's saved sound direction. Existing scene designs are replaced."
     : "Keep the saved script and recorded voice. Choose animated graphics or animate the existing pictures. YAAS reuses available captions for timing and labels any estimated timing.";
 }
 

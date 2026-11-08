@@ -1,0 +1,62 @@
+{
+  "version": 1,
+  "status": "retrospective_production_resolver_audit",
+  "method": "The current ordinary _event_timing resolver was called read-only with the exact actual earlier model proof event, original script/measured timeline and the original verified owned recording. No new model response, acquisition, mixing or encoding was performed.",
+  "inputs": {
+    "earlier_model_capture_sha256": "39b6a5706d12a756aef2c619b6962dc1cafe4dd1b3725b0cf8a745469df6c754",
+    "earlier_sound_design_sha256": "467b5bfdbd1526d1bec99f2ed74cd6c3e86180158c87a6021c2841a019b89ac1",
+    "script_file_sha256": "54472a2641afcbf4063c1793a194b613d82b283b47c1bc98a50f11dd6fb08a4b",
+    "timeline_file_sha256": "2d85cb1fd9cbe85d473a8dfd0b54e0bb035b60aa9ab832c3f81be3deada68aef",
+    "recording_sha256": "f372bda70ca1a66650270022c82634b87ff40d15b061f1e988fa40e00a066233",
+    "recording_bytes": 14209,
+    "audio_director_source_sha256": "e79ed317f4b1f8c6f3ef06b6f3af28446b4081e3bf5f48955eff6e12f4aaad35",
+    "audio_sources_source_sha256": "96d526f9324b252614c1519a8cb33df6639fa4f8d23470b9f3bb1ebe0c61cac2"
+  },
+  "unchanged_actual_model_event": {
+    "section_id": "proof",
+    "query": "metal contact",
+    "asset_id": "",
+    "label": "Impact visualization",
+    "reason": "Reinforces the concept of bullets hitting steel breastplates; used sparingly as it is key content."
+  },
+  "earlier_encoded_event": {
+    "start": 15.733333333333333,
+    "duration": 1.132583,
+    "volume": 0.22,
+    "video_sha256": "c9abd0e1e9427867d0852067a78b6eacceeced0ab3e15e1f44d200b1635729b1"
+  },
+  "source_measured_visual_contact": {
+    "scene_id": "scene-007",
+    "time": 17.134458,
+    "qualification": "Planned animation beat anchored to a measured narration word, not a listening judgment."
+  },
+  "early_event_seconds": 1.401124667,
+  "corrected_resolver_result": {
+    "start": 17.134458000000002,
+    "cue_word": "hit",
+    "timing_source": "measured_word",
+    "timing_provenance": {
+      "method": "automatic_source_contact",
+      "recording_family": "metal_contact",
+      "recording_sha256": "f372bda70ca1a66650270022c82634b87ff40d15b061f1e988fa40e00a066233"
+    }
+  },
+  "current_final_sound": {
+    "event": {
+      "section_id": "construction",
+      "start": 4.6,
+      "duration": 1.132583,
+      "volume": 0.22,
+      "timing_source": "section_boundary",
+      "timing_provenance": {
+        "method": "section_boundary",
+        "reason": "source_contact_not_unique"
+      }
+    },
+    "recording_title": "Metal surface impact",
+    "mixed_wav_sha256": "75229d2a1037bd706f0488642f6392ef5b7ef8f62a512192ed105886994e62e6",
+    "qualification": "A genuinely fresh sound request chose a construction material accent at 4.6 seconds. The final movie does not reuse the earlier proof event; the corrected resolver audit is not a claim about a final proof-contact sound."
+  },
+  "perceptual_audio_review": "not_listened",
+  "prior_model_capture": "provenance/prior-sound-response-0010.json"
+}

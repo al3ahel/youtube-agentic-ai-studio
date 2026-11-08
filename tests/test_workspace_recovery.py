@@ -95,6 +95,45 @@ def _open_project(project):
                  visual_mode="motion", video_type="normal", profile_id="default", preview_only=True)
 
 
+def _collage(project):
+    output = project["output"]
+    second = output / "images" / "second-layer.png"
+    Image.new("RGB", (64, 64), "green").save(second)
+    images = {"1": [str(project["photo"]), str(second)], "next": [str(project["photo"]), str(second)]}
+    project["images"] = images
+    project["plan"] = plan_scenes(project["script"], project["timeline"], output_dir=output,
+                                  image_map=images, use_ai=False, use_project_photos=True)
+    (output / "image_map.json").write_text(json.dumps({key: [str(Path(path).relative_to(output)) for path in values]
+                                                    for key, values in images.items()}))
+    from studio.visual_assets import save_binding
+    save_binding(output, images, project["script"], "default")
+    return second
+
+
+def test_every_collage_layer_is_part_of_the_completed_render_identity(project):
+    second = _collage(project)
+    _open_project(project)
+    assert workspace.checkpoint_workspace(rendered_kind="draft")
+    checkpoint = json.loads((project["output"] / "workspace.json").read_text())
+    assert "images/second-layer.png" in checkpoint["renders"]["draft"]["binding"]["assets"]
+    _empty_editor()
+    assert workspace.restore_workspace() and state["preview_path"] == str(project["draft"])
+    Image.new("RGB", (64, 64), "orange").save(second)
+    _empty_editor()
+    assert workspace.restore_workspace()
+    assert state["preview_path"] is None and state["video_path"] is None
+
+
+def test_legacy_workspace_recovery_includes_all_collage_layers(project):
+    second = _collage(project)
+    (project["output"] / "image_map.json").unlink()
+    (project["output"] / "image_binding.json").unlink()
+    _empty_editor()
+    assert workspace.restore_workspace()
+    assert state["image_map"]["1"] == [str(project["photo"]), str(second)]
+    assert state["image_map"]["next"] == [str(project["photo"]), str(second)]
+
+
 def test_create_app_recovers_precheckpoint_draft_and_serves_it_without_generation(project, monkeypatch):
     from agents import visual_director
     from video import narrator

@@ -93,6 +93,28 @@ def test_automatic_local_choice_uses_a_small_installed_model_without_downloading
     assert calls[-1][2]["body"]["model"] == "small"
 
 
+def test_local_structured_output_uses_the_exact_validated_schema(monkeypatch):
+    schema = {"type": "object", "additionalProperties": False, "required": ["ready"],
+              "properties": {"ready": {"type": "boolean"}}}
+    calls = _responses(monkeypatch, show=_details(capabilities=["completion", "thinking"]),
+                       answer=_chat(message={"role": "assistant", "content": '{"ready":true}'}))
+    response = local_llm.generate("Return ready as true", model="tiny", json_mode=True, json_schema=schema)
+    assert json.loads(response) == {"ready": True}
+    request = calls[-1][2]["body"]
+    assert request["format"] == schema and request["think"] is False
+    assert calls[-1][2]["timeout"] == local_llm.MAX_GENERATION_SECONDS
+    assert [call[1] for call in calls] == ["/api/tags", "/api/show", "/api/chat"]
+
+
+def test_invalid_local_structured_schema_never_reaches_the_model(monkeypatch):
+    from apis.openrouter import OpenRouterError
+    calls = _responses(monkeypatch)
+    with pytest.raises(OpenRouterError):
+        local_llm.generate("Return ready", model="tiny", json_mode=True,
+                           json_schema={"type": "object", "unsupported_constraint": True})
+    assert calls == []
+
+
 @pytest.mark.parametrize("name", ["gpt-oss:120b-cloud", "large:cloud", "foo/CLOUD", "https://ollama.com/model", 0, []])
 def test_explicit_cloud_or_invalid_name_is_rejected_before_discovery(monkeypatch, name):
     calls = _responses(monkeypatch)

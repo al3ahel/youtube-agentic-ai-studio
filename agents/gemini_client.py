@@ -167,16 +167,16 @@ def _generate_gemini(prompt: str, starting_model: str | None, stop_event=None, *
 
 
 def generate(prompt: str, starting_model: str | None = None, *, stop_event=None,
-             exclude_providers=(), provider_info=None, json_mode=False) -> str:
+             exclude_providers=(), provider_info=None, json_mode=False, json_schema=None) -> str:
     """Generate text; opt-in JSON output still requires caller schema validation."""
     with session_scope(stop_event), request_scope():
         return _generate(prompt, starting_model, stop_event=effective_stop_event(stop_event),
                          exclude_providers=exclude_providers, provider_info=provider_info,
-                         json_mode=json_mode)
+                         json_mode=json_mode, json_schema=json_schema)
 
 
 def _generate(prompt, starting_model=None, *, stop_event=None, exclude_providers=(), provider_info=None,
-              json_mode=False):
+              json_mode=False, json_schema=None):
     global last_provider
     from apis import llm
     check_stop(stop_event)
@@ -187,6 +187,11 @@ def _generate(prompt, starting_model=None, *, stop_event=None, exclude_providers
         provider_info.clear()
     if not isinstance(prompt, str) or not prompt.strip() or len(prompt) > 60000:
         raise ValueError("AI requests must contain 1–60,000 characters.")
+    if json_schema is not None:
+        if not json_mode:
+            raise ValueError("A structured schema requires JSON mode.")
+        from apis.openrouter import _validate_plan_request
+        _validate_plan_request(prompt, json_schema)
     from apis.openrouter import _redact
     prompt = _redact(prompt)
     route = getattr(config, "LLM_ROUTE", "auto")
@@ -200,7 +205,8 @@ def _generate(prompt, starting_model=None, *, stop_event=None, exclude_providers
             print(f"   → Trying local Ollama {_redact(local_model)}…")
             local_info = {}
             text = local_llm.generate(prompt, stop_event=stop_event, json_mode=json_mode,
-                                      provider_info=local_info)
+                                      provider_info=local_info,
+                                      **({"json_schema": json_schema} if json_schema is not None else {}))
             check_stop(stop_event)
             last_provider = "Ollama · " + config.OLLAMA_MODEL
             if provider_info is not None:

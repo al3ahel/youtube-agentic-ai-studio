@@ -25,7 +25,10 @@
     const placement = at(parent, x, y, size / 200, {class: `world-actor world-role-${role}`, "data-symbol": symbol, "data-role": role});
     const node = group(placement);
     const parts = {};
-    if (symbol === "people" || symbol === "census" || symbol === "census-gap") {
+    if (symbol === "armour" || symbol === "firearm") {
+      window.YAASObjects.drawSubject(node, symbol, {body: "world-body", shade: "world-side",
+        line: "world-line", fine: "world-fine-line", accent: "world-solid", dark: "world-dark"});
+    } else if (symbol === "people" || symbol === "census" || symbol === "census-gap") {
       const positions = symbol === "people" ? [-62, 2, 65] : [-57, 47];
       positions.forEach((px, index) => {
         const person = at(node, px, index % 2 ? 10 : -15, .83, {class: index === positions.length - 1 && symbol === "census-gap" ? "world-missing" : ""});
@@ -231,7 +234,9 @@
         } else if (staging.action === "reveal") {
           tween(figure.node, {opacity: .18}, {opacity: 1}, cue, duration * .2);
         }
-        if (staging.action !== "compare" && item.role !== "context") {
+        const descriptiveEquipment = [primary.symbol, figure.symbol].some(symbol => symbol === "armour" || symbol === "firearm")
+          && staging.action === "reveal";
+        if (staging.action !== "compare" && item.role !== "context" && !descriptiveEquipment) {
           // Connect follows the ordered support actors: solar → battery →
           // home, rather than silently replacing that chain with a star.
           const source = staging.action === "connect" ? previousSupport : primary;

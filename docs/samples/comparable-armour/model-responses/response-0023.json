@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "endpoint": "/api/chat",
+  "stage": "editorial_render_review",
+  "model": "qwen3.5:4b",
+  "started_at": "2026-11-08T23:16:48.068094+00:00",
+  "native_json_schema": true,
+  "image_count": 3,
+  "status": "received",
+  "finished_at": "2026-11-08T23:18:29.908466+00:00",
+  "response_text": "{\"model\":\"qwen3.5:4b\",\"created_at\":\"2026-11-08T23:18:29.902456138Z\",\"message\":{\"role\":\"assistant\",\"content\":\"{\\n    \\\"shots\\\": [\\n        {\\n            \\\"shot_id\\\": \\\"scene-001\\\",\\n            \\\"confidence\\\": 0.95,\\n            \\\"observations\\\": [\\n                {\\n                    \\\"sample_id\\\": \\\"scene-001:setup\\\",\\n                    \\\"visible\\\": \\\"A single image of a full suit of plate armour is shown in the center of the frame.\\\"\\n                },\\n                {\\n                    \\\"sample_id\\\": \\\"scene-001:action\\\",\\n                    \\\"visible\\\": \\\"The composition changes to show three images. The original full suit of plate armour remains at the top. Below it, a new image appears on the right showing chainmail. A third image appears in the bottom left, showing a close-up of a breastplate.\\\"\\n                },\\n                {\\n                    \\\"sample_id\\\": \\\"scene-001:result\\\",\\n                    \\\"visible\\\": \\\"The composition is identical to the action shot, displaying the three images: the full suit of plate armour, chainmail, and the close-up of the breastplate.\\\"\\n                }\\n            ],\\n            \\\"assessments\\\": {\\n                \\\"subject_relevance\\\": \\\"uncertain\\\",\\n                \\\"composition\\\": \\\"uncertain\\\",\\n                \\\"motion\\\": \\\"uncertain\\\"\\n            },\\n            \\\"issues\\\": [\\n                {\\n                    \\\"category\\\": \\\"repetition\\\",\\n                    \\\"severity\\\": \\\"warning\\\",\\n                    \\\"message\\\": \\\"The 'result' sample (image_index 2) is visually identical to the 'action' sample (image_index 1). The composition does not change or progress, which contradicts the expected role of a result shot.\\\",\\\"samples\\\": [\\n                    \\\"scene-001:action\\\",\\n                    \\\"scene-001:result\\\"\\n                ],\\\"repair\\\": \\\"none\\\"\\n                }\\n            ]\\n        }\\n    ]\\n}\"},\"done\":true,\"done_reason\":\"stop\",\"total_duration\":101833281611,\"load_duration\":4610288128,\"prompt_eval_count\":1561,\"prompt_eval_cached_count\":0,\"prompt_eval_duration\":34034233999,\"eval_count\":398,\"eval_duration\":63127438000}",
+  "redacted": true,
+  "truncated": false,
+  "redacted_response_json_sha256": "a076e8de23be9adeb6b8a4e6aeb857435a44aa86a278e5992c1f6b7d27610fa4"
+}

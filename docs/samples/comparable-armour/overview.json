@@ -1,0 +1,79 @@
+{
+  "version": 1,
+  "source_video_sha256": "a8cc826624ba496307f5baebd6445de92712b6197164a1f4bca1a3b0d2c0f290",
+  "method": "Resized complete decoded action-sample frames with labels outside the images; no source crop or generated replacement image.",
+  "frames": [
+    {
+      "shot_id": "scene-001",
+      "phase": "action",
+      "time": 1.166667,
+      "file": "render_review/3220ca2e748a4ef1acc4e07820dbfe9a/attempt-0/scene-001-action.jpg",
+      "sha256": "8c8bf26b389d2d464524882e047900578c0b5f668e1ca801bdeed65997f78b69"
+    },
+    {
+      "shot_id": "scene-002",
+      "phase": "action",
+      "time": 3.466667,
+      "file": "render_review/3220ca2e748a4ef1acc4e07820dbfe9a/attempt-0/scene-002-action.jpg",
+      "sha256": "2678cab7fa2bd61867f8070341b904ecef7068680534afe2092a1c311a1fbff3"
+    },
+    {
+      "shot_id": "scene-003",
+      "phase": "action",
+      "time": 5.466667,
+      "file": "render_review/3220ca2e748a4ef1acc4e07820dbfe9a/attempt-0/scene-003-action.jpg",
+      "sha256": "0b4d379856da6ae8559d5befcc5c42a1a382dd2bd16861e1ea638a31ffdfef40"
+    },
+    {
+      "shot_id": "scene-004",
+      "phase": "action",
+      "time": 7.933333,
+      "file": "render_review/3220ca2e748a4ef1acc4e07820dbfe9a/attempt-0/scene-004-action.jpg",
+      "sha256": "96231fb1b217d203b5833eed5fa97b4eb8317c445d16f749416449f97077c872"
+    },
+    {
+      "shot_id": "scene-005",
+      "phase": "action",
+      "time": 10.966667,
+      "file": "render_review/3220ca2e748a4ef1acc4e07820dbfe9a/attempt-0/scene-005-action.jpg",
+      "sha256": "33db4e4ab4d93d79a1ce513e80e0c88c0b9e82f5434fd8a71dd793d64885be66"
+    },
+    {
+      "shot_id": "scene-006",
+      "phase": "action",
+      "time": 14.066667,
+      "file": "render_review/3220ca2e748a4ef1acc4e07820dbfe9a/attempt-0/scene-006-action.jpg",
+      "sha256": "97fb9186a81c2d6e526524e301e5c6f4bcac6f56191b56792c99cc40078d4632"
+    },
+    {
+      "shot_id": "scene-007",
+      "phase": "action",
+      "time": 17.166667,
+      "file": "render_review/3220ca2e748a4ef1acc4e07820dbfe9a/attempt-0/scene-007-action.jpg",
+      "sha256": "c8b7fbabaa99482f6a507c19dbfe188183dc7145dcfbaef69eb969117c095c35"
+    },
+    {
+      "shot_id": "scene-008",
+      "phase": "action",
+      "time": 20.066667,
+      "file": "render_review/3220ca2e748a4ef1acc4e07820dbfe9a/attempt-0/scene-008-action.jpg",
+      "sha256": "c26b3a26de3920839c2c2cd1dfc31295d1d961f50873f5bbcb899c5ee555acc4"
+    },
+    {
+      "shot_id": "scene-009",
+      "phase": "action",
+      "time": 23.3,
+      "file": "render_review/3220ca2e748a4ef1acc4e07820dbfe9a/attempt-0/scene-009-action.jpg",
+      "sha256": "42dd3481d2e857789e1183bdcc92fe998debc1bc8e1ba3a10d8efaed64eb14d7"
+    },
+    {
+      "shot_id": "scene-010",
+      "phase": "action",
+      "time": 27.266667,
+      "file": "render_review/3220ca2e748a4ef1acc4e07820dbfe9a/attempt-0/scene-010-action.jpg",
+      "sha256": "a83bf16ac23046d45ec902e40d5c6361e511e427778692d2b9df946e7d5cc677"
+    }
+  ],
+  "overview_sha256": "4658b73e66c63afabe2a8d2252a7f4c252440453fdbfc34e0e2d21c8523f430c",
+  "review_status": "See visual-qa.json and comparison.json for the actual review status."
+}

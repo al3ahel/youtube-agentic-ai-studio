@@ -4,7 +4,7 @@
 (() => {
   "use strict";
   const NS = "http://www.w3.org/2000/svg";
-  const allowed = new Set(["concept", "census", "census-gap", "people", "mining", "solar", "battery", "circuit", "water", "plant", "network", "trade", "conflict", "document", "orbit", "building"]);
+  const allowed = new Set(["concept", "census", "census-gap", "people", "mining", "solar", "battery", "circuit", "water", "plant", "network", "trade", "conflict", "document", "orbit", "building", "armour", "firearm"]);
   function svg(tag, attributes = {}, parent) {
     const node = document.createElementNS(NS, tag);
     for (const [key, value] of Object.entries(attributes)) node.setAttribute(key, String(value));
@@ -35,6 +35,39 @@
     shape(node, "path", {d: `M${-radius + 5} 0 H${radius - 5} M0 ${-radius + 5} V${radius - 5}`});
     return node;
   }
+
+  function drawSubject(parent, symbol, styles = {}) {
+    // Shared original silhouettes for legacy objects and composed worlds.
+    // A named object does not imply a particular alloy, historical model,
+    // loaded weapon, firing action or ballistic result.
+    const cls = {body: "object-paper", shade: "object-fill", line: "object-outline",
+      fine: "object-subtle", accent: "object-solid", dark: "object-dark", ...styles};
+    const node = group(parent, 0, 0, {class: `subject-glyph subject-${symbol}`, "data-subject": symbol});
+    const line = (d, style = "line", attrs = {}) => shape(node, "path", {d, ...attrs}, cls[style]);
+    if (symbol === "armour") {
+      line("M-78-66 L-46-101 Q0-65 46-101 L78-66 L63 76 Q0 112-63 76 Z", "body");
+      line("M0-79 Q25-79 46-101 L78-66 L63 76 Q30 96 0 101 Z", "shade", {opacity: .34});
+      line("M-70-63 Q-51-30-64 23 M70-63 Q51-30 64 23", "fine");
+      line("M0-78 Q-5 11 0 99 M-61 65 Q0 90 61 65", "line");
+      line("M-47-94 Q0-59 47-94 M-59 75 Q0 101 59 75", "fine");
+      for (const side of [-1, 1]) for (let row = 0; row < 5; row++) {
+        shape(node, "circle", {cx: side * (68 - row * 1.9), cy: -49 + row * 28, r: 2.8}, cls.accent);
+      }
+    } else if (symbol === "firearm") {
+      node.setAttribute("transform", "rotate(-16)");
+      // A broad barrel-and-stock profile; no operating mechanism is drawn.
+      line("M-111-4 L-89-14 L-47-7 L-21 8 L-37 28 L-61 11 L-108 34 Z", "shade");
+      line("M-43-16 H-15 L-8-6 V10 H-35 L-47 3 Z", "body");
+      line("M-17-15 H112 V-1 H-17 Z", "body");
+      line("M-12-12 H110 M-9 0 H103", "fine");
+      line("M23-16 V2 M79-16 V2", "line");
+      line("M108-16 H116 V1 H108 Z", "dark");
+      line("M-32 11 Q-41 33-18 33 Q-2 32-8 12 M-23 11 L-25 22", "line");
+      line("M-106-1 L-104 28 M-91-3 L-56 5", "fine");
+      line("M91-17 V-22 H96 V-17", "line");
+    }
+    return node;
+  }
   function factory(symbol) {
     const node = svg("svg", {viewBox: "0 0 640 480", role: "img", "aria-label": `Illustrated ${symbol.replaceAll("-", " ")} schematic`, class: "object-art"});
     const title = svg("title", {}, node); title.textContent = `Qualitative ${symbol.replaceAll("-", " ")} diagram`;
@@ -54,7 +87,11 @@
     const circle = (cx, cy, r, style = "object-solid", parent = node) => shape(parent, "circle", {cx, cy, r}, style);
     const rect = (x, y, width, height, style = "object-fill", parent = node, extra = {}) => shape(parent, "rect", {x, y, width, height, rx: 9, ...extra}, style);
 
-    if (symbol === "census" || symbol === "census-gap") {
+    if (symbol === "armour" || symbol === "firearm") {
+      const placement = svg("g", {transform: "translate(320 242) scale(1.8)"}, node);
+      const subject = drawSubject(placement, symbol);
+      part(subject, "subject-appears", {opacity: .25}, {opacity: 1}, 1.3);
+    } else if (symbol === "census" || symbol === "census-gap") {
       // A population is recorded into a ledger; dotted person/row denotes a gap,
       // only selected when the source explicitly says undercount.
       const population = group(node, 0, 0);
@@ -342,5 +379,5 @@
     }
     const note = label("SCHEMATIC · NOT TO SCALE", "object-schematic-note"); stage.append(note);
   }
-  window.YAASObjects = {build};
+  window.YAASObjects = {build, drawSubject};
 })();

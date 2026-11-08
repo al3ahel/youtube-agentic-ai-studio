@@ -268,6 +268,13 @@ def _bundled_candidate(query, kind, minimum, maximum, mood=""):
             family = "paper_turn"
         elif terms & {"whoosh", "whooshing", "swish", "swishing"} and terms <= {"whoosh", "whooshing", "swish", "swishing", "short", "small", "brief"}:
             family = "whoosh"
+        elif (terms & {"metal", "metallic"}
+              and terms & {"contact", "impact", "hit", "hitting", "strike", "striking", "clang", "clank", "clanging"}
+              and terms <= {"metal", "metallic", "contact", "impact", "hit", "hitting", "strike", "striking",
+                            "clang", "clank", "clanging", "surface", "short", "small", "brief"}):
+            # Generic contact foley cannot impersonate a specific gunshot,
+            # weapon, alloy or continuous industrial ambience recording.
+            family = "metal_impact"
     if family is None:
         return None
     if kind == "sfx" and not mood_terms <= quiet_words:
@@ -336,6 +343,57 @@ def _bundled_candidate(query, kind, minimum, maximum, mood=""):
     except (OSError, ValueError, TypeError, AttributeError, RuntimeError):
         return None
     return None
+
+
+def bundled_recording_options(*, mood="subtle"):
+    """Describe verified shipped recordings without creating owned asset IDs.
+
+    These literal searches go through exactly the same license, path, duration
+    and content-hash checks as acquisition. A missing or altered recording is
+    therefore absent from the director's options. Selection and mixing still
+    use the ordinary acquire_audio path and its channel-owned credit cache.
+    """
+    searches = (("ambient electronic instrumental music", "music", 3),
+                ("calm minimal ambient music", "music", 3),
+                ("paper turn", "sfx", .05), ("small whoosh", "sfx", .05),
+                ("metal contact", "sfx", .05))
+    options, seen = [], set()
+    for query, kind, minimum in searches:
+        candidate = _bundled_candidate(query, kind, minimum, 600, mood)
+        if candidate is None or candidate["expected_sha256"] in seen:
+            continue
+        seen.add(candidate["expected_sha256"])
+        options.append({"query": query, "kind": kind,
+                        **{field: candidate[field] for field in
+                           ("title", "creator", "license", "license_url", "source_url")},
+                        "sha256": candidate["expected_sha256"]})
+    return options
+
+
+def verified_contact_recording(asset):
+    """Return contact intent only for the actual, verified catalog recording.
+
+    Model labels, search text and an uploaded filename cannot establish what a
+    recording depicts. Unknown recordings keep their selected section timing.
+    This reads the existing resolved file; acquisition and audio are unchanged.
+    """
+    if not isinstance(asset, dict) or asset.get("kind") != "sfx" or asset.get("provider") != "bundled":
+        return None
+    candidate = _bundled_candidate("metal contact", "sfx", .05, 600, "subtle")
+    if candidate is None or any(asset.get(key) != candidate.get(key) for key in
+                               ("provider_id", "source_url", "selection_source")):
+        return None
+    if asset.get("sha256") != candidate["expected_sha256"] or asset.get("bytes") != candidate["expected_bytes"]:
+        return None
+    try:
+        path = Path(asset["path"])
+        if (path.resolve() != path or not path.is_file() or path.stat().st_size != candidate["expected_bytes"]
+                or hashlib.sha256(path.read_bytes()).hexdigest() != candidate["expected_sha256"]):
+            return None
+    except (KeyError, OSError, TypeError, ValueError, RuntimeError):
+        return None
+    return {"family": "metal_contact", "materials": ("steel", "mail"),
+            "sha256": candidate["expected_sha256"]}
 
 
 def _is_instrumental_candidate(context):

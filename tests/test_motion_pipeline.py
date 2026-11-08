@@ -71,7 +71,10 @@ def test_preview_then_final_reuses_edited_storyboard_without_provider_or_voice(j
     assert state["error"] is None
     assert state["preview_path"].endswith("motion_preview.mp4")
     assert state["video_path"] is None and not archived
-    assert state["visual_qa"]["status"] == "disabled"
+    # The renderer stub is deliberately not a decodable MP4. Offline review
+    # must retain it as unreviewed, even when optional model review is off.
+    assert state["visual_qa"]["status"] == "needs_review"
+    assert state["visual_qa"]["passed"] is None
     state["visual_plan"]["scenes"][0]["title"] = "An edited scene title"
     def forbidden(*args, **kwargs):
         pytest.fail("A render-only run must not call a planner or synthesize speech")

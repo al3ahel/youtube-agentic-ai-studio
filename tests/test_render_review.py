@@ -1,0 +1,512 @@
+"""Rendered evidence, honest missing-model states, and real repair verification."""
+from copy import deepcopy
+import json
+from pathlib import Path
+import shutil
+import subprocess
+
+import pytest
+
+import config
+from agents import render_review as review
+from apis import local_llm, local_vision, openrouter
+
+
+def plan():
+    scenes = []
+    for index in range(2):
+        scenes.append({"id": f"shot-{index}", "section_id": "one", "start": index * 2, "duration": 2,
+            "template": "explain", "title": "Sunlight reaches solar panels", "visual_goal": "Show the panel and circuit",
+            "items": [{"label": "Solar panel", "symbol": "solar"}, {"label": "Circuit", "symbol": "circuit"}],
+            "beats": [{"time": 0, "target": "scene", "action": "reveal"}], "composition": "split",
+            "shot": {"version": 1, "role": "detail", "framing": "wide", "technique": "stage2d", "camera": "locked",
+                     "transition": "cut", "focus": "Solar panel", "action": "Show the circuit"}})
+    return {"version": 1, "mode": "motion", "width": 320, "height": 180, "fps": 12, "duration": 4,
+            "title": "Solar power", "scenes": scenes, "captions": [], "words": [],
+            "sections": [{"id": "one", "start": 0, "duration": 4, "narration": "Sunlight reaches the panel. Current flows through the circuit."}]}
+
+
+@pytest.fixture(autouse=True)
+def settings(monkeypatch):
+    monkeypatch.setattr(config, "VISUAL_REVIEW_ENABLED", False)
+    monkeypatch.setattr(config, "CHANNEL_PRESET", "general")
+    monkeypatch.setattr(config, "LLM_ROUTE", "local")
+    monkeypatch.setattr(config, "OLLAMA_MODEL", "")
+
+
+def encode(path, *, changed=False, audio=True, change_time=2):
+    if not shutil.which("ffmpeg") or not shutil.which("ffprobe"):
+        pytest.skip("Real encoded-review checks need FFmpeg/FFprobe")
+    graphic = "color=c=0x23313f:s=320x180:r=12:d=4,drawbox=x=50:y=60:w=100:h=65:color=white:t=fill"
+    if changed:
+        graphic += f":enable='lt(t,{change_time})',drawbox=x=180:y=45:w=65:h=85:color=yellow:t=fill:enable='gte(t,{change_time})'"
+    command = ["ffmpeg", "-nostdin", "-y", "-v", "error", "-f", "lavfi", "-i", graphic]
+    if audio:
+        command += ["-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=4", "-c:a", "aac"]
+    command += ["-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", str(path)]
+    subprocess.run(command, check=True, capture_output=True, timeout=30)
+    return path
+
+
+def test_decodes_every_phase_and_measures_actual_audio_without_fake_approval(tmp_path):
+    video = encode(tmp_path / "movie.mp4")
+    value = review.review_render(video, plan(), tmp_path)
+    assert value["coverage"]["technical_complete"] is True
+    assert len(value["samples"]) == 2
+    assert [row["phase"] for row in value["samples"][0]["frames"]] == ["setup", "action", "result"]
+    assert all((tmp_path / value["evidence_directory"] / frame["file"]).is_file()
+               for row in value["samples"] for frame in row["frames"])
+    assert value["render"]["sha256"] == review._hash(video)
+    assert value["passed"] is None and value["status"] == "needs_review"
+    assert value["vision"]["complete"] is False
+    assert value["audio"]["status"] == "measured_not_listened"
+    assert -25 < value["audio"]["rms_dbfs"] < -15
+    assert value["audio"]["perceptual_quality"] == "not_assessed"
+    assert any(issue["code"] == "repeated_layout" for issue in value["issues"])
+    assert json.loads((tmp_path / value["evidence_directory"] / "review.json").read_text()) == value
+
+
+def test_missing_audio_is_a_real_failure(tmp_path):
+    value = review.review_render(encode(tmp_path / "silent.mp4", audio=False), plan(), tmp_path)
+    assert value["passed"] is False
+    assert any(issue["code"] == "missing_audio" and issue["severity"] == "error" for issue in value["issues"])
+
+
+def test_local_model_unavailable_never_becomes_semantic_pass(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "VISUAL_REVIEW_ENABLED", True)
+    monkeypatch.setattr(openrouter, "_chat_json", lambda *a, **kw: pytest.fail("Local-only sent frames to a hosted model"))
+    value = review.review_render(encode(tmp_path / "movie.mp4"), plan(), tmp_path)
+    assert value["vision"]["failures"][0]["reason"] == "no_vision_model_selected"
+    assert value["vision"]["status"] == "unavailable"
+    assert value["passed"] is None
+
+
+def vision_answer(scenes):
+    return {"shots": [{"shot_id": scene["id"], "confidence": .9,
+        "observations": [{"sample_id": f"{scene['id']}:{phase}",
+                          "visible": f"A white rectangular object occupies the left of a blue field during the {phase} phase."}
+                         for phase, _ in review.PHASES],
+        "assessments": {key: "pass" for key in review.CHECKS}, "issues": []} for scene in scenes]}
+
+
+def test_mixed_shot_ids_and_caption_parroting_are_rejected():
+    scenes = plan()["scenes"]
+    answer = vision_answer(scenes)
+    answer["shots"][0]["observations"][0]["sample_id"] = "shot-1:setup"
+    with pytest.raises(ValueError, match="mixed shot identities"):
+        review._check_observations(answer, scenes)
+    answer = vision_answer(scenes)
+    answer["shots"][0]["observations"][0]["visible"] = scenes[0]["title"]
+    with pytest.raises(ValueError, match="repeated supplied text"):
+        review._check_observations(answer, scenes)
+
+
+def test_low_confidence_and_uncertain_model_cannot_approve():
+    scenes = plan()["scenes"]
+    answer = vision_answer(scenes)
+    answer["shots"][0]["confidence"] = .7
+    answer["shots"][1]["assessments"]["motion"] = "uncertain"
+    result = review._check_observations(answer, scenes)
+    assert all(row["reliable"] is False for row in result["shots"])
+    answer = vision_answer(scenes)
+    answer["shots"][0]["observations"][0]["visible"] = "Unknown objects are shown; I cannot identify the subject in this frame."
+    assert review._check_observations(answer, scenes)["shots"][0]["reliable"] is False
+
+
+def test_high_confidence_uncertainty_and_evidenced_error_are_not_reclassified_as_pass():
+    # A validator boundary fixture, not a substituted review of any real film.
+    # The retained local response exhibited this combination: recognized
+    # objects, 0.95 confidence, uncertain categories, and an error issue.
+    scenes = plan()["scenes"][:1]
+    answer = vision_answer(scenes)
+    row = answer["shots"][0]
+    row["confidence"] = .95
+    row["assessments"] = {key: "uncertain" for key in review.CHECKS}
+    row["issues"] = [{"category": "subject_relevance", "severity": "error",
+        "message": "The sampled objects do not establish the claimed physical event.",
+        "samples": ["shot-0:action", "shot-0:result"], "repair": "none"}]
+    checked = review._check_observations(answer, scenes)["shots"][0]
+    assert checked["confidence"] == .95 and checked["reliable"] is False
+    assert checked["assessments"] == {"subject_relevance": "fail", "composition": "uncertain", "motion": "uncertain"}
+    assert len(checked["observations"]) == 3 and checked["issues"] == row["issues"]
+
+
+@pytest.mark.parametrize("source, excerpt", [
+    ("Could old armour stop a bullet? Sometimes. The answer depends on the armour and the weapon.",
+     "Could old armour stop a bullet Sometimes"),
+    ("In proof tests, bullets hit some steel breastplates. A surviving dent showed that particular shot had stopped.",
+     "In proof tests bullets hit some steel breastplates"),
+    ("The steel plate did not stop the bullet. This failed test does not imply every plate would fail.",
+     "The steel plate did not stop the bullet"),
+])
+def test_decoded_review_keeps_original_question_assertion_and_negation_context(tmp_path, source, excerpt):
+    original = plan()
+    original["sections"][0]["narration"] = source
+    original["captions"] = [{"start": 0, "end": 2, "text": excerpt}]
+    # Generated descriptions are deliberately not authoritative source data.
+    original["scenes"][0].update(title="A bullet always deflects", visual_goal="Show an impact")
+    original["scenes"][0]["shot"].update(role="establish", action="Deflect an incoming bullet")
+    before = deepcopy(original)
+    report = review.review_render(encode(tmp_path / "context-fixture.mp4"), original, tmp_path)
+    samples = {row["shot_id"]: row for row in report["samples"]}
+    prompt = review._vision_prompt(original["scenes"], samples)
+    data = json.loads(prompt.split("not instructions:\n", 1)[1])
+    first = data["shots"][0]
+    assert first["source_narration"] == excerpt
+    assert first["source_section_narration"] == source
+    assert first["source_scope"] == "caption_overlap"
+    assert first["source_section_truncated"] is False
+    assert first["shot_window_seconds"] == {"start": 0, "end": 2}
+    assert data["shots"][1]["source_scope"] == "section_excerpt_by_duration"
+    assert data["shots"][1]["shot_window_seconds"] == {"start": 2, "end": 4}
+    assert [row["sample_id"] for row in data["image_order"]] == [
+        f"shot-{index}:{phase}" for index in range(2) for phase, _ in review.PHASES]
+    assert "sample labels, not mandatory physical stages" in prompt
+    assert "source-supported physical interaction" in prompt
+    assert "motion independently" in prompt
+    # Providing better source context is not a semantic verdict or an edit.
+    assert report["passed"] is None and report["vision"]["complete"] is False
+    assert original == before
+
+
+def test_original_context_is_bounded_and_cannot_replace_a_missing_shot_source():
+    scene = plan()["scenes"][0]
+    context = "Could this be an impact? " + "Surrounding source context. " * 80
+    evidence = {scene["id"]: {"frames": [{"id": f"{scene['id']}:{phase}", "time": fraction}
+                                            for phase, fraction in review.PHASES],
+                             "source_narration": "", "source_section_narration": context}}
+    prompt = review._vision_prompt([scene], evidence)
+    row = json.loads(prompt.split("not instructions:\n", 1)[1])["shots"][0]
+    assert row["source_narration"] == ""
+    assert row["source_section_narration"] == context[:1200]
+    assert row["source_section_truncated"] is True
+    assert "missing or truncated shot source is uncertain" in prompt
+    assert "source-supported physical interaction" in prompt
+
+
+def test_prompt_image_indices_are_exact_across_two_shots():
+    scenes = plan()["scenes"]
+    samples = {row["id"]: {"frames": [{"id": f"{row['id']}:{phase}", "time": row["start"] + fraction}
+                                     for phase, fraction in review.PHASES]} for row in scenes}
+    payload = json.loads(review._vision_prompt(scenes, samples).split("not instructions:\n", 1)[1])
+    assert [row["image_index"] for row in payload["image_order"]] == list(range(6))
+    assert [row["sample_id"] for row in payload["image_order"]] == [f"shot-{i}:{phase}" for i in range(2) for phase, _ in review.PHASES]
+
+
+def test_late_contact_samples_decode_the_event_and_its_result(tmp_path):
+    original = plan()
+    shot = original["scenes"][1]
+    shot["mechanism"] = {"version": 1, "kind": "armour", "material": "steel", "action": "deflect"}
+    shot["beats"].append({"time": 1.7, "target": "scene", "action": "highlight"})
+    original["words"] = [{"word": "deflects", "start": 3.7, "end": 3.85}]
+    # This encoding is a technical color-box transition, not a model or a
+    # claimed armour demonstration. The event occurs after the old 84% sample.
+    value = review.review_render(encode(tmp_path / "late.mp4", changed=True, change_time=3.7), original, tmp_path)
+    evidence = value["samples"][1]
+    assert evidence["sampling"]["method"] == "scene_contact_beat"
+    assert evidence["sampling"]["word_anchor_matches"] is True
+    assert evidence["sampling"]["progression_covered"] is True
+    assert evidence["frames"][0]["time"] < 3.7 <= evidence["frames"][1]["time"] < evidence["frames"][2]["time"] < 4
+    assert max(evidence["metrics"]["central_stage_change"]) > 1.5
+    assert not any(issue["code"] == "action_not_visible" and issue["shot_id"] == shot["id"] for issue in value["issues"])
+    assert value["passed"] is None
+
+
+def test_contact_on_last_frame_is_incomplete_instead_of_an_absent_action(tmp_path):
+    original = plan()
+    shot = original["scenes"][1]
+    shot["mechanism"] = {"version": 1, "kind": "armour", "material": "steel", "action": "deflect"}
+    shot["beats"].append({"time": 2 - 1 / 12, "target": "scene", "action": "highlight"})
+    value = review.review_render(encode(tmp_path / "last-frame.mp4"), original, tmp_path)
+    evidence = value["samples"][1]
+    assert evidence["sampling"]["progression_covered"] is False
+    assert evidence["sampling"]["result_window"] == "limited_by_shot_end"
+    assert any(issue["code"] == "incomplete_action_sampling" for issue in value["issues"])
+    assert not any(issue["code"] == "action_not_visible" for issue in value["issues"])
+
+
+def test_source_redirection_uses_the_real_offline_director_and_preserves_narration(monkeypatch):
+    monkeypatch.setattr(config, "VISUAL_AI_ENABLED", False)
+    original = plan()
+    original["scenes"][0].update(graphics_version=2,
+        staging={"version": 1, "world": "generic", "action": "reveal", "camera": "wide"},
+        items=[{"label": "Residents", "symbol": "people", "role": "subject"}])
+    script = {"sections": deepcopy(original["sections"])}
+    candidate, changes = review._source_redirection(original, "shot-0", script, "subject_relevance")
+    assert changes and any(item["symbol"] == "solar" for item in candidate["scenes"][0]["items"])
+    assert all(item["symbol"] != "people" for item in candidate["scenes"][0]["items"])
+    for key in ("sections", "words", "captions", "duration", "width", "height", "fps"):
+        assert candidate[key] == original[key]
+    assert candidate["scenes"][1] == original["scenes"][1]
+    assert candidate["last_edit"]["status"] == "local"
+    assert "passed" not in candidate  # Directing a candidate is never visual approval.
+
+
+def test_source_redirection_refuses_changed_narration_and_media(monkeypatch):
+    from agents import visual_director
+    original = plan()
+    script = {"sections": deepcopy(original["sections"])}
+    script["sections"][0]["narration"] = "An unrelated replacement script."
+    with pytest.raises(ValueError, match="unchanged narration"):
+        review._source_redirection(original, "shot-0", script, "subject_relevance")
+    script = {"sections": deepcopy(original["sections"])}
+    def change_media(value, *args, **kwargs):
+        value["scenes"][0]["image"] = {"path": "/another-project/picture.jpg"}
+        return value
+    monkeypatch.setattr(visual_director, "regenerate_scene", change_media)
+    with pytest.raises(ValueError, match="media identity"):
+        review._source_redirection(original, "shot-0", script, "subject_relevance")
+
+
+@pytest.mark.parametrize("old_action, new_action, allowed", [("reveal", "deflect", True), ("deflect", "reveal", False)])
+def test_source_redirection_can_add_the_narrated_action_but_cannot_change_its_outcome(monkeypatch, old_action, new_action, allowed):
+    from agents import visual_director
+    original = plan()
+    original["sections"][0]["narration"] = "Steel armour deflects the incoming bullet."
+    shot = original["scenes"][0]
+    shot["mechanism"] = {"version": 1, "kind": "armour", "material": "steel", "action": old_action}
+    shot["shot"]["technique"] = "diagram3d"
+    # A candidate boundary fixture exercises the validator; it is not an
+    # inference response and does not assert any rendered review passed.
+    def candidate(value, *args, **kwargs):
+        value["scenes"][0]["mechanism"]["action"] = new_action
+        return value
+    monkeypatch.setattr(visual_director, "regenerate_scene", candidate)
+    script = {"sections": original["sections"]}
+    if allowed:
+        value, changes = review._source_redirection(original, "shot-0", script, "motion")
+        assert changes and value["scenes"][0]["mechanism"]["action"] == "deflect"
+    else:
+        with pytest.raises(ValueError, match="original supported physical outcome"):
+            review._source_redirection(original, "shot-0", script, "motion")
+
+
+def _material_redirection_plan():
+    original = plan()
+    original["sections"][0]["narration"] = "Steel armour deflects the incoming bullet."
+    scene = original["scenes"][0]
+    scene.update(graphics_version=2,
+        staging={"version": 1, "world": "generic", "action": "reveal", "camera": "locked"},
+        items=[{"label": "Steel armour", "symbol": "circuit", "role": "subject"},
+               {"label": "Incoming bullet", "symbol": "building", "role": "support"}],
+        mechanism={"version": 1, "kind": "armour", "material": "steel", "action": "reveal"})
+    scene["shot"]["technique"] = "diagram3d"
+    return original
+
+
+@pytest.mark.parametrize("action, allowed", [("deflect", True), ("penetrate", False)])
+def test_material_source_redirection_grounds_drawn_mechanism_not_hidden_actors(monkeypatch, action, allowed):
+    from agents import visual_director
+    original = _material_redirection_plan()
+
+    def candidate(value, *args, **kwargs):
+        value["scenes"][0]["mechanism"]["action"] = action
+        return value
+
+    monkeypatch.setattr(visual_director, "regenerate_scene", candidate)
+    if allowed:
+        changed, fields = review._source_redirection(original, "shot-0", {"sections": original["sections"]}, "motion")
+        assert changed["scenes"][0]["mechanism"]["action"] == "deflect"
+        assert set(fields) == {"mechanism"}
+    else:
+        with pytest.raises(ValueError, match="unsupported physical outcome"):
+            review._source_redirection(original, "shot-0", {"sections": original["sections"]}, "motion")
+
+
+def test_hidden_material_actors_plus_camera_cannot_qualify_as_subject_redirection(monkeypatch):
+    from agents import visual_director
+    original = _material_redirection_plan()
+
+    def candidate(value, *args, **kwargs):
+        scene = value["scenes"][0]
+        for item in scene["items"]:
+            item["symbol"] = "concept"  # Valid generic actors, but this builder never draws them.
+        scene["shot"].update(framing="close", camera="push")
+        return value
+
+    monkeypatch.setattr(visual_director, "regenerate_scene", candidate)
+    with pytest.raises(ValueError, match="did not change the depicted subject or action"):
+        review._source_redirection(original, "shot-0", {"sections": original["sections"]}, "subject_relevance")
+
+
+def test_generic_source_redirection_still_rejects_unsupported_actor_subjects(monkeypatch):
+    from agents import visual_director
+    original = plan()
+
+    def candidate(value, *args, **kwargs):
+        value["scenes"][0].update(graphics_version=2,
+            staging={"version": 1, "world": "generic", "action": "reveal", "camera": "locked"},
+            items=[{"label": "A building", "symbol": "building", "role": "subject"}])
+        return value
+
+    monkeypatch.setattr(visual_director, "regenerate_scene", candidate)
+    with pytest.raises(ValueError, match="unsupported illustrated actors or actions"):
+        review._source_redirection(original, "shot-0", {"sections": original["sections"]}, "subject_relevance")
+
+
+def test_unreliable_semantic_failure_cannot_request_source_redirection(monkeypatch):
+    monkeypatch.setattr(review, "_source_redirection", lambda *a, **k: pytest.fail("Unreliable evidence triggered editing"))
+    original = plan()
+    # Schema-validation fixture only: this is not presented as a live model
+    # response or a passing visual review.
+    rows = vision_answer(original["scenes"])
+    row = rows["shots"][0]
+    row["confidence"] = .4
+    row["assessments"]["subject_relevance"] = "fail"
+    row["issues"] = [{"category": "subject_relevance", "severity": "error",
+                      "message": "The visible subject does not match the supplied narration.",
+                      "samples": ["shot-0:action"], "repair": "source_direction"}]
+    report = {"plan_sha256": review._plan_hash(original), "vision": {"results": rows["shots"]},
+              "issues": [review._issue("shot-0", "subject_relevance", row["issues"][0]["message"],
+                  severity="error", source="vision", repair="source_direction", samples=["shot-0:action"])]}
+    candidate, decisions = review.repair_plan(original, report, {"sections": original["sections"]})
+    assert candidate == original and decisions == []
+
+
+def test_safe_repair_preserves_content_assets_and_rejects_stale_report():
+    original = plan()
+    original["scenes"][1]["mechanism"] = {"version": 1, "kind": "armour", "material": "steel", "action": "deflect"}
+    original["scenes"][1]["shot"]["technique"] = "diagram3d"
+    issue = review._issue("shot-1", "repeated_layout", "Similar subject framing", repair="vary_framing")
+    report = {"plan_sha256": review._plan_hash(original), "issues": [issue]}
+    candidate, decisions = review.repair_plan(original, report)
+    assert decisions and candidate["scenes"][1]["shot"]["framing"] == "close"
+    for key in ("captions", "words", "sections", "duration", "fps", "width", "height"):
+        assert candidate[key] == original[key]
+    for index, scene in enumerate(original["scenes"]):
+        for key in ("id", "section_id", "start", "duration", "mechanism", "items", "beats", "title"):
+            assert candidate["scenes"][index].get(key) == scene.get(key)
+    assert original["scenes"][1]["shot"]["framing"] == "wide"
+    with pytest.raises(ValueError, match="older storyboard"):
+        review.repair_plan(candidate, report)
+
+
+def test_plan_changes_without_changed_rendered_pixels_are_rolled_back(tmp_path):
+    video = encode(tmp_path / "movie.mp4")
+    original = plan()
+    digest = review._hash(video)
+    path, accepted, report = review.review_and_repair(video, original, tmp_path, render=lambda candidate: str(video))
+    assert accepted == original and review._hash(path) == digest
+    assert report["repairs_applied"] == 0
+    assert report["repair_history"][0]["accepted"] is False
+    assert report["repair_history"][0]["decoded_stage_change"]["shot-1"] == 0
+    assert (tmp_path / report["render"]["snapshot"]).is_file()
+
+
+def test_real_repair_is_reencoded_rechecked_and_retains_both_attempts(tmp_path):
+    video = encode(tmp_path / "movie.mp4")
+    original = plan()
+    digest = review._hash(video)
+    seen = []
+    def render(candidate):
+        seen.append(deepcopy(candidate))
+        return encode(video, changed=True)
+    path, accepted, report = review.review_and_repair(video, original, tmp_path, render=render)
+    assert len(seen) == 1 and accepted == seen[0] and accepted != original
+    assert review._hash(path) != digest
+    assert report["repairs_applied"] == 1 and report["shots_repaired"] == 1
+    assert report["passed"] is None  # Real technical repair still does not invent a vision reviewer.
+    assert report["repair_history"][0]["accepted"] is True
+    assert report["repair_history"][0]["decoded_stage_change"]["shot-1"] > 1.5
+    run = tmp_path / "render_review" / report["run_id"]
+    assert all((run / f"attempt-{i}" / "encoded.mp4").is_file() for i in (0, 1))
+    assert all((run / f"attempt-{i}" / "review.json").is_file() for i in (0, 1))
+
+
+def test_renderer_failure_restores_the_reviewed_movie(tmp_path):
+    video = encode(tmp_path / "movie.mp4")
+    digest = review._hash(video)
+    def fail(candidate):
+        video.write_bytes(b"broken output")
+        raise RuntimeError("render failed")
+    with pytest.raises(RuntimeError, match="render failed"):
+        review.review_and_repair(video, plan(), tmp_path, render=fail)
+    assert review._hash(video) == digest
+
+
+@pytest.fixture
+def local_transport(tmp_path, monkeypatch):
+    from PIL import Image
+    image = tmp_path / "frame.jpg"
+    Image.new("RGB", (40, 40), "teal").save(image)
+    monkeypatch.setattr(config, "OLLAMA_MODEL", "test-vision:latest")
+    monkeypatch.setattr(local_llm, "list_models", lambda *a, **kw: [{"id": "test-vision:latest", "digest": "a" * 64}])
+    calls = []
+    capabilities = ["completion", "vision"]
+    def request(origin, endpoint, **kwargs):
+        calls.append((endpoint, kwargs))
+        if endpoint == "/api/show":
+            return {"model_info": {"general.architecture": "test"}, "capabilities": capabilities}
+        return {"done": True, "done_reason": "stop", "message": {"content": '{"seen":true}'}}
+    monkeypatch.setattr(local_llm, "_request_json", request)
+    schema = {"type": "object", "additionalProperties": False, "required": ["seen"], "properties": {"seen": {"type": "boolean"}}}
+    return image, schema, calls, capabilities
+
+
+def test_local_vision_sends_real_images_only_after_capability_verification(local_transport):
+    image, schema, calls, capabilities = local_transport
+    capabilities.append("thinking")
+    details = {}
+    assert local_vision.review_json([image], "Describe this frame.", schema, provider_info=details) == {"seen": True}
+    assert [endpoint for endpoint, _ in calls] == ["/api/show", "/api/chat"]
+    message = calls[1][1]["body"]["messages"][-1]
+    assert len(message["images"]) == 1 and len(message["images"][0]) > 100
+    assert calls[1][1]["body"]["think"] is False
+    assert details == {"provider": "ollama", "model": "test-vision:latest", "digest": "a" * 64, "local": True}
+
+
+def test_text_only_local_model_never_receives_images(local_transport):
+    image, schema, calls, capabilities = local_transport
+    capabilities.remove("vision")
+    with pytest.raises(local_llm.LocalLLMError) as error:
+        local_vision.review_json([image], "Describe this frame.", schema)
+    assert error.value.code == "vision_unsupported"
+    assert [endpoint for endpoint, _ in calls] == ["/api/show"]
+
+
+def test_remote_ollama_alias_is_rejected_before_inference(local_transport, monkeypatch):
+    image, schema, calls, capabilities = local_transport
+    monkeypatch.setattr(local_llm, "_request_json", lambda *a, **kw: {"remote_host": "remote.example"})
+    with pytest.raises(local_llm.LocalLLMError) as error:
+        local_vision.review_json([image], "Describe this frame.", schema)
+    assert error.value.code == "cloud_model_rejected"
+
+
+def test_repair_rolls_back_new_reliable_semantic_failure_even_when_labeled_warning(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "VISUAL_REVIEW_ENABLED", True)
+    original = plan()
+    video = encode(tmp_path / "movie.mp4", changed=True)
+    digest = review._hash(video)
+    state = {"rendered": False}
+
+    def observations(paths, prompt, schema, stop_event):
+        # Deliberate semantic state-machine fixtures, not live inference or a
+        # claim about artistic quality. MP4 decoding/pixel checks stay real.
+        scenes = [scene for scene in original["scenes"]
+                  if any(path.name.startswith(scene["id"] + "-") for path in paths)]
+        answer = vision_answer(scenes)
+        for row in answer["shots"]:
+            if row["shot_id"] != "shot-1":
+                continue
+            category = "subject_relevance" if state["rendered"] else "composition"
+            row["assessments"][category] = "fail"
+            row["issues"] = [{"category": category, "severity": "warning",
+                "message": "This boundary fixture reports a new subject failure." if state["rendered"]
+                           else "This boundary fixture requests closer composition.",
+                "samples": ["shot-1:action"], "repair": "none" if state["rendered"] else "reframe_close"}]
+        return answer, {"provider": "semantic_boundary_fixture", "local": True}
+
+    def render(candidate):
+        state["rendered"] = True
+        return str(encode(video))
+
+    monkeypatch.setattr(review, "_request_vision", observations)
+    path, accepted, report = review.review_and_repair(video, original, tmp_path, render=render)
+    decision = report["repair_history"][0]
+    assert decision["decoded_stage_change"]["shot-1"] > 1.5
+    assert decision["accepted"] is False and report["repairs_applied"] == 0
+    assert accepted == original and review._hash(path) == digest
+    after = json.loads((tmp_path / decision["after_report"] / "review.json").read_text())
+    assert after["vision"]["complete"] is True and after["passed"] is False
+    assert any(issue["code"] == "subject_relevance" and issue["severity"] == "warning" for issue in after["issues"])
+    assert (tmp_path / decision["after_report"] / "encoded.mp4").is_file()

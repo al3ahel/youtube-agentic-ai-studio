@@ -30,8 +30,8 @@ The diagram shows dependencies, not parallel execution. The worker executes in a
 | Narration | `video/narrator.py` | Spoken text, voice, rate, pitch and engine version | Original PCM narration, captions and timing metadata. Verified unchanged section recordings can be reused from atomic cache bundles. Partial failure/cancellation cannot replace the original recording with an incomplete assembly. |
 | Timing | `video/timeline.py` | Script and actual recording | `timeline.json`: recording hash, script signature, measured section boundaries, available speech word events, dimensions and frame rate. Legacy SRT/duration estimates are identified as such. |
 | Sound direction | `agents/audio_director.py`, `apis/audio_sources.py` | Current narration sections, channel tone/intensity, owned audio catalogue | One music or ambience bed and a sparse cue plan. AI selects search terms/owned IDs and section anchors; trusted code resolves files and timestamps. No model-supplied URL, shell command or arbitrary timestamp is executed. |
-| Mixing and finishing | `video/music.py`, `video/sound_effects.py`, `video/audio_master.py`, `studio/runner.py` | Clean narration, resolved recordings, measured duration | A staged soundtrack, then an immutable `soundtracks/<id>.wav` and an atomic v2 `render_audio.json`. The manifest includes its byte hash, credits, actual design and measured mastering report. |
-| Visual planning | `agents/visual_director.py`, `agents/art_direction.py` | Script, timeline, source-bound media and channel style | `scene_plan.json`: template, composition, look, motion rhythm, labels, constrained media and beats. The model cannot change narration duration or supply executable HTML/JS. Charts require supplied data. |
+| Mixing and finishing | `video/audio_levels.py`, `video/music.py`, `video/sound_effects.py`, `video/audio_master.py`, `studio/runner.py` | Clean narration, resolved recordings, measured duration | Automatic source level matching and transient onset trimming, then a staged mix, immutable `soundtracks/<id>.wav` and atomic v2 `render_audio.json`. The manifest includes its byte hash, credits, actual design and measured mastering report. |
+| Visual planning | `agents/visual_director.py`, `agents/art_direction.py`, `agents/object_direction.py` | Script, timeline, source-bound media and channel style | `scene_plan.json`: template, composition, look, grounded illustrated subjects, motion rhythm, labels, constrained media and beats. The model cannot change narration duration or supply executable HTML/JS. Charts require supplied data. |
 | Local preview | `video/renderers/html.py`, renderer templates | Exact saved plan and prepared soundtrack | Local `motion/` HTML/SVG/GSAP and copied assets. The preview has restricted browser capabilities and no remote script/media fetching. All model text is inert text. |
 | Render and validate | `video/renderers/html.py`, Classic `video/creator.py` | Saved composition, actual recording and requested output mode | A temporary MP4 is checked before replacement. Motion checks dimensions, frame rate, audio and tail duration. `studio/workspace.py` binds the completed render to source fingerprints. |
 | Packaging and archive | `studio/description.py`, `studio/library.py` | Current output plus publishing edits | Description, required applied-audio credits, thumbnail and portable archive. Rerendering preserves user prose; only the clearly marked managed audio-credit block is refreshed. |
@@ -46,6 +46,7 @@ The diagram shows dependencies, not parallel execution. The worker executes in a
 | Change recorded voice | Narration, timing and dependent sound/visual output | Script and explicitly current project photos |
 | Change one scene | That scene's supported visual data, staged HTML and a new draft MP4 | Other scenes, recording, measured clock, prepared soundtrack, thumbnail and publishing prose |
 | Rebuild as Motion graphics | A graphics-only storyboard and draft | Current script and recording; legacy source pictures remain stored but are not attached |
+| Rebuild animation + sound | New illustrated Motion storyboard, sound choices/mix and draft | Current script, recording, measured timing, owner and publishing prose; old scene designs are intentionally replaced |
 | Animate these photos | Explicit photo-capable storyboard and draft | The old pipeline's current project pictures, recording, source credits and timing provenance |
 | Regenerate sound design | Agent choices, source acquisition as needed, mix, finishing and draft | Script, original voice, storyboard and publishing prose |
 | Render draft/final only | MP4 from the exact saved plan and prepared audio | All creative choices and recordings; no fresh model, stock search or narration call |
@@ -77,27 +78,44 @@ Hyperframes is the deterministic renderer, not the creative agent. Previously, t
 
 Compositions (`default`, `split`, `stack`, `focus`) apply to supported explain/text/flow layouts. Rhythm changes bounded entrances and emphasis, never scene lengths or speech-event boundaries. Old plans without these fields retain their original appearance. Topic-derived local choices are deterministic: rerendering the same saved project does not restyle it randomly.
 
+New or explicitly rebuilt scenes have `graphics_version: 1`. Grounded `symbol`
+values select qualitative vector actors such as a census ledger, mining cutaway,
+solar panel or plant. The renderer progressively draws paths and moves meaningful
+parts on the paused scene timeline. It does not generate geographic maps, infer
+quantities or substitute an old picture. Unknown subjects use a labeled abstract
+diagram. Existing saved plans without this version keep the earlier layout until
+the user explicitly rebuilds or requests the supported illustrated edit.
+
 Pure Motion has an explicit `use_project_photos=false` policy and rejects attached photos/footage at validation. Hybrid and the explicit old-photo workflow can use current project media. New image bindings join profile, script, ordered map and file fingerprints. An invalid binding is not permission to scan a folder for an old `section_01` picture. Classic retains its explicit legacy compatibility path.
 
 ## 5. Sound decisions and the meaning of music settings
 
-**Automatic** is the default for a new profile. The sound agent chooses a bed/ambience and sparse effects itself, using available free inference. No file import is required. Commons acquisition is keyless and filters to declared CC0, Public Domain or CC BY recordings, retaining source metadata. It searches existing recordings; it does not synthesize arbitrary new audio or audition tracks with an audio-understanding model.
+**Automatic** is the default for a new profile. The sound agent chooses a bed/ambience and sparse effects itself, using available free inference. No file import is required. Compatible requests first use the small included collection of real CC BY 4.0 music and effects; the manifest validates hashes, duration, source and license. Automatic copies remain channel-owned. Other requests use keyless Commons acquisition filtered to declared CC0, Public Domain or CC BY recordings. This searches existing recordings; it does not synthesize arbitrary new audio or audition tracks with an audio-understanding model.
 
 A music candidate also needs positive instrumental/musical metadata and must not
 declare speech or vocals. A rain recording cannot become music merely because a
-model requested the music category. If a successful search has no eligible result,
-one shorter query can remove mood/production filler while retaining the subject.
-It shares the original deadline and download limit; transport errors and rate
-limits do not trigger broader searches. Metadata filtering improves selection but
+model requested the music category. Literal acoustic terms are extracted from the
+AI's artistic instruction before searching; instrumental exclusions are enforced
+independently. At most three subject-preserving searches and three distinct remote
+downloads share a 45-second deadline. Unreadable or unsuitable candidates do not
+prevent the next variant. Transport errors and rate limits do not trigger broader
+searches. Specific instruments, materials and negative constraints cannot silently
+receive an unrelated included recording. Metadata filtering improves selection but
 does not establish the recording's acoustic quality.
 
 **Manual** preserves an existing selected track or effect. On upgrade, an old enabled setting with an explicit imported selection remains Manual. An empty music switch does not prove that there is a playable file. Switching explicitly to Automatic is persisted so migration cannot undo it. **Off** removes added layers while retaining the original recording; optional finishing is a separate setting.
 
-The app reports actual applied layers. An unavailable catalogue, incompatible license, missing file or failed mix can produce narration-only audio, with an explanation in Review. It must never display “music applied” solely because a checkbox was on. News omits transient effects; calm/ASMR omits sudden accents and uses quieter finishing. The standard finishing targets are −16 LUFS/−1.5 dBTP, and ASMR −20 LUFS/−2 dBTP, with bounded gain. A peak-limited or quiet recording may not reach the target; the report shows the measured result rather than asserting success.
+Automatic source preparation measures narration and recording levels, limits gain
+and peak, and trims leading silence from one-shot effects before aligning their
+cue. Bed/effect ratios are applied after this calibration, with speech ducking.
+Manual ratios retain their existing behavior. This stage is separate from final
+soundtrack mastering and never modifies the source recording.
+
+The app reports actual applied layers. If no compatible included, cached or remote recording can be used, narration-only audio remains possible, with an explanation in Review. It must never display “music applied” solely because a checkbox or AI proposal requested it. The proposal is separately labeled and collapsed; the applied summary is derived from successful layers. News omits transient effects; calm/ASMR omits sudden accents and uses quieter finishing. The standard finishing targets are −16 LUFS/−1.5 dBTP, and ASMR −20 LUFS/−2 dBTP, with bounded gain. A peak-limited or quiet recording may not reach the target; the report shows the measured result rather than asserting success.
 
 Every sound pass is staged. The previous soundtrack is never overwritten in place. The authoritative manifest changes only after the new audio and its metadata are complete; cancellation preserves the previous committed revision. Video-only renders reuse that committed soundtrack and verify its hash. Archives remap the manifest to their portable audio copy without changing its bytes.
 
-Applied credits are bound to the current recording and soundtrack, survive reopening, and are refreshed before upload. Credits are not cut off to fit a description; a length problem produces an actionable message.
+Applied credits are bound to the current recording and soundtrack, survive reopening, and are refreshed before upload. Review's copy/download credit controls expose the same canonical block used in the description. Credits are not cut off to fit a description; a length problem produces an actionable message.
 
 ## 6. Free inference and skills
 

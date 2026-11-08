@@ -257,8 +257,8 @@
   </article>
 
   <article class="card s24 flat review-part legacy-motion-card" id="legacy-motion-card" hidden>
-    <div><h3>Rebuild this project's visuals</h3><p class="hint">Keep the saved script and recorded voice. Choose animated graphics or animate the existing pictures. YAAS reuses available captions for timing and labels any estimated timing.</p></div>
-    <div class="draft-actions"><button type="button" class="btn btn-white" id="rebuild-motion-graphics">Rebuild as Motion graphics</button><button type="button" class="btn btn-ghost" id="animate-legacy">Animate these photos</button></div>
+    <div><h3 id="rebuild-visuals-title">Rebuild this project's visuals</h3><p class="hint" id="rebuild-visuals-note">Keep the saved script and recorded voice. Choose animated graphics or animate the existing pictures. YAAS reuses available captions for timing and labels any estimated timing.</p></div>
+    <div class="draft-actions"><button type="button" class="btn btn-white" id="rebuild-motion-graphics">Rebuild as Motion graphics</button><button type="button" class="btn btn-ghost" id="rebuild-motion-and-sound" hidden>Rebuild animation + sound</button><button type="button" class="btn btn-ghost" id="animate-legacy">Animate these photos</button></div>
   </article>
 
   <article class="card s24 flat review-part" id="rv-audio" hidden>
@@ -266,6 +266,12 @@
     <div id="review-sound-design" class="review-sound-design"></div>
     <p class="hint" id="review-audio-master" hidden></p>
     <div id="review-audio-credits" class="review-audio-credits"></div>
+    <details class="more audio-credit-export" id="review-audio-attribution" hidden>
+      <summary>Audio credits — added to the video description</summary>
+      <p class="hint">These are the credits for recordings actually used in this soundtrack. YAAS includes the complete block in the generated description and checks it again before publishing.</p>
+      <textarea id="audio-credit-text" class="mono" rows="7" readonly aria-label="Applied audio credits"></textarea>
+      <div class="draft-actions"><button type="button" class="btn btn-ghost btn-sm" id="copy-audio-credits">Copy credits</button><button type="button" class="btn btn-ghost btn-sm" id="download-audio-credits">Download credits (.txt)</button></div>
+    </details>
     <p class="hint" id="review-audio-note">Save this channel's audio choices in Settings, then apply them to the current draft. Your script and recorded voice stay the same.</p>
     <div class="draft-actions" style="margin-top:12px"><button class="btn btn-white" type="button" id="apply-review-audio">Regenerate sound design</button><button class="btn btn-ghost" type="button" id="review-audio-settings">Sound design settings</button></div>
   </article>
@@ -480,7 +486,8 @@
     <details class="more" id="audio-library-details">
       <summary>Audio library <span class="hint">optional imported tracks</span></summary>
       <div class="more-body">
-    <p class="hint">Import downloaded music or effects for this channel. Use Manual sound direction to choose exact tracks.</p>
+    <p class="hint">Optional: import your own music or effects for this channel. Automatic sound design already selects licensed recordings; importing files is not required. Use Manual to choose exact tracks.</p>
+    <p class="hint">A Pixabay API key supports visual media, not music or sound effects. Pixabay does not document audio API endpoints; the links below are for optional personal imports.</p>
     <div class="draft-actions"><a class="btn btn-ghost btn-sm" href="https://pixabay.com/music/" target="_blank" rel="noopener">Browse Pixabay music ↗</a><a class="btn btn-ghost btn-sm" href="https://pixabay.com/sound-effects/" target="_blank" rel="noopener">Browse Pixabay sound effects ↗</a></div>
     <details class="more audio-import" open>
       <summary>Import a downloaded audio file</summary>

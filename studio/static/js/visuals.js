@@ -66,6 +66,7 @@ function updateVisualControls(st = status) {
   $$("#scene-list button").forEach(button => button.disabled = locked);
   $("#animate-legacy").disabled = locked;
   $("#rebuild-motion-graphics").disabled = locked;
+  $("#rebuild-motion-and-sound").disabled = locked;
   $("#apply-review-audio").disabled = locked || !storyboardData?.plan;
   $("#apply-review-audio").textContent = reviewRender?.steps?.includes("music") ? "Updating sound design…" : reviewSoundAction();
   $("#review-audio-settings").disabled = locked;

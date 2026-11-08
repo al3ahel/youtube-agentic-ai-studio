@@ -11,7 +11,7 @@ import time
 from flask import Blueprint, abort, jsonify, request
 
 import config
-from studio.description import build_description, ensure_audio_credits, load_audio_credits, load_credits, load_sound_report, research_sources
+from studio.description import audio_credit_text, build_description, ensure_audio_credits, load_audio_credits, load_credits, load_sound_report, research_sources
 from studio.files import send
 from studio.library import sync_library
 from studio.state import is_shorts, job_lock, state
@@ -58,6 +58,11 @@ def get_output():
     except ValueError as exc:
         description = description if isinstance(description, str) else ""
         description_warning = str(exc)
+    try:
+        audio_attribution = audio_credit_text(state.get("timeline"))
+    except ValueError as exc:
+        audio_attribution = ""
+        description_warning = description_warning or str(exc)
     return jsonify({
         "title":       s.get("title", ""),
         "description": description,
@@ -73,6 +78,7 @@ def get_output():
         "sources":     research_sources(r),
         "credits":     load_credits(),
         "audio_credits": load_audio_credits(state.get("timeline")),
+        "audio_attribution_text": audio_attribution,
         "sound_design": load_sound_report("sound_design.json", state.get("timeline")),
         "audio_master": load_sound_report("audio_master.json", state.get("timeline")),
         "sound_preferences": {"mode": config.SOUND_MODE, "intensity": config.SOUND_INTENSITY},

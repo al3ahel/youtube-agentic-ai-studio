@@ -14,7 +14,7 @@ import tempfile
 from video.music import SUPPORTED_EXTENSIONS, _run
 
 
-def mix_sound_events(narration_path, output_path, events, *, soundtrack_path=None, stop_event=None):
+def mix_sound_events(narration_path, output_path, events, *, soundtrack_path=None, stop_event=None, auto_level=False):
     """Apply planned one-shots from trusted local files, or keep the prepared mix.
 
     Events contain ``path``, ``start``, ``duration`` (at most two seconds), and
@@ -87,6 +87,15 @@ def mix_sound_events(narration_path, output_path, events, *, soundtrack_path=Non
     output.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix=".sound-events-", dir=output.parent) as work:
         try:
+            prepared_sources = {source: source for source in sources}
+            if auto_level:
+                from video.audio_levels import prepare_automatic_audio
+                for index, source in enumerate(sources):
+                    prepared = Path(work) / f"calibrated-effect-{index}.wav"
+                    level = prepare_automatic_audio(source, narration, prepared, transient=True,
+                                                    duration_limit=2, stop_event=stop_event)
+                    prepared_sources[source] = prepared
+                    lengths[source] = level["duration"]
             standard = "aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo"
             graph = [f"[0:a]{standard},apad,atrim=duration={duration:.12f},asetpts=PTS-STARTPTS[base]",
                      f"[1:a]{standard},apad,atrim=duration={duration:.12f},asetpts=PTS-STARTPTS[control]"]
@@ -95,7 +104,7 @@ def mix_sound_events(narration_path, output_path, events, *, soundtrack_path=Non
                 indices = [i for i, event in enumerate(selected) if event["path"] == source]
                 labels = "".join(f"[shot{i}]" for i in indices)
                 graph.append(f"[{index+2}:a]{standard},asplit={len(indices)}{labels}")
-                inputs.extend(["-t", "2", "-i", str(source)])
+                inputs.extend(["-t", "2", "-i", str(prepared_sources[source])])
             for index, event in enumerate(selected):
                 length = min(event["duration"], lengths[event["path"]], duration - event["start"])
                 fade_in, fade_out = min(.08, length / 5), min(.25, length / 4)
@@ -106,7 +115,9 @@ def mix_sound_events(narration_path, output_path, events, *, soundtrack_path=Non
             labels = "".join(f"[event{index}]" for index in range(len(selected)))
             graph.append(f"{labels}amix=inputs={len(selected)}:duration=longest:normalize=0,"
                          f"apad,atrim=duration={duration:.12f}[effects]")
-            graph.append("[effects][control]sidechaincompress=threshold=0.02:ratio=6:attack=20:release=350[ducked]")
+            ducking = ("sidechaincompress=threshold=0.04:ratio=2:attack=15:release=220:mix=0.45"
+                       if auto_level else "sidechaincompress=threshold=0.02:ratio=6:attack=20:release=350")
+            graph.append(f"[effects][control]{ducking}[ducked]")
             graph.append("[base][ducked]amix=inputs=2:duration=first:normalize=0,"
                          f"alimiter=limit=0.95:level=0:latency=1,apad,atrim=duration={duration:.12f},asetpts=PTS-STARTPTS[out]")
             temporary = Path(work) / "events.wav"
@@ -150,7 +161,7 @@ def _transition_windows(sections, duration, effect_duration):
 
 def mix_sound_effects(narration_path, output_path, effect_path, *,
                       soundtrack_path=None, sections=(), effect_volume=.08,
-                      mode="transitions", stop_event=None):
+                      mode="transitions", stop_event=None, auto_level=False):
     """Return the applied WAV, or the unchanged soundtrack if the effect fails."""
     if stop_event is not None and stop_event.is_set():
         raise InterruptedError("Stopped before mixing sound effects")
@@ -191,13 +202,23 @@ def mix_sound_effects(narration_path, output_path, effect_path, *,
     with tempfile.TemporaryDirectory(prefix=".sound-effects-", dir=output.parent) as work:
         source = effect
         try:
+            if auto_level:
+                from video.audio_levels import prepare_automatic_audio
+                source = Path(work) / "calibrated-effect.wav"
+                level = prepare_automatic_audio(effect, narration, source, transient=mode == "transitions",
+                                                duration_limit=2 if mode == "transitions" else min(600, duration),
+                                                stop_event=stop_event)
+                effect_duration = level["duration"]
+                if mode == "transitions":
+                    windows = _transition_windows(sections, duration, effect_duration)
             if mode == "ambience":
+                original = source
                 source = Path(work) / "ambience.wav"
                 length = min(effect_duration, duration)
                 fade = min(.3, length / 4)
                 filters = (f"atrim=duration={length:.9f},asetpts=PTS-STARTPTS,"
                            f"afade=t=in:d={fade:.6f},afade=t=out:st={length-fade:.6f}:d={fade:.6f}")
-                _run([ffmpeg, "-nostdin", "-y", "-v", "error", "-i", str(effect), "-vn", "-af", filters,
+                _run([ffmpeg, "-nostdin", "-y", "-v", "error", "-i", str(original), "-vn", "-af", filters,
                       "-ar", "48000", "-ac", "2", "-c:a", "pcm_s16le", str(source)], stop_event)
             standard = "aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo"
             graph = [f"[0:a]{standard},apad,atrim=duration={duration:.9f},asetpts=PTS-STARTPTS[base]",
@@ -220,7 +241,9 @@ def mix_sound_effects(narration_path, output_path, effect_path, *,
                 events = "".join(f"[event{index}]" for index in range(count))
                 graph.append(f"{events}amix=inputs={count}:duration=longest:normalize=0,"
                              f"apad,atrim=duration={duration:.9f}[effects]")
-            graph.append("[effects][control]sidechaincompress=threshold=0.02:ratio=6:attack=20:release=350[ducked]")
+            ducking = (f"sidechaincompress=threshold=0.04:ratio=2:attack=20:release=300:mix={0.65 if mode == 'ambience' else 0.45}"
+                       if auto_level else "sidechaincompress=threshold=0.02:ratio=6:attack=20:release=350")
+            graph.append(f"[effects][control]{ducking}[ducked]")
             graph.append("[base][ducked]amix=inputs=2:duration=first:normalize=0,"
                          f"alimiter=limit=0.95:level=0:latency=1,apad,atrim=duration={duration:.9f},asetpts=PTS-STARTPTS[out]")
             temporary = Path(work) / "mixed.wav"

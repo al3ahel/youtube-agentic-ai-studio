@@ -27,6 +27,7 @@ from fractions import Fraction
 from typing import Callable
 
 import config
+from agents.object_direction import SYMBOLS
 
 
 RENDERER_DIR = Path(__file__).resolve().parents[2] / "renderers" / "hyperframes"
@@ -162,6 +163,10 @@ def _validate_plan(scene_plan: dict) -> dict:
             "visual_goal": _text(original.get("visual_goal", ""), "visual_goal", 2000),
             "items": [], "beats": [],
         }
+        if "graphics_version" in original:
+            if type(original["graphics_version"]) is not int or original["graphics_version"] != 1:
+                raise ValueError("Unsupported object graphics version")
+            scene["graphics_version"] = 1
         if scene["id"] in seen:
             raise ValueError(f"Duplicate scene id: {scene['id']}")
         seen.add(scene["id"])
@@ -179,6 +184,10 @@ def _validate_plan(scene_plan: dict) -> dict:
             if not isinstance(item, dict):
                 raise ValueError("Scene items must be objects")
             clean = {"label": _text(item.get("label", ""), "item.label", 180)}
+            if "symbol" in item:
+                if not isinstance(item["symbol"], str) or item["symbol"] not in SYMBOLS:
+                    raise ValueError("Unsupported object graphic subject")
+                clean["symbol"] = item["symbol"]
             if "id" in item:
                 clean["id"] = _text(str(item["id"]), "item.id", 100)
             if item.get("value") is not None:
@@ -393,7 +402,7 @@ def prepare_motion_project(scene_plan: dict, audio_path: str, output_dir: str) -
             raise ValueError("Motion output asset directories cannot be symbolic links")
         folder.mkdir(parents=True, exist_ok=True)
     _copy_vendor(project)
-    for filename in ("scene.js", "scene.css", "preview.js"):
+    for filename in ("scene.js", "scene.css", "objects.js", "preview.js"):
         _atomic_copy(RENDERER_DIR / "templates" / filename, project / filename)
     media_markup = []
     if audio:

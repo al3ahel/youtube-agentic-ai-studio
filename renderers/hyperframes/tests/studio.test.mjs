@@ -612,7 +612,7 @@ test("studio: real audio imports, previews and selections stay with their channe
     return false;
   });
   await page.click("#settings-btn");
-  await page.waitForFunction(id => settingsProfileId === id && document.querySelector("#audio-library-status").textContent.startsWith("No imported audio"), {}, project.id);
+  await page.waitForFunction(id => settingsProfileId === id && audioLibraryProfileId === id && document.querySelector("#audio-library-status").textContent.includes("Automatic sound design works without importing files"), {}, project.id);
   await page.click("#audio-library-details > summary");
   assert.equal(await page.$eval("#s-sfx_enabled", node => node.checked), false);
   const importAudio = async (kind, title, contentId) => {
@@ -674,7 +674,7 @@ test("studio: real audio imports, previews and selections stay with their channe
   await page.evaluate(() => { window.delayedAudioLoad = loadAudioLibrary(); });
   await loading;
   await page.click(`[data-profile-id="${other.id}"]`);
-  await page.waitForFunction(id => settingsProfileId === id && audioLibraryProfileId === id && document.querySelector("#audio-library-status").textContent.startsWith("No imported audio"), {}, other.id);
+  await page.waitForFunction(id => settingsProfileId === id && audioLibraryProfileId === id && document.querySelector("#audio-library-status").textContent.includes("Automatic sound design works without importing files"), {}, other.id);
   await pending.respond({status: 200, contentType: "application/json", body: JSON.stringify(oldList)});
   await page.evaluate(() => window.delayedAudioLoad);
   assert.equal(await page.$$eval(".audio-asset", nodes => nodes.length), 0, "A stale response cannot show another channel's library");
@@ -798,7 +798,7 @@ test("studio: legacy photo conversion preserves the reviewed project channel and
   await page.close();
 });
 
-async function openSceneReview({visualMode = "hybrid", useProjectPhotos, legacyImage = false, soundMode = "auto"} = {}) {
+async function openSceneReview({visualMode = "hybrid", useProjectPhotos, legacyImage = false, illustrated = false, soundMode = "auto"} = {}) {
   let profiles = await (await fetch(`${origin}/api/channels`)).json();
   let project = profiles.profiles.find(profile => profile.name === "Review fixture");
   if (!project) project = (await (await fetch(`${origin}/api/channels`, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({name: "Review fixture"})})).json()).profile;
@@ -809,11 +809,12 @@ async function openSceneReview({visualMode = "hybrid", useProjectPhotos, legacyI
   ]};
   if (useProjectPhotos !== undefined) plan.use_project_photos = useProjectPhotos;
   if (legacyImage) plan.scenes[1].image = {path: "images/previous-photo.jpg"};
+  if (illustrated) plan.scenes.forEach(scene => scene.graphics_version = 1);
   const st = {running: false, stages: {}, profile_id: project.id, profile_name: project.name,
     active_profile_id: "default", video_type: "shorts", visual_mode: visualMode, preview_only: true,
     has_preview: true, has_storyboard: true, has_audio: true, has_script: true, has_thumb: false,
     plan_revision: "1".repeat(64), preview_revision: "mp4-before"};
-  const fixture = {regenerations: [], runs: [], regenerationError: null, startError: null, audioCredits: [], soundMode, soundDesign: null, audioMaster: null, scriptQuality: null};
+  const fixture = {regenerations: [], runs: [], regenerationError: null, startError: null, audioCredits: [], audioAttributionText: "", soundMode, soundDesign: null, audioMaster: null, scriptQuality: null, plan};
   let revision = 1, holdVisuals = null, holdRegeneration = null;
   const visuals = () => ({ok: true, plan: structuredClone(plan), revision, plan_revision: st.plan_revision,
     preview_revision: `html-${revision}`, visual_mode: visualMode, preview_url: "/api/visuals/preview/index.html?preview=1"});
@@ -821,7 +822,7 @@ async function openSceneReview({visualMode = "hybrid", useProjectPhotos, legacyI
     const url = new URL(request.url());
     const respond = (data, code = 200) => { request.respond({status: code, contentType: "application/json", body: JSON.stringify(data)}); return true; };
     if (url.pathname === "/api/status") return respond({...st});
-    if (url.pathname === "/api/output") return respond({title: "Saved title", description: "Saved description", tags: ["saved tag"], sections: [{narration: "The recorded narration stays unchanged."}], audio_credits: fixture.audioCredits, sound_preferences: {mode: fixture.soundMode, intensity: "low"}, sound_design: fixture.soundDesign, audio_master: fixture.audioMaster, script_quality: fixture.scriptQuality});
+    if (url.pathname === "/api/output") return respond({title: "Saved title", description: "Saved description", tags: ["saved tag"], sections: [{narration: "The recorded narration stays unchanged."}], audio_credits: fixture.audioCredits, audio_attribution_text: fixture.audioAttributionText, sound_preferences: {mode: fixture.soundMode, intensity: "low"}, sound_design: fixture.soundDesign, audio_master: fixture.audioMaster, script_quality: fixture.scriptQuality});
     if (url.pathname === "/api/visuals") {
       const data = visuals();
       if (holdVisuals) { const resolve = holdVisuals; holdVisuals = null; resolve(() => request.respond({status: 200, contentType: "application/json", body: JSON.stringify(data)})); return true; }
@@ -914,7 +915,7 @@ test("studio: applying saved audio and both retry paths keep the narration, scen
 
 test("studio: Review renders preserve graphics-only and legacy photo policies", {skip: skipped}, async () => {
   for (const options of [
-    {visualMode: "motion", useProjectPhotos: false},
+    {visualMode: "motion", useProjectPhotos: false, illustrated: true},
     {visualMode: "motion", legacyImage: true},
     {visualMode: "motion", useProjectPhotos: true},
   ]) {
@@ -966,6 +967,55 @@ test("studio: automatic sound report, safe cue text and regeneration preserve th
   fixture.soundMode = "off";
   await page.evaluate(() => loadReview({preserveEdits: true}));
   assert.equal(await page.$eval("#apply-review-audio", node => node.textContent), "Remove added sound from draft");
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+test("studio: sound report separates an omitted music proposal from applied effects and exports exact credits", {skip: skipped}, async () => {
+  const fixture = await openSceneReview({visualMode: "motion", useProjectPhotos: false}), {page, errors} = fixture;
+  fixture.soundDesign = {mode: "auto", planner: {status: "ai", provider: "Free model fixture"},
+    summary: "A music bed supports the film.", intent: "A gentle instrumental bed and page turns support this narration.",
+    music: null, ambience: null, events: [{start: 7, duration: .4, label: "Chapter transition", reason: "A page turns at the new section."}],
+    warnings: ["The requested music was unavailable; no music was applied."]};
+  fixture.audioCredits = [{kind: "sfx", mode: "transitions", title: "Book page turns", creator: "Example artist",
+    provider: "bundled", license: "CC BY 4.0", license_url: "https://creativecommons.org/licenses/by/4.0/", source_url: "https://example.org/page-turn"}];
+  fixture.audioAttributionText = "Audio credits (updated by YAAS)\nSound effect: Book page turns · Example artist · https://example.org/page-turn · CC BY 4.0 · https://creativecommons.org/licenses/by/4.0/\nAudio adapted: excerpted or looped, faded and mixed beneath narration.\nEnd audio credits";
+  await page.evaluate(() => loadReview({preserveEdits: true}));
+  assert.equal(await page.$eval(".applied-sound-summary", node => node.textContent), "In this soundtrack: 1 timed effect.");
+  assert.match(await page.$eval("#review-sound-design", node => node.textContent), /Music: not applied/);
+  assert.equal(await page.$eval(".sound-proposal", node => node.open), false);
+  assert.match(await page.$eval(".sound-proposal summary", node => node.textContent), /before recordings were checked/);
+  assert.equal(await page.$eval("#audio-credit-text", node => node.value), fixture.audioAttributionText);
+  assert.equal(await page.$eval('#review-audio-credits a[href="https://creativecommons.org/licenses/by/4.0/"]', node => node.textContent), "CC BY 4.0");
+  await page.evaluate(() => {
+    document.querySelector("#review-audio-attribution").open = true;
+    Object.defineProperty(navigator, "clipboard", {configurable: true, value: {writeText: async value => { window.copiedAudioCredits = value; }}});
+  });
+  await page.click("#copy-audio-credits");
+  assert.equal(await page.evaluate(() => window.copiedAudioCredits), fixture.audioAttributionText);
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+test("studio: an older Motion card draft exposes guarded animation and sound rebuild without regenerating voice", {skip: skipped}, async () => {
+  const fixture = await openSceneReview({visualMode: "motion", useProjectPhotos: false}), {page, errors} = fixture;
+  assert.equal(await page.$eval("#legacy-motion-card", node => node.hidden), false);
+  assert.equal(await page.$eval("#rebuild-motion-and-sound", node => node.hidden), false);
+  assert.equal(await page.$eval("#animate-legacy", node => node.hidden), true);
+  assert.match(await page.$eval("#rebuild-visuals-note", node => node.textContent), /earlier card-based scenes/);
+  await page.click("#rebuild-motion-and-sound");
+  await page.waitForFunction(() => location.hash === "#home");
+  assert.equal(fixture.runs.length, 1);
+  assert.deepEqual(fixture.runs[0].steps, ["music", "visuals", "video"]);
+  assert.equal(fixture.runs[0].topic, "");
+  assert.equal(fixture.runs[0].profile_id, fixture.profileId);
+  assert.equal(fixture.runs[0].expected_plan_revision, "1".repeat(64));
+  assert.equal(fixture.runs[0].use_project_photos, false);
+  assert.equal(fixture.runs[0].preview_only, true);
+  await fixture.finish();
+  fixture.plan.scenes.forEach(scene => { scene.graphics_version = 1; });
+  await page.evaluate(() => loadReview({preserveEdits: true}));
+  assert.equal(await page.$eval("#legacy-motion-card", node => node.hidden), true);
   assert.deepEqual(errors, []);
   await page.close();
 });

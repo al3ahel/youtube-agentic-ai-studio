@@ -142,7 +142,8 @@ def load_audio_credits(timeline=None, *, strict=False):
             for key, limit in (("id", 32), ("title", 500), ("filename", 255),
                                ("creator", 500), ("license_note", 2000), ("content_id", 32), ("mode", 32),
                                ("provider", 80), ("provider_id", 200), ("license", 160),
-                               ("license_url", 4096), ("attribution", 10000)):
+                               ("license_url", 4096), ("attribution", 10000),
+                               ("selection_source", 80), ("changes", 2000)):
                 value = asset.get(key, "")
                 if strict and key in {"title", "creator", "license", "license_note", "attribution"} and isinstance(value, str) and len(value) > limit:
                     raise ValueError("Applied audio attribution exceeds the supported metadata length")
@@ -258,6 +259,11 @@ def ensure_audio_credits(description, timeline=None):
     It never truncates an attribution or silently shortens user-written text.
     """
     return _with_audio_credits(description, load_audio_credits(timeline, strict=True))
+
+
+def audio_credit_text(timeline=None):
+    """The same complete attribution block used for the description and export."""
+    return _audio_credit_block(load_audio_credits(timeline, strict=True))
 
 
 def _credit_lines(credits, detailed=True):

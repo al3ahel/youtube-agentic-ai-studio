@@ -269,9 +269,11 @@ first Settings panel. At port 8765, go directly to
 In **Sound direction**, choose **Automatic — let the agent choose**, then click
 **Save** in the floating **Unsaved changes** bar. **Audio mastering** is a separate per-channel switch.
 The agent reads the
-script and measured narration, chooses appropriate search terms or an owned
-recording, and can fetch declared CC0/Public Domain/CC BY audio from Wikimedia
-Commons without a key. You do not need to import tracks for this mode. An available
+script and measured narration and chooses suitable recordings itself. The included
+CC BY 4.0 collection covers ambient instrumental music, paper turns and short
+whooshes without any download. Other requests can fetch declared CC0/Public
+Domain/CC BY audio from Wikimedia Commons without a key. You do not need to import
+tracks for this mode. An available
 free/local text model supplies AI choices; otherwise conservative local choices
 are explicitly identified. If no suitable licensed recording can be obtained,
 the draft retains narration and Review explains why.
@@ -279,13 +281,22 @@ the draft retains narration and Review explains why.
 On an existing Motion/Hybrid draft, click **Regenerate sound design** in Review.
 It rebuilds only the sound and MP4, retaining voice, storyboard and publishing
 prose. Review shows actual source credits, cue placement and measured loudness.
+The agent's proposal is labeled separately; it does not prove a music layer was
+applied. Open **Audio credits — added to the video description** to copy or download
+the exact credits already included in the generated description.
 Normal/news finishing targets −16 LUFS and ASMR −20 LUFS with bounded gain and
 true-peak headroom; targets are not forced when doing so would violate a limit.
 
 **Manual** supports exact imported tracks and the existing local music folder.
 Old enabled imported selections stay Manual on upgrade. **Off** removes added
 music/effects. Pixabay audio can still be downloaded/imported as an optional
-Manual source; its documented public API does not provide audio search.
+Manual source; its documented public API does not provide audio search. Your
+Pixabay key therefore enables visual sources, not the website's music library.
+
+For an older Motion draft made of text cards, Review offers **Rebuild animation +
+sound**. This uses the current sound settings and new illustrated graphics while
+keeping the script, recorded narration and measured timing. It deliberately
+replaces that draft's old visual designs. Review the new draft, then render final.
 
 Video-only rendering reuses its committed soundtrack. An interrupted new sound
 pass cannot overwrite it. No synthesized noise/test-tone fallback is added to

@@ -463,7 +463,8 @@ def test_storyboard_guard_cannot_be_used_to_generate_new_content(client, monkeyp
 
 
 @pytest.mark.parametrize("use_project_photos", [False, True])
-def test_guarded_visual_rebuild_accepts_existing_photo_storyboard(client, monkeypatch, use_project_photos):
+@pytest.mark.parametrize("steps", [["visuals", "video"], ["music", "visuals", "video"]])
+def test_guarded_visual_rebuild_accepts_existing_photo_storyboard(client, monkeypatch, use_project_photos, steps):
     from PIL import Image
     _editable_plan(monkeypatch)
     picture = Path(config.OUTPUT_DIR) / "saved-photo.png"
@@ -486,12 +487,12 @@ def test_guarded_visual_rebuild_accepts_existing_photo_storyboard(client, monkey
     monkeypatch.setattr(pipeline, "run_pipeline_thread", worker)
     monkeypatch.setattr(pipeline.threading, "Thread", InlineThread)
     response = client.post("/api/run", json={
-        "steps": ["visuals", "video"], "visual_mode": "motion", "preview_only": True,
+        "steps": steps, "visual_mode": "motion", "preview_only": True,
         "use_project_photos": use_project_photos, "expected_plan_revision": revision,
     })
     assert response.status_code == 200 and response.json["ok"]
     assert len(received) == 1
-    assert received[0][0][:3] == (["visuals", "video"], "", "normal")
+    assert received[0][0][:3] == (steps, "", "normal")
     assert received[0][1]["use_project_photos"] is use_project_photos
     assert received[0][1]["visual_mode"] == "motion" and received[0][1]["preview_only"]
     assert state["visual_plan"] == original and _review_files() == files

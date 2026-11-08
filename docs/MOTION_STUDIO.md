@@ -15,7 +15,7 @@ change and render the saved composition again.
 
 | Mode | Visuals | Requirements |
 | --- | --- | --- |
-| Motion | Animated flow diagrams, comparisons, timelines, supplied-data charts and explanatory text; no automatic photos or footage | Node 22+, FFmpeg/ffprobe, installed renderer/browser |
+| Motion | Illustrated subjects with moving parts, flow diagrams, comparisons, timelines and supplied-data charts; no automatic photos or footage | Node 22+, FFmpeg/ffprobe, installed renderer/browser |
 | Hybrid | Animated explanations with pipeline pictures and optional downloaded Pexels video clips with source credits | Same as Motion; optional Pexels key |
 | Classic | The original MoviePy photo renderer, captions and transitions | Original MoviePy/NumPy dependencies |
 
@@ -34,6 +34,14 @@ its saved composition when it is reopened or rendered again. To convert a photo
 or footage project without changing the script or recording, choose **Rebuild as
 Motion graphics** in Review. The project is replanned as graphics and a new draft
 MP4 is rendered. **Animate these photos** explicitly keeps the project's pictures.
+
+Older Motion plans built from text cards also expose **Update this draft's
+animation → Rebuild animation + sound**. This replans the graphics and applies the
+selected channel's current sound design, then renders a draft. Script, voice,
+measured section timing and publishing prose remain intact; existing scene designs
+are intentionally replaced. Select Automatic in Sound design first if the profile
+still uses Manual or Off. Simply reopening or rerendering an old plan preserves
+its saved appearance and soundtrack.
 
 ## Make and review a new video
 
@@ -158,16 +166,33 @@ to future narration; it does not alter an already recorded project.
 
 **Automatic sound design** is the default for new profiles. The sound agent chooses
 one suitable music/ambience bed and sparse contextual accents, using measured
-section boundaries. Commons supplies automatically acquired, declared-license
-recordings without a key; source/licensing metadata stays with the actual mix.
+section boundaries. Compatible requests first use the included CC BY 4.0 ambient
+instrumentals, page turn or short whoosh. Other requests use bounded keyless
+Commons searches for declared-license recordings. Source/licensing metadata stays
+with the actual mix.
 No manual import is required. Missing appropriate audio is omitted with a clear
 reason, so a successful draft may intentionally remain narration-only.
+
+Automatic mixing measures both the source recording and narration, levels the
+added recording before applying its balance, and trims leading silence from short
+effects. It uses gentler speech ducking than the old fixed low-volume path. Silence
+or a failed mix is not counted as an applied layer. Review labels the agent's
+proposal separately from **In this soundtrack**, and the exact applied credits can
+be copied or downloaded under **Audio credits — added to the video description**.
 
 New Motion plans also carry a coherent visual look (editorial, blueprint, studio,
 botanical or poster), supported composition alternatives and a bounded motion
 rhythm. These fields affect actual frames. A saved plan is stable across rerenders;
 old plans without them retain their original appearance. Selected-scene edits show
 what changed; unsupported instructions do not trigger an unrelated template swap.
+
+New and explicitly rebuilt scenes additionally use versioned illustrated subjects.
+For example, a census scanner connects people to a ledger, a mining cutaway moves
+ore up a conveyor, and sunlight travels toward a solar panel. The selected subject
+must be supported by that section's narration. Qualitative schematics do not invent
+maps, measurements or counts. Unknown subjects use a labeled abstract diagram;
+this is a bounded vector renderer, not an arbitrary character/video generator.
+Object movement, progressive paths and reveals all follow the same seekable clock.
 
 Captions can highlight verified word events, show plain phrases, or be off.
 Imported/estimated timings never receive fabricated word highlights. Unchanged
@@ -199,8 +224,10 @@ settings have changed. Missing selected audio is reported without substituting a
 different imported track. The recording remains available.
 
 Pixabay's [public API](https://pixabay.com/api/docs/) documents image and video
-search, not music or sound-effect search. Download audio from its website and
-import it locally. Optional source URL, creator, license note and Content ID
+search, not music or sound-effect search. A key does not enable the site's music
+library. Optional personal recordings from that website can be downloaded and
+imported locally; Automatic mode requires no such import. Source URL, creator,
+license note and Content ID
 metadata are kept with the track. A staged sound pass commits an immutable WAV
 and authoritative v2 `render_audio.json` containing the audio checksum, complete
 credits, sound design and measured finishing report. The original narration is
@@ -218,12 +245,22 @@ footage and synthetic test-tone audio. They verify rendering and audio presence;
 they do not demonstrate voice quality or synchronization to speech. The separate
 optional NASA photo demonstration remains available through `demo.py`.
 
+The separate `illustrated-motion-*` samples use the new census/mining animations
+and real licensed music/effects, with no test-tone narration. Their phrase cue
+times are authored for the example, not measured speech alignment. See the sample
+README for exact reproduction and attribution.
+
 ## Templates and media contract
 
 The seven supported templates are `flow`, `comparison`, `timeline`, `chart`,
 `explain`, `text` and `footage`. Layouts support 16:9 and 9:16. Scene data includes
 an ID, section ID, start, duration, title, visual goal, short items, local-time
 motion beats and optional local picture/footage metadata.
+
+`graphics_version: 1` opts a scene into the illustrated renderer. Each supported
+item carries an allowlisted `symbol` grounded in its source narration. Charts keep
+their supplied numeric values and footage keeps its media semantics. Missing
+graphics versions preserve the previous renderer for existing saved plans.
 
 New plans record `use_project_photos`: it defaults to `false` for Motion and
 `true` for Hybrid. The explicit photo-animation action sets it to `true` while

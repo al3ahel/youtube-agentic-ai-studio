@@ -15,7 +15,12 @@ YAAS gathers sources, writes the script, records narration, directs visuals and 
 
 [**Pipeline map**](docs/PIPELINE_ARCHITECTURE.md) · [**Purffle comparison**](docs/REPOSITORY_COMPARISON.md) · [**Agent capabilities and skills**](docs/AGENT_CAPABILITIES.md) · [**Release re-audit**](docs/POST_RELEASE_AUDIT.md)
 
+[**Illustrated animation and licensed-sound update**](docs/ANIMATION_AUDIO_UPDATE.md)
+
 </div>
+
+The MIT license covers application code. Included music and effects retain their
+[CC BY 4.0 licenses and attribution](assets/audio/bundled/ATTRIBUTION.md).
 
 **Original YAAS demo (Classic workflow)**
 
@@ -30,7 +35,7 @@ https://github.com/user-attachments/assets/e94dab2d-3110-440c-b82e-b9289c0e6b51
 This fork adds **animated HTML/SVG scenes**, **separate YouTube channel profiles**,
 and **recurring video generation**. These features are on this fork's **main** branch.
 
-**Motion** creates animated diagrams, timelines, comparisons and text, without
+**Motion** creates illustrated moving subjects, diagrams, timelines and comparisons, without
 fetching or automatically attaching stock pictures. **Hybrid** combines those
 graphics with the original pipeline's pictures and optional Pexels video footage.
 **Classic** keeps the MoviePy photo renderer.
@@ -50,6 +55,20 @@ you explicitly connect it. [Channels and schedules guide](docs/CHANNELS_AND_SCHE
 live account is shown. The schedule is paused in this demonstration.*
 
 #### Rendered video samples
+
+**New illustrated animation with real licensed sound:**
+[Landscape](docs/samples/illustrated-motion-landscape.mp4) ·
+[Portrait](docs/samples/illustrated-motion-portrait.mp4) ·
+[Audio credits](docs/samples/illustrated-motion-audio-credits.txt).
+These 14-second clips animate census records and a mining cutaway, with an ambient
+instrumental bed, a paper turn and a whoosh. Each has **168 frames at 12 fps**.
+They contain no narration; phrase cues and the music-only listening balance are
+authored for the example. They demonstrate the renderer and real recordings, not
+speech quality or measured word alignment.
+
+![Mining cutaway from the encoded illustrated Motion sample](docs/screenshots/illustrated-motion-landscape.png)
+
+**Original template/media verification:**
 
 These are the final HyperFrames verification renders: **168 frames each**, lasting
 **14 seconds at 12 fps**. Seven two-second scenes exercise text, flow, comparison,
@@ -241,8 +260,10 @@ script and voice; it does not synthesize binaural recordings or authentic ASMR t
 
 **Automatic sound design** is the default for new profiles. The agent chooses
 music, relevant ambience and sparse effects itself, using the script and measured
-narration. It can search Wikimedia Commons without a key and keeps complete
-source/license information. You do not need to import or choose every track.
+narration. Compatible ambient music, paper-turn and short whoosh requests use a
+small included collection of real CC BY 4.0 recordings. Other requests can search
+Wikimedia Commons without a key. Complete source/license information stays with
+the applied soundtrack. You do not need to import or choose every track.
 News omits transient effects; ASMR uses calmer choices. Unavailable or unsuitable
 recordings are omitted with a visible explanation, not replaced by synthetic tones.
 
@@ -259,6 +280,11 @@ for the selected channel.
 **Review → Sound design → Regenerate sound design** rebuilds the soundtrack
 and draft while keeping the original voice, storyboard and publishing prose.
 Review shows actual layers, cue times and measured loudness/peak results.
+The agent's proposed sound is shown separately from the recordings actually
+applied. **Audio credits — added to the video description** exposes the exact
+credit block, with **Copy credits** and **Download credits (.txt)** actions.
+Automatic mixing measures source levels before setting the bed/effect balance,
+removes leading silence from short effects and ducks added audio beneath speech.
 Normal/news finishing targets −16 LUFS; ASMR targets −20 LUFS with a smaller
 gain bound. Peak headroom can prevent a target from being reached, and the report
 says so. Audio is lossless PCM before MP4 encoding. A cancelled rebuild keeps
@@ -271,8 +297,10 @@ music switch with an empty folder cannot create music by itself.
 
 **Pixabay music and sound effects:** YAAS uses Pixabay's API for pictures.
 Pixabay's [public API documentation](https://pixabay.com/api/docs/) provides image
-and video endpoints, but no documented music or sound-effect endpoint. To use its
-audio as an optional Manual source, download a track and import the file into YAAS:
+and video endpoints, but no documented music or sound-effect endpoint. A Pixabay
+key therefore does not enable audio acquisition. Automatic sound works without
+that key or manual downloads. To use a particular Pixabay recording as an optional
+Manual source, download the track and import the file into YAAS:
 
 1. Select the channel in the sidebar, then open **Settings → Sound design → Audio library**.
 2. Choose **Music** or **Sound effect**, select the downloaded file, and click
@@ -315,7 +343,7 @@ See [the schedule lifecycle and hosting instructions](docs/CHANNELS_AND_SCHEDULE
 | ✍️ **Local/free inference** | Installed local Ollama, or configured free-tier Gemini/Groq/OpenRouter. Local-only never falls back to cloud. Missing quota produces an honest error or supported local fallback. |
 | 🖼️ **Stock and local graphics** | Pexels/Pixabay when configured, NASA space imagery and credited Openverse pictures. Graphics-only Motion does not fetch or reuse pictures. |
 | 🎙️ **Voice audition** | Preview an Edge neural voice with your unsaved speed and pitch before recording. Fresh narration stores measured section timing and available word events; legacy recordings can reuse captions or clearly labelled timing estimates. |
-| 🎞️ **Motion / Hybrid / Classic** | Motion creates explanatory graphics with five art directions and varied supported compositions; Hybrid adds current project photos/footage; Classic retains the original photo renderer. Explicit old-photo reuse remains available. All support 16:9 or 9:16. |
+| 🎞️ **Motion / Hybrid / Classic** | Motion animates grounded illustrated subjects, paths and supplied-data diagrams with five art directions; Hybrid adds current project photos/footage; Classic retains the original photo renderer. Existing card drafts can rebuild animation and sound without recording the voice again. All support 16:9 or 9:16. |
 | 🎛️ **Editable storyboard** | Scrub the local HTML preview, regenerate one scene and render a draft or final MP4 from the same plan. Full projects, narration, timing, media and credits are archived for reopening. |
 | 👁️ **Optional visual review** | An explicitly enabled free vision model checks a few rendered frames for visible layout problems. Review is advisory and does not certify factual accuracy. |
 | 🏷️ **Your brand** | Your channel name appears in the intro, on Shorts and on thumbnails. Change the text or switch it off in Settings. |
@@ -354,6 +382,7 @@ be unavailable or limited. The app does not silently substitute a paid model.
 | NASA Image Library | Public-domain space imagery | keyless |
 | Openverse | Creative Commons images (credited) | keyless |
 | Wikimedia Commons | Automatic licensed music and sound recordings | keyless; suitable licensed match required |
+| Included audio collection | Two ambient instrumental beds, paper turn and short whoosh | offline, CC BY 4.0; actual-use credits added automatically |
 | Wikipedia | Background sources + trending ideas | keyless |
 | arXiv | Research background + topic ideas | keyless |
 | Google Trends RSS | Search spikes | keyless |
@@ -408,7 +437,7 @@ if you move the studio to another machine. [Storage and migration details](docs/
 │   ├── images.py           ← Pixabay, NASA, Openverse
 │   ├── llm.py              ← configured free hosted fallback
 │   ├── local_llm.py        ← installed local Ollama models only
-│   ├── audio_sources.py    ← licensed Commons audio acquisition
+│   ├── audio_sources.py    ← included licensed audio + bounded Commons acquisition
 │   └── youtube_stats.py    ← public channel stats
 │
 ├── agents/
@@ -416,6 +445,8 @@ if you move the studio to another machine. [Storage and migration details](docs/
 │   ├── json_utils.py       ← repairs broken JSON from models
 │   ├── researcher.py       ← topic research (trend-aware, grounded)
 │   └── scriptwriter.py     ← script writing
+│
+├── assets/audio/bundled/   ← four licensed recordings, manifest and full credits
 │
 ├── video/
 │   ├── narrator.py         ← Edge TTS voiceover + captions

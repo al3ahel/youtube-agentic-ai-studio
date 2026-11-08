@@ -403,6 +403,77 @@ button, input, output { font: inherit; }
 #composition:not([data-look="legacy"]) .photo-hero .keyword,
 #composition:not([data-look="legacy"]) .footage-scene .keyword { color: #e3e9e7; background: #0b1a24b3; border-color: #74867f80; }
 
+/* Version 1 object graphics. Saved plans without the flag keep all layouts
+   above. New scenes give the stage to actors and actions, not label boxes. */
+#composition .object-scene .scene-header { top: 137px; right: 145px; }
+#composition .object-scene .scene-title { display: block; max-width: 1450px; font-size: 58px; line-height: 1.12; }
+#composition .object-scene .eyebrow { font-size: 15px; margin-bottom: 14px; }
+#composition .object-scene .scene-number { top: 143px; }
+#composition.portrait .object-scene .scene-header { top: 188px; left: 72px; right: 120px; }
+#composition.portrait .object-scene .scene-title { font-size: 68px; line-height: 1.13; }
+#composition.portrait .object-scene .scene-number { top: 161px; }
+#composition .object-stage { padding-bottom: 35px; }
+.illustrated-item { position: absolute; inset: 0; display: grid; grid-template-columns: 1.4fr .8fr; gap: 58px; align-items: center; padding: 0 52px 38px; min-width: 0; min-height: 0; opacity: 0; z-index: 1; }
+.object-art { display: block; width: 100%; height: 100%; min-height: 0; max-height: 100%; overflow: visible; }
+.object-label { position: relative; color: var(--ink); font-size: 48px; font-weight: 580; letter-spacing: -.035em; line-height: 1.16; text-wrap: balance; overflow-wrap: anywhere; }
+.object-label::before { content: ""; position: absolute; width: 50px; left: -72px; top: .57em; height: 2px; background: var(--accent); }
+.object-sequence[data-sequence="focus"] .illustrated-item { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) auto; gap: 0; padding: 0 120px 38px; }
+.object-sequence[data-sequence="focus"] .object-label { font-size: 40px; text-align: center; }
+.object-sequence[data-sequence="focus"] .object-label::before { display: none; }
+.object-sequence[data-sequence="stack"] .illustrated-item { grid-template-columns: .85fr 1.4fr; }
+.object-sequence[data-sequence="stack"] .object-art { grid-column: 2; grid-row: 1; }
+.object-sequence[data-sequence="stack"] .object-label { grid-column: 1; grid-row: 1; }
+.object-sequence[data-sequence="stack"] .object-label::before { left: auto; right: -72px; }
+.object-diagram .illustrated-item { inset: auto; display: flex; flex-direction: column; gap: 0; padding: 0 18px 20px; }
+.object-diagram .object-art { flex: 1 1 0; min-height: 0; }
+.object-diagram .object-label { flex: 0 0 auto; width: 100%; font-size: 27px; line-height: 1.15; text-align: center; max-height: 3.45em; }
+.object-diagram .object-label::before { display: none; }
+.object-connections { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0; overflow: visible; opacity: .7; }
+.object-schematic-note { position: absolute; left: 0; right: 0; bottom: 0; color: var(--muted); font-size: 14px; letter-spacing: .12em; text-align: center; }
+.object-art path, .object-art rect, .object-art circle, .object-art ellipse { stroke-linecap: round; stroke-linejoin: round; }
+.object-outline { fill: none; stroke: var(--ink); stroke-width: 4; }
+.object-subtle { fill: none; stroke: var(--muted); stroke-width: 2.5; }
+.object-route { fill: none; stroke: var(--accent); stroke-width: 3; }
+.object-solid, .object-beam { fill: var(--accent); stroke: none; }
+.object-fill { fill: var(--surface); stroke: var(--accent); stroke-width: 3; }
+.object-paper { fill: var(--surface); stroke: var(--ink); stroke-width: 3.5; }
+.object-dark { fill: var(--background); stroke: var(--ink); stroke-width: 4; }
+.object-bright { fill: none; stroke: var(--accent); stroke-width: 6; }
+.object-ghost { opacity: .28; stroke-dasharray: 9 9; }
+.object-earth { fill: #9b6b43; stroke: #dba36f; stroke-width: 3; }
+.object-stratum { fill: #634d3c; stroke: #ad845f; stroke-width: 3; }
+.object-deep { fill: #362e2b; stroke: #86684e; stroke-width: 3; }
+.object-ore { fill: none; stroke: #f5ba63; stroke-width: 11; }
+.object-ore-piece { fill: #f5ba63; stroke: #704521; stroke-width: 2; }
+.object-drill { fill: none; stroke: var(--ink); stroke-width: 13; }
+.object-conveyor { fill: none; stroke: var(--ink); stroke-width: 12; }
+.object-panel, .object-chip { fill: #235f80; stroke: #9cc6dc; stroke-width: 4; }
+.object-sun { fill: #f4ba52; stroke: #e4a146; stroke-width: 2; }
+.object-sun-line { fill: none; stroke: #efb44b; stroke-width: 5; }
+.object-stem, .object-root { fill: none; stroke: #769957; stroke-width: 9; }
+.object-root { stroke-width: 5; }
+.object-leaf { fill: #7da862; stroke: #b5cc8a; stroke-width: 3; }
+.object-water { fill: #61b5dc; stroke: none; }
+.object-water-fill { fill: #286581; stroke: #86c8db; stroke-width: 3; }
+.object-water-line { fill: none; stroke: #86c8db; stroke-width: 4; }
+.object-warning { fill: none; stroke: #d9926c; stroke-width: 9; }
+.object-warm { fill: #d9926c; stroke: none; }
+#composition[data-look="editorial"] .object-paper, #composition[data-look="botanical"] .object-paper { fill: #f5f2e7; }
+#composition[data-look="poster"] .object-paper { fill: #fafbe3; }
+#composition[data-look="blueprint"] .object-paper { fill: #092d50; }
+.portrait .illustrated-item, .portrait .object-sequence[data-sequence="stack"] .illustrated-item { display: grid; grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) auto; gap: 20px; padding: 0 6px 50px; }
+.portrait .object-sequence[data-sequence="stack"] .object-art, .portrait .object-sequence[data-sequence="stack"] .object-label { grid-column: auto; grid-row: auto; }
+.portrait .object-label, .portrait .object-sequence[data-sequence="focus"] .object-label { font-size: 46px; line-height: 1.16; text-align: center; }
+.portrait .object-label::before { display: none; }
+.portrait .object-sequence[data-sequence="focus"] .illustrated-item { padding: 0 12px 50px; }
+.portrait .object-diagram .illustrated-item { display: flex; flex-direction: row; gap: 20px; padding: 0 12px 20px; }
+.portrait .object-diagram .object-art { width: 55%; height: 100%; flex: 1 1 0; }
+.portrait .object-diagram .object-label { width: 40%; font-size: 34px; text-align: start; }
+.portrait .dense-items .object-diagram .illustrated-item { flex-direction: column; gap: 0; }
+.portrait .dense-items .object-diagram .object-art { width: 100%; }
+.portrait .dense-items .object-diagram .object-label { width: 100%; font-size: 27px; text-align: center; }
+.portrait .object-schematic-note { font-size: 17px; bottom: 4px; }
+
 .preview-mode { height: 100vh; background: #050a10; }
 .preview-mode #preview-shell { position: absolute; left: 0; top: 0; bottom: 62px; right: 0; overflow: hidden; pointer-events: none; }
 .preview-mode #composition { position: absolute; transform-origin: top left; }

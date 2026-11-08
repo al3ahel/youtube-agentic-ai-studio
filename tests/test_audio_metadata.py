@@ -9,7 +9,7 @@ import pytest
 
 import config
 from studio.description import (AUDIO_CREDIT_START, AUDIO_CREDIT_END, build_description,
-                                ensure_audio_credits, load_audio_credits, load_sound_report)
+                                ensure_audio_credits, load_audio_credits, load_sound_report, audio_credit_text)
 
 
 def asset(index=1):
@@ -177,6 +177,23 @@ def test_inline_reports_must_match_the_committed_path_and_voice(tmp_path, monkey
     (tmp_path / "render_audio.json").write_text(json.dumps(manifest))
     assert load_sound_report("sound_design.json") is None
     assert load_sound_report("audio_master.json", {"audio_sha256": "other-voice"}) is None
+
+
+def test_downloadable_credits_match_description_and_keep_bundled_source_details(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "OUTPUT_DIR", str(tmp_path))
+    recording = {**asset(), "provider": "bundled", "selection_source": "bundled_catalog",
+                 "changes": "Excerpted and converted to Ogg."}
+    write_commit(tmp_path, [recording])
+    timeline = {"audio_sha256": "current-recording"}
+    text = audio_credit_text(timeline)
+    assert ensure_audio_credits("My own description", timeline) == "My own description\n\n" + text
+    assert all(recording[key] in text for key in ("title", "creator", "source_url", "license", "license_url", "attribution"))
+    assert load_audio_credits(timeline)[0]["selection_source"] == "bundled_catalog"
+    assert load_audio_credits(timeline)[0]["changes"] == recording["changes"]
+    assert audio_credit_text({"audio_sha256": "another-voice"}) == ""
+    (tmp_path / "soundtracks" / "current.wav").write_bytes(b"different bytes")
+    with pytest.raises(ValueError, match="could not be verified"):
+        audio_credit_text(timeline)
 
 
 @pytest.fixture

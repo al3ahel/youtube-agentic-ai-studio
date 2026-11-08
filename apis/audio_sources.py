@@ -36,8 +36,11 @@ MAX_METADATA_BYTES = 2 * 1024 * 1024
 MAX_OPERATION_SECONDS = 45
 MAX_CANDIDATES = 8
 MAX_DOWNLOADS = 3
+MAX_SEARCHES = 3
 MAX_CACHE_ENTRIES = 128
 _MUSIC_SELECTION_VERSION = 1
+_CATALOG_SELECTION_VERSION = 1
+_BUNDLED_ROOT = Path(__file__).resolve().parents[1] / "assets" / "audio" / "bundled"
 _SEARCH_FILLER = frozenset("a an the of for gentle quiet soft subtle calm background audio recording recordings sound sounds effect effects".split())
 _MUSIC_EVIDENCE = re.compile(
     r"\binstrumentals?\b|\b(?:ambient|electronic|orchestral|chamber|classical|piano|guitar|jazz)\s+music\b|"
@@ -67,8 +70,8 @@ class AudioSourceError(ValueError):
         self.code = code
 
 
-def _set_status(available, reason, message):
-    _status.set({"available": available, "provider": "wikimedia", "reason": reason, "message": message})
+def _set_status(available, reason, message, *, provider="wikimedia"):
+    _status.set({"available": available, "provider": provider, "reason": reason, "message": message})
 
 
 def get_status():
@@ -184,6 +187,155 @@ def _broader_query(terms, kind):
     if not broader or broader.casefold() == terms.casefold() or all(word.casefold() in generic for word in kept):
         return None
     return broader
+
+
+def _search_queries(value, kind):
+    """Turn artistic directions into bounded literal searches of the same sound.
+
+    Commons search treats ordinary words as required terms. Usage instructions
+    and absence declarations therefore cannot be searched as positive words:
+    ``without vocals, suitable for narration`` would demand vocals/narration.
+    Instrumental eligibility is still checked against each file's metadata.
+    """
+    _query(value)  # Validate before stripping any text or search punctuation.
+    text = value.casefold().replace("_", " ")
+    text = re.sub(r"\b(?:suitable|appropriate|ideal|intended|designed)\s+for\b.*", " ", text)
+    text = re.sub(r"\b(?:for|under|behind|beneath)\s+(?:(?:a|the|documentary|video|spoken|clear)\s+)*"
+                  r"(?:narration|voice\s*over|speech|dialogue|documentary|video)\b.*", " ", text)
+    if kind == "sfx":
+        text = re.sub(r"\bfor\s+(?:(?:a|the|scene|chapter|visual|gentle|soft)\s+)*"
+                      r"(?:transitions?|cuts?)\b.*", " ", text)
+        text = re.sub(r"\bpages\b", "page", text)
+        text = re.sub(r"\b(?:swoosh|whooshes)\b", "whoosh", text)
+    if kind == "music":
+        voice = r"(?:vocals?|voices?|singing|speech|narration|lyrics?)"
+        text = re.sub(r"\b(?:no|without)\s+(?:any\s+)?" + voice
+                      + r"(?:\s*(?:,|and|or)\s*(?:any\s+)?" + voice + r")*\b", " ", text)
+        text = re.sub(r"\b(?:vocal|voice|speech|lyric)[ -]free\b", " ", text)
+        text = re.sub(r"\b(?:low|slow|moderate)[\s-]+tempo\b", " ", text)
+    text = re.sub(r"\b(?:royalty[ -]free|copyright[ -]free|creative commons|cc0)\b", " ", text)
+    words = _query(text)
+    filler = _SEARCH_FILLER | ({"ambient", "ambience", "transition", "transitions", "accent"} if kind == "sfx" else set())
+    terms = " ".join(word for word in words.split() if word not in filler)
+    # With no acoustic subject, don't silently search for an unrelated noise.
+    if not terms or (kind == "sfx" and set(terms.split()) <= {"noise", "track", "tracks", "clip", "clips"}):
+        raise AudioSourceError("invalid_query", "Describe the actual instrument, music style or sound to find.")
+    result = [terms]
+    if kind == "music":
+        # Instrumental is independently enforced; removing that redundant word
+        # retains the requested genre/instrument and makes catalog titles usable.
+        if "instrumental" in terms.split() and re.search(
+                r"\b(?:ambient|electronic|orchestral|chamber|classical|piano|guitar|jazz|harp|cello|violin|flute)\b", terms):
+            variant = " ".join(word for word in terms.split() if word != "instrumental")
+            if "music" not in variant.split():
+                variant += " music"
+            result.append(variant)
+    else:
+        if re.search(r"\b(?:paper|page)\s+(?:turn|turning|flip|flipping)\b", terms):
+            for replacement in ("page turn", "paper rustle"):
+                result.append(re.sub(r"\b(?:paper|page)\s+(?:turn|turning|flip|flipping)\b", replacement, terms))
+        elif re.search(r"\bwhoosh(?:ing)?\b", terms):
+            result.append(re.sub(r"\bwhoosh(?:ing)?\b", "swish", terms))
+        elif re.search(r"\bswish(?:ing)?\b", terms):
+            result.append(re.sub(r"\bswish(?:ing)?\b", "whoosh", terms))
+    return list(dict.fromkeys(result))[:MAX_SEARCHES]
+
+
+def _bundled_candidate(query, kind, minimum, maximum, mood=""):
+    """Choose only an exact compatible, pinned recording in our licensed set.
+
+    This is trusted, shipped content, not a downloader for arbitrary model URLs.
+    Unknown genre/instrument/material constraints stay with the live search.
+    """
+    terms = set(_search_queries(query, kind)[0].split())
+    mood_terms = set(_query(mood).casefold().split())
+    quiet_words = {"subtle", "calm", "quiet", "gentle", "soft"}
+    raw = query.casefold()
+    if re.search(r"\b(?:no|not|without|avoid|exclude)\b", raw):
+        # Only the enforced no-vocals condition is safe to remove here. Other
+        # negations must never accidentally select the very sound being excluded.
+        voice = r"(?:vocals?|voices?|singing|speech|narration|lyrics?)"
+        raw = re.sub(r"\b(?:no|without)\s+(?:any\s+)?" + voice
+                     + r"(?:\s*(?:,|and|or)\s*(?:any\s+)?" + voice + r")*\b", " ", raw)
+        if re.search(r"\b(?:no|not|without|avoid|exclude)\b", raw):
+            return None
+    family = None
+    if kind == "music" and terms & {"music", "instrumental", "ambient", "piano", "guitar", "harp"}:
+        family = "ambient_music"
+    elif kind == "sfx":
+        paper = {"paper", "page", "book", "turn", "turning", "turns", "flip", "flipping", "rustle", "rustling"}
+        if terms & {"paper", "page", "book"} and terms & {"turn", "turning", "turns", "flip", "flipping", "rustle", "rustling"} and terms <= paper:
+            family = "paper_turn"
+        elif terms & {"whoosh", "whooshing", "swish", "swishing"} and terms <= {"whoosh", "whooshing", "swish", "swishing", "short", "small", "brief"}:
+            family = "whoosh"
+    if family is None:
+        return None
+    if kind == "sfx" and not mood_terms <= quiet_words:
+        return None
+    try:
+        root = _BUNDLED_ROOT.resolve()
+        manifest = root / "catalog.json"
+        if manifest.is_symlink() or not manifest.is_file() or manifest.stat().st_size > 131072:
+            return None
+        data = json.loads(manifest.read_text(encoding="utf-8"))
+        assets = data.get("assets")
+        if data.get("version") != 1 or not isinstance(assets, list) or len(assets) > 32:
+            return None
+        for asset in assets:
+            if not isinstance(asset, dict) or asset.get("family") != family or asset.get("kind") != kind:
+                continue
+            if family == "ambient_music":
+                tags = asset.get("tags", [])
+                if not isinstance(tags, list) or not all(isinstance(tag, str) for tag in tags):
+                    continue
+                described = set(" ".join(tags).casefold().split())
+                aliases = {"relaxing": "calm", "relaxation": "calm", "calming": "calm", "soothing": "calm", "meditative": "calm",
+                           "minimalist": "minimal", "mellow": "calm"}
+                constraints = {aliases.get(term, term) for term in terms - {"music", "instrumental", "bed", "track", "piece", "loop"}}
+                constraints.update(aliases.get(term, term) for term in mood_terms - quiet_words)
+                # Tempo is unnecessary in an AND-style catalog search, but is
+                # still an explicit musical requirement for a shipped choice.
+                tempo = re.search(r"\b(low|slow|moderate)[\s-]+tempo\b", raw)
+                if tempo:
+                    constraints.add("slow" if tempo.group(1) in {"low", "slow"} else "moderate")
+                if "calm" in mood_terms or set(_query(query).casefold().split()) & (quiet_words - {"subtle"}):
+                    constraints.add("calm")
+                if not constraints <= described:
+                    continue
+            filename, digest = asset.get("filename"), asset.get("sha256")
+            if not isinstance(filename, str) or not isinstance(digest, str) or not _HASH.fullmatch(digest):
+                continue
+            media = root / filename
+            suffix = media.suffix.lower()
+            if (suffix not in set(_MEDIA_TYPES.values()) or media.resolve() != media or not media.is_file()
+                    or not media.is_relative_to(root) or media == root):
+                continue
+            size, duration = asset.get("bytes"), asset.get("duration")
+            if (type(size) is not int or not 0 < size <= MAX_AUDIO_BYTES or media.stat().st_size != size
+                    or isinstance(duration, bool) or not isinstance(duration, (int, float)) or not math.isfinite(duration)
+                    or not 0 < duration <= maximum or duration < minimum):
+                continue
+            source = asset.get("source_url")
+            source_parts = urlsplit(source) if isinstance(source, str) else None
+            if not source_parts or source_parts.hostname not in {"github.com", "kenney.nl", "chriszabriskie.com", "opengameart.org"}:
+                continue
+            if not _safe_url(source, source_parts.hostname, "/"):
+                continue
+            allowed = _license({"LicenseUrl": {"value": asset.get("license_url", "")}}, source)
+            if allowed != (asset.get("license"), asset.get("license_url")):
+                continue
+            if any(not _plain(asset.get(key), 10000 if key == "attribution" else 500) for key in ("title", "creator", "attribution", "provider_id")):
+                continue
+            if hashlib.sha256(media.read_bytes()).hexdigest() != digest:
+                continue
+            return {key: asset.get(key, "") for key in ("provider_id", "kind", "title", "creator", "source_url",
+                    "license", "license_url", "attribution", "changes")} | {
+                "provider": "bundled", "selection_source": "bundled_catalog", "content_id": "unknown",
+                "license_note": f"{asset['license']}; {asset['license_url']}", "local_path": str(media),
+                "expected_bytes": size, "expected_sha256": digest, "extension": suffix}
+    except (OSError, ValueError, TypeError, AttributeError, RuntimeError):
+        return None
+    return None
 
 
 def _is_instrumental_candidate(context):
@@ -413,7 +565,7 @@ def _profile_root(profile_id, kind, create=False):
     return root
 
 
-def _cached(root, key, profile_id, kind, minimum, maximum):
+def _cached(root, key, profile_id, kind, minimum, maximum, bundled=None):
     path = root / (key + ".json")
     try:
         if path.is_symlink() or not path.is_file() or path.stat().st_size > 32768:
@@ -427,7 +579,7 @@ def _cached(root, key, profile_id, kind, minimum, maximum):
             # Earlier caches recorded licensing but did not establish musical
             # suitability. Re-search rather than relabel a cached field sound.
             return None
-        if (row.get("provider") != "wikimedia" or row.get("kind") != kind or not isinstance(row.get("id"), str)
+        if (row.get("provider") not in {"wikimedia", "bundled"} or row.get("kind") != kind or not isinstance(row.get("id"), str)
                 or not _ID.fullmatch(row["id"]) or not isinstance(row.get("sha256"), str) or not _HASH.fullmatch(row["sha256"])):
             return None
         suffix = Path(str(row.get("filename", ""))).suffix
@@ -437,7 +589,12 @@ def _cached(root, key, profile_id, kind, minimum, maximum):
         if (isinstance(duration, bool) or not isinstance(duration, (int, float)) or not math.isfinite(duration)
                 or not (0 < duration <= maximum and duration >= minimum) or type(size) is not int or not 0 < size <= MAX_AUDIO_BYTES):
             return None
-        if not _safe_url(row.get("source_url"), "commons.wikimedia.org", "/wiki/File:"):
+        if row["provider"] == "bundled":
+            if (bundled is None or row["sha256"] != bundled["expected_sha256"]
+                    or any(row.get(field) != bundled.get(field) for field in
+                           ("provider_id", "title", "creator", "source_url", "license", "license_url", "attribution", "changes", "selection_source"))):
+                return None
+        elif not _safe_url(row.get("source_url"), "commons.wikimedia.org", "/wiki/File:"):
             return None
         license_metadata = {"LicenseUrl": {"value": row.get("license_url", "")}}
         license_ok = _license(license_metadata, row["source_url"])
@@ -486,32 +643,64 @@ def acquire_audio(query, *, kind, profile_id, mood="", min_duration=0, max_durat
         words, mood_words = _query(query), _query(mood)
         if not words:
             raise AudioSourceError("invalid_query", "Provide a short audio search description.")
-        terms = _query(words + " " + mood_words)
+        queries = _search_queries(query, kind)
         maximum = 7200 if max_duration is None else max_duration
         if (any(isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) for v in (min_duration, maximum))
                 or not 0 <= min_duration < maximum <= 7200):
             raise AudioSourceError("invalid_duration", "Automatic audio durations must fall between zero and two hours.")
         minimum = min_duration
-        key = hashlib.sha256(json.dumps([terms.casefold(), kind, minimum, maximum], separators=(",", ":")).encode()).hexdigest()
         _guard(stop_event, deadline)
         with job_lock, _cache_lock:
             root = _profile_root(profile_id, kind)
-            cached = _cached(root, key, profile_id, kind, minimum, maximum)
+        bundled = _bundled_candidate(query, kind, minimum, maximum, mood_words.casefold())
+        # A catalog revision or replaced recording cannot reuse an older choice.
+        # Mood is an acoustic constraint/cache identity, never an extra AND word.
+        identity = [_CATALOG_SELECTION_VERSION, query.casefold(), mood_words.casefold(), kind, minimum, maximum,
+                    bundled.get("expected_sha256") if bundled else None]
+        key = hashlib.sha256(json.dumps(identity, separators=(",", ":")).encode()).hexdigest()
+        with job_lock, _cache_lock:
+            root = _profile_root(profile_id, kind)
+            cached = _cached(root, key, profile_id, kind, minimum, maximum, bundled)
             if cached is not None:
-                _set_status(True, "cached", "Using matching free audio already saved for this channel.")
-                return cached
-        candidates = _search(terms, kind, stop_event, deadline)
-        if not candidates:
-            broader = _broader_query(terms, kind)
-            if broader:
                 _guard(stop_event, deadline)
-                candidates = _search(broader, kind, stop_event, deadline)
-        if not candidates:
-            raise AudioSourceError("no_licensed_match", "No matching audio with an allowed free license was found; the added audio layer was omitted.")
+                _set_status(True, "cached", "Using matching free audio already saved for this channel.", provider=cached["provider"])
+                return cached
+
+        def candidates():
+            if bundled is not None:
+                yield bundled
+            # Try each distinct literal query's best file before spending the
+            # rest of the shared download budget on lower-ranked alternatives.
+            # A licensed result with bad bytes/duration must not suppress the
+            # next useful spelling of the same requested sound.
+            pending, seen = [], set()
+            for terms in queries:
+                _guard(stop_event, deadline)
+                if remote_downloads >= MAX_DOWNLOADS:
+                    break
+                fresh = []
+                found = _search(terms, kind, stop_event, deadline)
+                _guard(stop_event, deadline)
+                for candidate in found[:MAX_CANDIDATES]:
+                    identity = (candidate["provider"], candidate["provider_id"], candidate.get("download_url"))
+                    if identity in seen:
+                        continue
+                    seen.add(identity)
+                    fresh.append(candidate)
+                if fresh:
+                    yield fresh[0]
+                    pending.extend(fresh[1:])
+            yield from pending
+
         from studio.audio_library import _probe_audio
         last_error = None
-        for candidate in candidates[:MAX_DOWNLOADS]:
+        remote_downloads = 0
+        for candidate in candidates():
             _guard(stop_event, deadline)
+            if candidate["provider"] != "bundled":
+                if remote_downloads >= MAX_DOWNLOADS:
+                    break
+                remote_downloads += 1
             with job_lock, _cache_lock:
                 root = _profile_root(profile_id, kind, create=True)
                 if len(list(root.glob("*.json"))) >= MAX_CACHE_ENTRIES and not (root / (key + ".json")).is_file():
@@ -520,20 +709,31 @@ def acquire_audio(query, *, kind, profile_id, mood="", min_duration=0, max_durat
                 os.close(fd)
                 temporary = Path(name)
             try:
-                _download(candidate, temporary, stop_event, deadline)
+                if candidate["provider"] == "bundled":
+                    with Path(candidate["local_path"]).open("rb") as source, temporary.open("wb") as target:
+                        while block := source.read(65536):
+                            _guard(stop_event, deadline)
+                            target.write(block)
+                else:
+                    _download(candidate, temporary, stop_event, deadline)
                 _guard(stop_event, deadline)
                 duration = _probe_audio(temporary)
                 if not (0 < duration <= maximum and duration >= minimum):
                     raise AudioSourceError("duration_mismatch", "A matching audio file had an unsuitable duration and was skipped.")
                 _guard(stop_event, deadline)
                 digest = hashlib.sha256(temporary.read_bytes()).hexdigest()
-                identifier = hashlib.sha256(f"wikimedia:{candidate['provider_id']}:{digest}".encode()).hexdigest()[:32]
+                if candidate["provider"] == "bundled" and (digest != candidate["expected_sha256"]
+                        or temporary.stat().st_size != candidate["expected_bytes"]):
+                    raise AudioSourceError("invalid_bundled_audio", "A licensed collection recording could not be verified and was skipped.")
+                identifier = hashlib.sha256(f"{candidate['provider']}:{candidate['provider_id']}:{digest}".encode()).hexdigest()[:32]
                 filename = identifier + candidate["extension"]
                 row = {key: candidate[key] for key in ("provider", "provider_id", "kind", "title", "creator", "source_url",
                        "license", "license_url", "attribution", "license_note", "content_id")}
+                row.update({key: candidate[key] for key in ("changes", "selection_source") if key in candidate})
                 row.update(id=identifier, filename=filename, duration=duration, bytes=temporary.stat().st_size,
                            sha256=digest, acquired_at=datetime.now(timezone.utc).isoformat())
                 with job_lock, _cache_lock:
+                    _guard(stop_event, deadline)
                     if _profile_root(profile_id, kind) != root or temporary.resolve() != temporary:
                         raise AudioSourceError("cache_changed", "The channel audio cache changed during download; the file was skipped.")
                     destination = root / filename
@@ -550,7 +750,11 @@ def acquire_audio(query, *, kind, profile_id, mood="", min_duration=0, max_durat
                         if not existed:
                             destination.unlink(missing_ok=True)
                         raise
-                _set_status(True, "downloaded", "Selected matching free audio from Wikimedia Commons and saved its license and credits.")
+                message = ("Selected a matching recording from the bundled licensed collection and saved its source and credits."
+                           if candidate["provider"] == "bundled" else
+                           "Selected matching free audio from Wikimedia Commons and saved its license and credits.")
+                _set_status(True, "bundled" if candidate["provider"] == "bundled" else "downloaded", message,
+                            provider=candidate["provider"])
                 return {**row, "path": str(destination)}
             except (ValueError, OSError) as exc:
                 if isinstance(exc, AudioSourceError) and exc.code in {"cancelled", "timeout", "profile_unavailable", "cache_changed"}:
@@ -560,8 +764,11 @@ def acquire_audio(query, *, kind, profile_id, mood="", min_duration=0, max_durat
                 if temporary is not None:
                     temporary.unlink(missing_ok=True)
                     temporary = None
+        _guard(stop_event, deadline)
         if isinstance(last_error, AudioSourceError):
             raise last_error
+        if last_error is None:
+            raise AudioSourceError("no_licensed_match", "No matching audio with an allowed free license was found; the added audio layer was omitted.")
         raise AudioSourceError("unusable_audio", "Matching free audio could not be validated; the added audio layer was omitted.")
     except AudioSourceError as exc:
         _set_status(False, exc.code, str(exc))

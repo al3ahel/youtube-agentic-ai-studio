@@ -105,6 +105,126 @@ async function openFixture(orientation, preview = false, viewport, transformPlan
 }
 
 for (const orientation of ["landscape", "portrait"]) {
+  test(`${orientation}: actual new director plan animates census and mining actors, with deterministic seeks`, {skip: skipped}, async () => {
+    const page = await browser.newPage();
+    page.on("pageerror", error => errors.push(error.message));
+    await page.setViewport(orientation === "portrait" ? {width: 360, height: 640} : {width: 640, height: 360});
+    // This is the actual generated fixture and its copied runtime, not an API
+    // interception or a manually injected plan.
+    await page.goto(`${origin}/objects-${orientation}/motion/index.html`, {waitUntil: "domcontentloaded"});
+    await page.evaluate(() => window.YAASMotionReady);
+    assert.equal(await page.$$eval(".node-card,.arranged-card,.orbit-card,.comparison-card", nodes => nodes.length), 0);
+    assert.equal(await page.$$eval(".object-scene", nodes => nodes.length), 2);
+    const snapshots = new Map();
+    await mkdir(path.join(fixtureRoot, "screenshots"), {recursive: true});
+    for (const time of [.5, 2.5, 4.5, 7.5, 9.5, 12.5]) {
+      await seekForCapture(page, time);
+      const frame = await page.screenshot({path: path.join(fixtureRoot, "screenshots", `objects-${orientation}-${time}.png`)});
+      snapshots.set(time, {state: await domState(page), frame});
+      const layout = await page.evaluate(() => {
+        const scene = [...document.querySelectorAll(".scene")].find(node => Number(getComputedStyle(node).opacity) > .99);
+        const subject = [...scene.querySelectorAll(".illustrated-item")].filter(node => Number(getComputedStyle(node).opacity) > .99);
+        const title = scene.querySelector(".scene-title"), titleStyle = getComputedStyle(title);
+        const stage = scene.querySelector(".object-stage").getBoundingClientRect();
+        const labels = subject.map(node => {
+          const label = node.querySelector(".object-label").getBoundingClientRect();
+          return label.left >= stage.left - 1 && label.right <= stage.right + 1 && label.top >= stage.top - 1 && label.bottom <= stage.bottom + 1;
+        });
+        return {subjects: subject.map(node => node.dataset.symbol), labels,
+          titleLines: title.offsetHeight / parseFloat(titleStyle.lineHeight),
+          actor: subject[0]?.querySelector('[data-actor="drill-into-rock"],[data-actor="census-scan"]')?.getAttribute("transform")};
+      });
+      assert.equal(layout.subjects.length, 1, JSON.stringify(layout));
+      assert.ok(layout.labels.every(Boolean), JSON.stringify(layout));
+      assert.ok(layout.titleLines <= 2.1, JSON.stringify(layout));
+      assert.ok(layout.subjects[0].startsWith(time < 7 ? "census" : "mining"));
+      snapshots.get(time).actor = layout.actor;
+    }
+    assert.notEqual(snapshots.get(.5).actor, snapshots.get(2.5).actor, "The census scanner must actually traverse records");
+    assert.notEqual(snapshots.get(7.5).actor, snapshots.get(9.5).actor, "The drill must move into the rock");
+    for (const time of [12.5, .5, 9.5, 4.5, 2.5, 7.5, .5]) {
+      await seekForCapture(page, time);
+      assert.deepEqual(await domState(page), snapshots.get(time).state);
+      const repeated = await page.screenshot();
+      const difference = await pixelDifference(page, snapshots.get(time).frame, repeated);
+      // Chromium can rerasterize the rounded caption's 1px border after a
+      // reverse seek. Allow that tiny fringe; all object/actor DOM states above
+      // must still match exactly and a moved subject changes far more pixels.
+      assert.ok(difference.maxDelta <= 24 && difference.changed <= difference.total * .001, `${time}: ${JSON.stringify(difference)}`);
+    }
+    assert.equal(await page.evaluate(() => window.__timelines["yaas-motion"].duration()), 14);
+    await page.close();
+  });
+
+  test(`${orientation}: bounded object vocabulary renders real subjects safely and keeps labels in frame`, {skip: skipped}, async () => {
+    const symbols = ["concept", "census", "census-gap", "people", "mining", "solar", "battery", "circuit", "water", "plant", "network", "trade", "conflict", "document", "orbit", "building"];
+    const page = await openFixture(orientation, false, undefined, plan => {
+      plan.visual_direction = {version: 1, look: "studio", rhythm: "measured", rationale: "Bounded vocabulary coverage"};
+      plan.scenes = symbols.map((symbol, index) => ({
+        id: `subject-${symbol}`, section_id: String(index), template: "explain", graphics_version: 1,
+        start: index * 3, duration: 3, title: `Illustrating ${symbol.replaceAll("-", " ")}`, composition: "split",
+        items: [{label: `A qualitative ${symbol.replaceAll("-", " ")} explanation`, symbol}, {label: "Continue the explanation", symbol}],
+        beats: [{time: 0, action: "reveal", target: "item-0"}, {time: 2.9, action: "reveal", target: "item-1"}],
+      }));
+      plan.duration = symbols.length * 3; plan.captions = []; plan.words = [];
+      return plan;
+    });
+    for (let index = 0; index < symbols.length; index++) {
+      await seekForCapture(page, index * 3 + 1.5);
+      const bounds = await page.evaluate(index => {
+        const scene = document.getElementById(`scene-${index}`);
+        const item = scene.querySelector(".illustrated-item");
+        const label = item.querySelector(".object-label");
+        const range = document.createRange(); range.selectNodeContents(label);
+        const r = range.getBoundingClientRect(), container = scene.getBoundingClientRect();
+        return {inside: r.left >= container.left && r.right <= container.right && r.top >= container.top && r.bottom <= container.bottom,
+          actors: item.querySelectorAll("[data-actor]").length};
+      }, index);
+      assert.ok(bounds.inside && bounds.actors > 0, `${symbols[index]}: ${JSON.stringify(bounds)}`);
+      if (["solar", "plant", "network"].includes(symbols[index])) {
+        await page.screenshot({path: path.join(fixtureRoot, "screenshots", `object-${symbols[index]}-${orientation}.png`)});
+      }
+    }
+    assert.equal(await page.evaluate(() => window.__timelines["yaas-motion"].duration()), symbols.length * 3);
+    await page.close();
+  });
+
+  test(`${orientation}: object flows, comparisons and timelines fit two to six subjects`, {skip: skipped}, async () => {
+    const cases = ["flow", "comparison", "timeline"].flatMap(template => [2, 3, 6].map(count => ({template, count})));
+    const page = await openFixture(orientation, false, undefined, plan => {
+      plan.visual_direction = {version: 1, look: "blueprint", rhythm: "measured", rationale: "Diagram bounds"};
+      plan.scenes = cases.map(({template, count}, index) => ({
+        id: `diagram-${index}`, section_id: String(index), template, graphics_version: 1,
+        start: index * 3, duration: 3, title: "Trace the subjects through the explanation",
+        items: Array.from({length: count}, (_, item) => ({label: ["Sunlight reaches the solar panel", "Electrons move through the circuit", "The battery stores energy for later use", "Rain reaches the ground", "Water travels through plant roots", "Records travel through the network"][item], symbol: ["solar", "circuit", "battery", "water", "plant", "network"][item]})),
+        beats: Array.from({length: count}, (_, item) => ({time: item * .3, action: "reveal", target: `item-${item}`})),
+      }));
+      plan.duration = cases.length * 3; plan.captions = []; plan.words = [];
+      return plan;
+    });
+    const states = new Map();
+    for (let index = 0; index < cases.length; index++) {
+      await seekForCapture(page, index * 3 + 2.7);
+      const result = await page.evaluate(index => {
+        const scene = document.getElementById(`scene-${index}`);
+        const stage = scene.querySelector(".object-stage").getBoundingClientRect();
+        return [...scene.querySelectorAll(".object-label")].map(node => {
+          const range = document.createRange(); range.selectNodeContents(node);
+          const text = range.getBoundingClientRect();
+          return {text: node.textContent, fits: text.left >= stage.left - 1 && text.right <= stage.right + 1 && text.top >= stage.top - 1 && text.bottom <= stage.bottom + 1};
+        });
+      }, index);
+      assert.ok(result.every(row => row.fits), `${JSON.stringify(cases[index])}: ${JSON.stringify(result)}`);
+      states.set(index, await domState(page));
+    }
+    for (const index of [8, 0, 4, 2, 6, 1]) {
+      await seekForCapture(page, index * 3 + 2.7);
+      assert.deepEqual(await domState(page), states.get(index));
+    }
+    assert.equal(await page.evaluate(() => window.__timelines["yaas-motion"].duration()), cases.length * 3);
+    await page.close();
+  });
+
   test(`${orientation}: five art directions visibly differ and scene overrides survive reverse seeks`, {skip: skipped}, async () => {
     const looks = ["editorial", "blueprint", "studio", "botanical", "poster"];
     const page = await openFixture(orientation, false, undefined, plan => {

@@ -433,12 +433,16 @@
     timeline.fromTo(root, {attr: {"data-look": previousLook, "data-media": fullMedia(previous)}},
       {attr: {"data-look": context.look, "data-media": fullMedia(scene)}, duration: 0, immediateRender: false}, start);
     gsap.set(node, {opacity: 0});
-    timeline.fromTo(node, {opacity: 0}, {opacity: 1, duration: .00001, immediateRender: false}, start);
+    timeline.fromTo(node, {opacity: 0}, {opacity: 1, duration: context.objects ? 0 : .00001, immediateRender: false}, start);
     timeline.fromTo(node, {opacity: 1}, {opacity: 0, duration: .00001, immediateRender: false}, end - .00001);
     gsap.set(title, {y: lift, opacity: 0});
     const titleBeat = scene.beats.find(beat => beat.target === "title" && beat.action === "reveal");
     const titleAt = Math.min(end, start + (titleBeat ? titleBeat.time : .04));
     timeline.fromTo(title, {y: lift, opacity: 0}, {y: 0, opacity: 1, duration: Math.min(revealLength, remaining(titleAt)), ease: "power2.out", immediateRender: false}, titleAt);
+    if (context.objectAnimation) {
+      context.objectAnimation();
+      return;
+    }
     items.forEach((item, index) => {
       gsap.set(item.node, {opacity: 0, y: itemLift, scale: 1});
       const at = start + beatTime(context, index);
@@ -499,6 +503,8 @@
     const look = looks.has(scene.look) ? scene.look : planLook;
     const rhythm = rhythms.has(scene.rhythm) ? scene.rhythm : planRhythm;
     const composition = compositions.has(scene.composition) ? scene.composition : "default";
+    const objects = scene.graphics_version === 1 && !scene.image && !["footage", "chart"].includes(scene.template);
+    node.classList.toggle("object-scene", objects);
     node.classList.add(`composition-${composition}`);
     node.classList.toggle("dense-items", scene.items.length > 4);
     node.id = `scene-${index}`;
@@ -514,7 +520,7 @@
     const stage = element("div", "scene-visual");
     node.append(header, element("div", "scene-number", `${String(index + 1).padStart(2, "0")} / ${String(plan.scenes.length).padStart(2, "0")}`), stage);
     mount.append(node);
-    return {scene, index, node, header, title, stage, look, rhythm, composition, items: [], links: [], draws: [], width: visualWidth, height: portrait ? 970 : 400};
+    return {scene, index, node, header, title, stage, look, rhythm, composition, objects, items: [], links: [], draws: [], width: visualWidth, height: portrait ? 970 : 400};
   }
 
   function buildCaptions() {
@@ -620,16 +626,23 @@
     await Promise.all([...document.querySelectorAll("#media-bank img")].map(image => image.decode()));
     for (const context of scenes) {
       root.dataset.look = context.look;
-      if (!["text", "footage"].includes(context.scene.template)) {
-        const top = Math.max(portrait ? 560 : 390, context.header.offsetTop + context.header.offsetHeight + 38);
-        const bottom = portrait ? 1530 : 800;
+      if (context.objects) {
+        // Bound the new heading to two lines, leaving the stage to its subject.
+        let size = parseFloat(getComputedStyle(context.title).fontSize);
+        while (size > (portrait ? 48 : 42) && context.title.offsetHeight > size * 2.32) {
+          size -= 2; context.title.style.fontSize = `${size}px`;
+        }
+      }
+      if (context.objects || !["text", "footage"].includes(context.scene.template)) {
+        const top = Math.max(context.objects ? (portrait ? 410 : 300) : (portrait ? 560 : 390), context.header.offsetTop + context.header.offsetHeight + (context.objects ? 22 : 38));
+        const bottom = context.objects ? (portrait ? 1490 : 835) : (portrait ? 1530 : 800);
         context.stage.style.top = `${top}px`;
         context.height = Math.max(portrait ? 500 : 220, bottom - top);
         context.stage.style.height = `${context.height}px`;
       }
       if (context.scene.image && !["chart", "footage"].includes(context.scene.template)) picture(context);
-      builders[context.scene.template](context);
-      fitArrangedContent(context);
+      if (context.objects) window.YAASObjects.build(context, {portrait, timeline, beatTime});
+      else { builders[context.scene.template](context); fitArrangedContent(context); }
       animate(context);
     }
     buildCaptions();

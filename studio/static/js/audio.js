@@ -1,6 +1,7 @@
 /* Local audio imports and selections belong to the Settings form's profile. */
 let audioLibraryProfileId = null, audioLibraryAssets = [], audioLibraryLoadSerial = 0, audioImportPending = false;
 let reviewSoundMode = "auto";
+let reviewAudioCreditText = "";
 const AUDIO_CONTENT_ID = { unknown: "Content ID not checked", registered: "Content ID registered", not_registered: "Not registered, as listed by the source" };
 
 function setAudioTrackSelection(kind, value) {
@@ -74,7 +75,7 @@ async function loadAudioLibrary(profileId = settingsProfileId) {
     audioLibraryAssets = Array.isArray(data.assets) ? data.assets.filter(asset => asset && typeof asset.id === "string" && ["music", "sfx"].includes(asset.kind)) : [];
     renderAudioLibrary();
     message.textContent = audioLibraryAssets.length ? `${audioLibraryAssets.length} imported track${audioLibraryAssets.length === 1 ? "" : "s"}. Preview a track before choosing it above.`
-      : "No imported audio for this channel yet. Import a downloaded track above.";
+      : "No personal imports yet. Automatic sound design works without importing files; use the form above only to add your own tracks.";
   } catch (error) {
     if (serial !== audioLibraryLoadSerial || settingsProfileId !== profileId) return;
     message.classList.add("error"); message.textContent = `${error.message} Use Refresh library to try again.`;
@@ -86,7 +87,7 @@ function updateAudioSettingsControls() {
   $("#manual-audio-settings").hidden = mode !== "manual";
   $("#sound-intensity-field").hidden = mode !== "auto";
   $("#sound-direction-note").textContent = mode === "auto"
-    ? "Automatic uses the script and this channel's style to choose suitable music, ambience and timed effects. No track selection is required. Save these defaults, then use Review to regenerate an existing draft's sound."
+    ? "Automatic uses the story and this channel's style to select licensed music, ambience and effects from the included collection or online catalogue. No imports or track selection are required. Credits are added to the description. Save, then use Review to regenerate an existing draft's sound."
     : mode === "manual" ? "Choose exact tracks and levels below. Save Settings, then apply them from Review to keep your recorded voice and visuals."
       : "The Music step keeps narration and removes added music, ambience and effects. Save Settings, then apply this choice from Review to update an existing draft.";
   $("#audio-effect-mode-note").textContent = $("#s-sfx_mode").value === "ambience"
@@ -154,6 +155,16 @@ function audioTime(value) {
   return `${minutes}:${seconds}`;
 }
 
+function appliedSoundSummary(design) {
+  if (design.mode !== "auto") return typeof design.summary === "string" ? design.summary : "Soundtrack details";
+  const layers = [];
+  if (design.music && typeof design.music === "object") layers.push("music");
+  if (design.ambience && typeof design.ambience === "object") layers.push("ambience");
+  const count = Array.isArray(design.events) ? design.events.filter(event => event && typeof event === "object").length : 0;
+  if (count) layers.push(`${count} timed effect${count === 1 ? "" : "s"}`);
+  return layers.length ? `In this soundtrack: ${layers.join(" + ")}.` : "In this soundtrack: narration only. No added music or effects were applied.";
+}
+
 function renderReviewAudio(data, st) {
   const credits = data.audio_credits, design = data.sound_design, master = data.audio_master;
   reviewSoundMode = ["auto", "manual", "off"].includes(data.sound_preferences?.mode) ? data.sound_preferences.mode : "auto";
@@ -168,13 +179,21 @@ function renderReviewAudio(data, st) {
     if (Array.isArray(design.events)) details.push(...design.events.filter(event => event && typeof event === "object").slice(0, 100));
     const planner = design.planner && typeof design.planner === "object" ? design.planner : {};
     const plannerLabel = ["fallback", "local"].includes(planner.status) ? "Local editorial choices" : planner.status === "ai" || planner.status === "planned" ? "AI planned" : "";
-    sound.innerHTML = `${typeof design.summary === "string" ? `<p>${esc(design.summary)}</p>` : ""}${typeof design.intent === "string" && design.intent !== design.summary ? `<p class="hint">${esc(design.intent)}</p>` : ""}${plannerLabel || planner.provider ? `<p class="hint">${esc([plannerLabel, planner.provider].filter(Boolean).join(" · "))}</p>` : ""}`
-      + (details.length ? `<details class="more"><summary>Sound choices &amp; timing</summary><ul class="sound-cue-list">${details.map(event => {
+    const presence = design.mode === "auto" ? `<p class="hint">Music: ${design.music ? "applied" : "not applied"} · Ambience: ${design.ambience ? "applied" : "not applied"}</p>` : "";
+    sound.innerHTML = `<p class="applied-sound-summary">${esc(appliedSoundSummary(design))}</p>${presence}${plannerLabel || planner.provider ? `<p class="hint">${esc([plannerLabel, planner.provider].filter(Boolean).join(" · "))}</p>` : ""}`
+      + (details.length ? `<details class="more" open><summary>Applied recordings &amp; timing</summary><ul class="sound-cue-list">${details.map(event => {
         const start = audioTime(event.start), end = Number.isFinite(event.duration) && Number.isFinite(event.start) ? audioTime(event.start + event.duration) : "";
         return `<li>${start ? `<span class="mono">${esc(start)}${end ? `–${esc(end)}` : ""}</span> ` : ""}<b>${esc(event.label || event.title || event.asset?.title || "Sound effect")}</b>${typeof event.reason === "string" && event.reason ? `<p class="hint">${esc(event.reason)}</p>` : ""}</li>`;
       }).join("")}</ul></details>` : "");
+    if (typeof design.intent === "string" && design.intent) {
+      const proposal = document.createElement("details"); proposal.className = "more sound-proposal";
+      const title = document.createElement("summary"); title.textContent = "Agent's proposal before recordings were checked";
+      const note = document.createElement("p"); note.className = "hint";
+      note.textContent = `This is the proposed direction, not confirmation that every layer was applied. ${design.intent}`;
+      proposal.append(title, note); sound.append(proposal);
+    }
     if (Array.isArray(design.warnings)) {
-      for (const warning of design.warnings.filter(value => typeof value === "string").slice(0, 3)) {
+      for (const warning of [...new Set(design.warnings.filter(value => typeof value === "string"))].slice(0, 12)) {
         const note = document.createElement("p"); note.className = "hint"; note.textContent = warning; sound.append(note);
       }
     }
@@ -189,9 +208,13 @@ function renderReviewAudio(data, st) {
   const imported = Array.isArray(credits) ? credits.filter(asset => asset && ["music", "sfx"].includes(asset.kind)) : [];
   $("#review-audio-credits").innerHTML = imported.length ? imported.map(asset => {
     const source = audioSourceURL(asset.source_url), title = asset.title || asset.filename || "Imported audio";
+    const license = audioSourceURL(asset.license_url);
     const label = asset.kind === "music" ? "Music" : asset.mode === "ambience" ? "Ambience" : "Transition effect";
-    return `<div><span class="tag">${label}</span> ${source ? `<a class="link" href="${esc(source)}" target="_blank" rel="noopener">${esc(title)} ↗</a>` : esc(title)}${asset.creator ? `<span class="hint"> · ${esc(asset.creator)}</span>` : ""}</div>`;
+    return `<div><span class="tag">${label}</span> ${source ? `<a class="link" href="${esc(source)}" target="_blank" rel="noopener">${esc(title)} ↗</a>` : esc(title)}${asset.creator ? `<span class="hint"> · ${esc(asset.creator)}</span>` : ""}${asset.license ? `<span class="hint"> · ${license ? `<a class="link" href="${esc(license)}" target="_blank" rel="noopener">${esc(asset.license)}</a>` : esc(asset.license)}</span>` : ""}${asset.selection_source === "bundled_catalog" || asset.provider === "bundled" ? '<span class="hint"> · Included licensed recording</span>' : ""}</div>`;
   }).join("") : "";
+  reviewAudioCreditText = typeof data.audio_attribution_text === "string" ? data.audio_attribution_text : "";
+  $("#review-audio-attribution").hidden = !reviewAudioCreditText;
+  $("#audio-credit-text").value = reviewAudioCreditText;
   const classic = st.visual_mode === "classic";
   $("#apply-review-audio").hidden = classic;
   $("#apply-review-audio").textContent = reviewSoundAction();
@@ -199,6 +222,23 @@ function renderReviewAudio(data, st) {
     ? `Uses saved sound settings for ${profileName(reviewProfileId)}. To update this Classic video, clear the topic on Home and select only Music and Render under More options. Your recorded voice is reused.`
     : `Uses saved ${reviewSoundMode === "auto" ? "automatic" : reviewSoundMode} sound settings for ${profileName(reviewProfileId)}. Your script, recorded voice and storyboard stay the same. Save any Settings changes before applying them here.`;
 }
+
+$("#copy-audio-credits").onclick = async () => {
+  if (!reviewAudioCreditText) return;
+  try { await navigator.clipboard.writeText(reviewAudioCreditText); toast("Audio credits copied", "ok"); }
+  catch {
+    $("#review-audio-attribution").open = true;
+    $("#audio-credit-text").focus(); $("#audio-credit-text").select();
+    toast("Credits selected. Press Ctrl+C to copy.");
+  }
+};
+$("#download-audio-credits").onclick = () => {
+  if (!reviewAudioCreditText) return;
+  const url = URL.createObjectURL(new Blob([reviewAudioCreditText + "\n"], {type: "text/plain;charset=utf-8"}));
+  const link = document.createElement("a"); link.href = url; link.download = "audio-credits.txt";
+  document.body.append(link); link.click(); link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+};
 
 $("#review-audio-settings").onclick = async () => {
   if (status.running || status.visual_editing || status.uploading) return toast("Wait for the current job before changing audio settings.");

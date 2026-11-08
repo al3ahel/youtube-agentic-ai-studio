@@ -535,6 +535,11 @@ details.more > .more-body { margin-top: 14px; }
 .description-warning { color: var(--amber); }
 .review-audio-credits { display: flex; flex-wrap: wrap; gap: 8px 22px; margin-bottom: 10px; }
 .review-audio-credits > div { min-width: 0; max-width: 100%; }
+.audio-credit-export { margin: 14px 0; }
+.audio-credit-export > p { margin: 10px 0; }
+.audio-credit-export textarea { width: 100%; margin-bottom: 10px; line-height: 1.6; overflow-wrap: anywhere; }
+.sound-proposal { margin: 12px 0; }
+.sound-proposal p { margin: 10px 0; }
 @media (max-width: 700px) {
   .audio-settings-grid, .audio-source-grid, .audio-import-grid, .audio-effect-options, .audio-direction-grid { grid-template-columns: 1fr; gap: 12px; }
   #settings-audio .draft-actions .btn, #rv-audio .draft-actions .btn { white-space: normal; text-align: center; }

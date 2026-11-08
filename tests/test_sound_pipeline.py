@@ -48,6 +48,9 @@ def project(tmp_path, monkeypatch):
     output = tmp_path / "output"
     output.mkdir()
     monkeypatch.setattr(config, "OUTPUT_DIR", str(output))
+    # This fixture verifies the Commons transport path; bundled recordings have
+    # their own real-media regression, without fabricated transport responses.
+    monkeypatch.setattr(audio_sources, "_BUNDLED_ROOT", tmp_path / "no-bundled-catalog")
     monkeypatch.setattr(config, "IMAGES_DIR", str(output / "images"))
     monkeypatch.setattr(library, "LIB_DIR", str(output / "library"))
     monkeypatch.setattr(config, "VIDEO_WIDTH", 320)

@@ -112,7 +112,7 @@ async function loadReview({ preserveEdits = false, expectedPlanRevision = null, 
     const loaded = await loadStoryboard(st, { preserveEditor: preserveEdits, expectedPlanRevision, isCurrent: () => serial === reviewLoadSerial });
     if (serial !== reviewLoadSerial) return false;
     if (loaded === false) throw new Error("The storyboard could not be loaded. Try again.");
-    $("#legacy-motion-card").hidden = !st.has_audio || !st.has_script || (st.visual_mode !== "classic" && !storyboardUsesProjectPhotos());
+    updateRebuildControls(st);
     setReviewFeedback(warning ? "notice" : "", warning);
     return true;
   } catch (error) {
@@ -338,9 +338,23 @@ $("#upload-btn").onclick = async () => {
   tick();
 };
 
-async function rebuildReviewVisuals(useProjectPhotos) {
+function updateRebuildControls(st) {
+  const photos = st.visual_mode === "classic" || storyboardUsesProjectPhotos() || Number(st.photo_count) > 0;
+  const oldGraphics = st.visual_mode === "motion" && storyboardData?.plan?.scenes?.some(scene => scene.template !== "footage" && scene.graphics_version !== 1);
+  $("#legacy-motion-card").hidden = !st.has_audio || !st.has_script || !(photos || oldGraphics);
+  $("#animate-legacy").hidden = !photos;
+  $("#rebuild-motion-and-sound").hidden = !oldGraphics;
+  $("#rebuild-visuals-title").textContent = oldGraphics ? "Update this draft's animation" : "Rebuild this project's visuals";
+  $("#rebuild-visuals-note").textContent = oldGraphics
+    ? "This draft uses the earlier card-based scenes. Rebuild its scenes with illustrated motion while keeping the script and recorded voice. Animation + sound also reapplies this channel's saved sound direction. Existing scene designs are replaced."
+    : "Keep the saved script and recorded voice. Choose animated graphics or animate the existing pictures. YAAS reuses available captions for timing and labels any estimated timing.";
+}
+
+async function rebuildReviewVisuals(useProjectPhotos, includeSound = false) {
+  try { if (metaDirty()) await saveMeta(); }
+  catch (error) { return toast(error.message || "Save your description changes before rebuilding.", "err"); }
   const started = await startRun("", false, {
-    steps: ["visuals", "video"], visual_mode: "motion", preview_only: true,
+    steps: includeSound ? ["music", "visuals", "video"] : ["visuals", "video"], visual_mode: "motion", preview_only: true,
     use_project_photos: useProjectPhotos,
     video_type: reviewVideoType, profile_id: reviewProfileId || status.profile_id,
     expected_plan_revision: storyboardData?.plan_revision,
@@ -349,3 +363,4 @@ async function rebuildReviewVisuals(useProjectPhotos) {
 }
 $("#animate-legacy").onclick = () => rebuildReviewVisuals(true);
 $("#rebuild-motion-graphics").onclick = () => rebuildReviewVisuals(false);
+$("#rebuild-motion-and-sound").onclick = () => rebuildReviewVisuals(false, true);

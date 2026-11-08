@@ -6,8 +6,6 @@
   <title>@@TITLE@@</title>
   <link rel="stylesheet" href="vendor/fonts.css">
   <link rel="stylesheet" href="scene.css">
-  <script src="vendor/gsap.min.js" defer></script>
-  <script src="scene.js" defer></script>
 </head>
 <body>
   <div id="composition" data-composition-id="yaas-motion" data-start="0"
@@ -33,6 +31,10 @@
         </footer>
       </main>
       <div id="media-bank">@@MEDIA@@</div>
+      <script type="application/json" id="scene-plan">@@PLAN@@</script>
+      <script src="vendor/gsap.min.js" defer></script>
+      <script src="objects.js" defer></script>
+      <script src="scene.js" defer></script>
   </div>
   <div id="preview-shell" aria-hidden="true"></div>
   <nav id="preview-controls" aria-label="Video preview controls" hidden>
@@ -42,6 +44,5 @@
     <output id="preview-time">00:00</output>
     <span id="preview-status" role="status"></span>
   </nav>
-  <script type="application/json" id="scene-plan">@@PLAN@@</script>
 </body>
 </html>

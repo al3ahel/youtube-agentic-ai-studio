@@ -1,0 +1,150 @@
+{
+  "version": 1,
+  "assets": [
+    {
+      "kind": "music",
+      "family": "ambient_music",
+      "title": "Cylinder Five — 45-second excerpt",
+      "creator": "Chris Zabriskie",
+      "source_url": "https://chriszabriskie.com/cylinders/",
+      "download_url": "https://raw.githubusercontent.com/ManuelR-T/paperplay/1195c8d6bd3c545ee1ac5ffd1262c74e984eaf05/demo-video/public/audio/cylinder-five.m4a",
+      "provider_id": "chris-zabriskie/cylinder-five/45s-v1",
+      "tags": [
+        "ambient",
+        "instrumental",
+        "electronic",
+        "flowing",
+        "documentary"
+      ],
+      "attribution": "\"Cylinder Five\" by Chris Zabriskie, from Cylinders (2014), © 2014 Chris Zabriskie. https://chriszabriskie.com/cylinders/ — Licensed under Creative Commons Attribution 4.0: https://creativecommons.org/licenses/by/4.0/ Excerpted, crossfaded into a loop, level reduced and transcoded for this video. No endorsement is implied.",
+      "changes": "Excerpted source seconds 12–58; a 1-second linear head/tail crossfade makes a 45-second loop. Level reduced by 3 dB; resampled to 48 kHz stereo and encoded as Ogg Vorbis quality 4.",
+      "original_git_blob_sha": "b5ecaaf6e065dad785d074017791c1d393e24996",
+      "license_evidence": [
+        "https://chriszabriskie.com/use/",
+        "https://chriszabriskie.bandcamp.com/track/cylinder-five"
+      ],
+      "retrieval_note": "The original publisher states CC BY 4.0 for this recording. These source bytes were retrieved from the pinned redistribution URL because direct publisher HTTP was unavailable in the build environment; original_sha256 identifies those exact pre-edit bytes.",
+      "id": "beabc871053c615f6f3c5e4b3660f0d1",
+      "filename": "music/cylinder-five-45s.ogg",
+      "sha256": "1988826849f18012f116950234ec906c31c17e8156ec09394197682743f95c0d",
+      "bytes": 486690,
+      "duration": 45.0,
+      "original_sha256": "6bfc484b9c8e60a2b162112086224ce052e97265f77de540d3a5587c9eff54a1",
+      "license": "CC BY 4.0",
+      "license_url": "https://creativecommons.org/licenses/by/4.0/",
+      "provider": "bundled",
+      "content_id": "unknown",
+      "verified_on": "2026-11-08",
+      "publisher_download_url": "https://audio.chriszabriskie.com/cylinders/cylinders-05.m4a",
+      "mirror_provenance_url": "https://github.com/ManuelR-T/paperplay/blob/1195c8d6bd3c545ee1ac5ffd1262c74e984eaf05/demo-video/public/audio/CREDITS.md"
+    },
+    {
+      "kind": "music",
+      "family": "ambient_music",
+      "title": "Cylinder One — 45-second excerpt",
+      "creator": "Chris Zabriskie",
+      "source_url": "https://chriszabriskie.com/cylinders/",
+      "download_url": "https://raw.githubusercontent.com/psyinf/berserker_assets/f682f9bface246c4e20d28c1f1b14e7b7b8bb3af/sound/music/Chris%20Zabriskie%20-%20Cylinders/Chris%20Zabriskie%20-%20Cylinders%20-%2001%20Cylinder%20One.mp3",
+      "provider_id": "chris-zabriskie/cylinder-one/45s-v1",
+      "tags": [
+        "ambient",
+        "instrumental",
+        "electronic",
+        "calm",
+        "minimal",
+        "slow",
+        "sparse",
+        "documentary"
+      ],
+      "attribution": "\"Cylinder One\" by Chris Zabriskie, from Cylinders (2014), © 2014 Chris Zabriskie. https://chriszabriskie.com/cylinders/ — Licensed under Creative Commons Attribution 4.0: https://creativecommons.org/licenses/by/4.0/ Excerpted, crossfaded into a loop, level reduced and transcoded for this video. No endorsement is implied.",
+      "changes": "Excerpted source seconds 12–58; a 1-second linear head/tail crossfade makes a 45-second loop. Level reduced by 3 dB; resampled to 48 kHz stereo and encoded as Ogg Vorbis quality 4.",
+      "original_git_blob_sha": "c8a3a330fbd50f0f63cf4b5560da208343a8f441",
+      "license_evidence": [
+        "https://chriszabriskie.com/use/",
+        "https://chriszabriskie.bandcamp.com/track/cylinder-one"
+      ],
+      "retrieval_note": "The original publisher states CC BY 4.0 for this recording. These source bytes were retrieved from the pinned redistribution URL because direct publisher HTTP was unavailable in the build environment; original_sha256 identifies those exact pre-edit bytes.",
+      "id": "3e9de70c80ce06d5a3a1218d157c1c2d",
+      "filename": "music/cylinder-one-45s.ogg",
+      "sha256": "6d533867d180381fab2f7583d90db46bc7dc06b5a5cf4f25251e681c450fe9cc",
+      "bytes": 537411,
+      "duration": 45.0,
+      "original_sha256": "75fc66b45b0934aeff6fe2d7d01b8826a5c6045824570982b491e65ce0d3b3b7",
+      "license": "CC BY 4.0",
+      "license_url": "https://creativecommons.org/licenses/by/4.0/",
+      "provider": "bundled",
+      "content_id": "unknown",
+      "verified_on": "2026-11-08"
+    },
+    {
+      "kind": "sfx",
+      "family": "paper_turn",
+      "title": "Book page turn — excerpt",
+      "creator": "Oculus VR, LLC",
+      "source_url": "https://github.com/facebookincubator/Meta-open-sound/blob/251c0be57d5d1b3242b91f53e0cde62ab1cb42d9/corpora/oculus-audio-pack/index/PAPR.json",
+      "download_url": "https://raw.githubusercontent.com/facebookincubator/Meta-open-sound/251c0be57d5d1b3242b91f53e0cde62ab1cb42d9/corpora/oculus-audio-pack/ogg/PAPRHndl_BookPageTurns_OS_01.ogg",
+      "provider_id": "oculus-audio-pack/PAPRHndl_BookPageTurns_OS_01/excerpt-v1",
+      "tags": [
+        "paper",
+        "page",
+        "book",
+        "turn",
+        "flip",
+        "rustle"
+      ],
+      "attribution": "\"Oculus Audio Pack 01\" by Oculus VR, LLC (https://developers.meta.com/vr/downloads/package/oculus-audio-pack-1/), licensed under CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/). Files renamed to the UCS naming convention; OGG previews transcoded from the original WAVs. Book page-turn recording excerpted from 0.10 to 1.85 seconds, with short edge fades and Ogg re-encoding.",
+      "changes": "Excerpted source seconds 0.10–1.85, added a 5 ms opening fade and 20 ms closing fade, and re-encoded as mono 48 kHz Ogg Vorbis quality 4.",
+      "original_git_blob_sha": "6d1b1cc552c7e0e79006c6aaefcf5d406b13ba00",
+      "license_evidence": [
+        "https://github.com/facebookincubator/Meta-open-sound/blob/251c0be57d5d1b3242b91f53e0cde62ab1cb42d9/corpora/oculus-audio-pack/LICENSE",
+        "https://github.com/facebookincubator/Meta-open-sound/blob/251c0be57d5d1b3242b91f53e0cde62ab1cb42d9/corpora/oculus-audio-pack/ATTRIBUTION.md"
+      ],
+      "id": "66228d0bbba49b68ee6a66b52af40fbc",
+      "filename": "sfx/book-page-turn.ogg",
+      "sha256": "e5860afcf2bdedb824aba1aafed92b699b67459979cee69dd87c2c5e6d3695b6",
+      "bytes": 21961,
+      "duration": 1.740667,
+      "original_sha256": "5fb5bdd48b9544728fa7599e1c3f9ead148fee2bc1a8f4e541c2baf06c842cd1",
+      "license": "CC BY 4.0",
+      "license_url": "https://creativecommons.org/licenses/by/4.0/",
+      "provider": "bundled",
+      "content_id": "unknown",
+      "verified_on": "2026-11-08"
+    },
+    {
+      "kind": "sfx",
+      "family": "whoosh",
+      "title": "Small whoosh",
+      "creator": "Oculus VR, LLC",
+      "source_url": "https://github.com/facebookincubator/Meta-open-sound/blob/251c0be57d5d1b3242b91f53e0cde62ab1cb42d9/corpora/oculus-audio-pack/index/WHSH.json",
+      "download_url": "https://raw.githubusercontent.com/facebookincubator/Meta-open-sound/251c0be57d5d1b3242b91f53e0cde62ab1cb42d9/corpora/oculus-audio-pack/ogg/WHSH_WhooshSmall_OS_01.ogg",
+      "provider_id": "oculus-audio-pack/WHSH_WhooshSmall_OS_01/v1",
+      "tags": [
+        "whoosh",
+        "swish",
+        "short",
+        "small",
+        "subtle",
+        "transition"
+      ],
+      "attribution": "\"Oculus Audio Pack 01\" by Oculus VR, LLC (https://developers.meta.com/vr/downloads/package/oculus-audio-pack-1/), licensed under CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/). Files renamed to the UCS naming convention; OGG previews transcoded from the original WAVs. Small-whoosh OGG copied without further audio changes; level and timing may be adjusted in the finished soundtrack.",
+      "changes": "No audio changes to the upstream Ogg preview; only the local filename changed.",
+      "original_git_blob_sha": "fc831db894c08fb5d543759da1d4c4e0b1101679",
+      "license_evidence": [
+        "https://github.com/facebookincubator/Meta-open-sound/blob/251c0be57d5d1b3242b91f53e0cde62ab1cb42d9/corpora/oculus-audio-pack/LICENSE",
+        "https://github.com/facebookincubator/Meta-open-sound/blob/251c0be57d5d1b3242b91f53e0cde62ab1cb42d9/corpora/oculus-audio-pack/ATTRIBUTION.md"
+      ],
+      "id": "17fca0f5d114dea6f970a2f6c233fc45",
+      "filename": "sfx/small-whoosh.ogg",
+      "sha256": "606f8d0b2b022f1470466e250613bd067ccff7697d58a2518661d1e5eaa8f153",
+      "bytes": 6221,
+      "duration": 0.189333,
+      "original_sha256": "606f8d0b2b022f1470466e250613bd067ccff7697d58a2518661d1e5eaa8f153",
+      "license": "CC BY 4.0",
+      "license_url": "https://creativecommons.org/licenses/by/4.0/",
+      "provider": "bundled",
+      "content_id": "unknown",
+      "verified_on": "2026-11-08"
+    }
+  ]
+}

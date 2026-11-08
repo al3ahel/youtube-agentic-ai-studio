@@ -1,0 +1,161 @@
+{
+  "version": 1,
+  "samples": [
+    {
+      "purpose": "Illustrated graphics and licensed audio listening sample; no narration",
+      "clock": "Authored phrase cues; not measured speech alignment",
+      "duration": 14,
+      "fps": 12,
+      "music": "Cylinder One \u2014 45-second excerpt",
+      "events": [
+        {
+          "title": "Book page turn \u2014 excerpt",
+          "start": 3.5
+        },
+        {
+          "title": "Small whoosh",
+          "start": 7.0
+        }
+      ],
+      "mix": "Music-only demo ratios: bed 0.35, calibrated effects 0.75; production voice ratios differ",
+      "mastering": {
+        "version": 1,
+        "status": "target_shortfall",
+        "preset": "general",
+        "normalization": "constant_gain",
+        "target_lufs": -16.0,
+        "true_peak_limit_dbtp": -1.5,
+        "max_boost_db": 9.0,
+        "duration": 14.0,
+        "sample_rate": 48000,
+        "input_lufs": -30.9,
+        "input_true_peak_dbtp": -8.74,
+        "output_lufs": -23.73,
+        "output_true_peak_dbtp": -1.6,
+        "applied_gain_db": 7.14,
+        "warnings": [
+          "Kept the soundtrack dynamics and peak headroom; finished at -23.7 LUFS instead of forcing -16 LUFS."
+        ],
+        "limited_by": [
+          "boost_limit",
+          "true_peak_headroom"
+        ]
+      },
+      "sha256": "e7721206f29140e43bc2ff41d25fda2a3690de2d9b325a091d22ba1c556976c7",
+      "file": "illustrated-motion-landscape.mp4",
+      "bytes": 450663,
+      "media": {
+        "programs": [],
+        "streams": [
+          {
+            "codec_name": "h264",
+            "codec_type": "video",
+            "width": 640,
+            "height": 360,
+            "r_frame_rate": "12/1",
+            "duration": "14.000000",
+            "nb_read_frames": "168"
+          },
+          {
+            "codec_name": "aac",
+            "codec_type": "audio",
+            "r_frame_rate": "0/0",
+            "duration": "14.000000",
+            "nb_read_frames": "657"
+          }
+        ],
+        "format": {
+          "duration": "14.000000"
+        }
+      },
+      "decoded_video_hash": "SHA256=fd098e675ffad45b0981fd2cefc9d79b799c42d997862bc97ff9ac51594032da",
+      "soundtrack_measurement": {
+        "lufs": -23.71,
+        "true_peak": -1.9,
+        "range": 15.1
+      },
+      "decoded_audio_frames": 672000,
+      "decoded_audio_channels": 2,
+      "rms": 0.04094623781219255,
+      "sample_peak": 0.7803151607513428
+    },
+    {
+      "purpose": "Illustrated graphics and licensed audio listening sample; no narration",
+      "clock": "Authored phrase cues; not measured speech alignment",
+      "duration": 14,
+      "fps": 12,
+      "music": "Cylinder One \u2014 45-second excerpt",
+      "events": [
+        {
+          "title": "Book page turn \u2014 excerpt",
+          "start": 3.5
+        },
+        {
+          "title": "Small whoosh",
+          "start": 7.0
+        }
+      ],
+      "mix": "Music-only demo ratios: bed 0.35, calibrated effects 0.75; production voice ratios differ",
+      "mastering": {
+        "version": 1,
+        "status": "target_shortfall",
+        "preset": "general",
+        "normalization": "constant_gain",
+        "target_lufs": -16.0,
+        "true_peak_limit_dbtp": -1.5,
+        "max_boost_db": 9.0,
+        "duration": 14.0,
+        "sample_rate": 48000,
+        "input_lufs": -30.9,
+        "input_true_peak_dbtp": -8.74,
+        "output_lufs": -23.73,
+        "output_true_peak_dbtp": -1.6,
+        "applied_gain_db": 7.14,
+        "warnings": [
+          "Kept the soundtrack dynamics and peak headroom; finished at -23.7 LUFS instead of forcing -16 LUFS."
+        ],
+        "limited_by": [
+          "boost_limit",
+          "true_peak_headroom"
+        ]
+      },
+      "sha256": "a260d824ee8da69f849ed4df71a4fb35cf185a8c8d379cc530534ace6d56a6d5",
+      "file": "illustrated-motion-portrait.mp4",
+      "bytes": 463240,
+      "media": {
+        "programs": [],
+        "streams": [
+          {
+            "codec_name": "h264",
+            "codec_type": "video",
+            "width": 360,
+            "height": 640,
+            "r_frame_rate": "12/1",
+            "duration": "14.000000",
+            "nb_read_frames": "168"
+          },
+          {
+            "codec_name": "aac",
+            "codec_type": "audio",
+            "r_frame_rate": "0/0",
+            "duration": "14.000000",
+            "nb_read_frames": "657"
+          }
+        ],
+        "format": {
+          "duration": "14.000000"
+        }
+      },
+      "decoded_video_hash": "SHA256=c05998b4a6d0acf0e012f17b6095c9b8f0731a22779aace20695a82798419167",
+      "soundtrack_measurement": {
+        "lufs": -23.71,
+        "true_peak": -1.9,
+        "range": 15.1
+      },
+      "decoded_audio_frames": 672000,
+      "decoded_audio_channels": 2,
+      "rms": 0.04094623781219255,
+      "sample_peak": 0.7803151607513428
+    }
+  ]
+}

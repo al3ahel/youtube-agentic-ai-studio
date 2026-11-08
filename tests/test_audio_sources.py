@@ -29,6 +29,9 @@ def isolated_audio(tmp_path, monkeypatch):
     state.update(fresh_project_state())
     monkeypatch.setattr(config, "OUTPUT_DIR", str(tmp_path / "output"))
     monkeypatch.setattr(library, "LIB_DIR", str(tmp_path / "output" / "library"))
+    # These transport/parser tests exercise Commons, independently of the
+    # separately verified offline licensed collection.
+    monkeypatch.setattr(audio_sources, "_BUNDLED_ROOT", tmp_path / "no-bundled-catalog")
     monkeypatch.setattr(audio_sources, "_public_address", lambda *args: pytest.fail("Unmocked catalogue network access"))
     yield
     state.clear()
@@ -346,7 +349,8 @@ def test_malformed_catalogue_structure_is_a_safe_empty_candidate_list(payload):
 
 
 def test_candidate_download_attempts_are_bounded(monkeypatch):
-    candidates = audio_sources._candidates(_payload(), "sfx") * 6
+    candidate = audio_sources._candidates(_payload(), "sfx")[0]
+    candidates = [{**candidate, "provider_id": str(index)} for index in range(6)]
     monkeypatch.setattr(audio_sources, "_search", lambda *args: candidates)
     attempts = []
     def failed_download(candidate, path, *args):
@@ -439,7 +443,7 @@ def test_single_broadening_removes_only_known_filler_and_preserves_the_subject(q
     assert audio_sources._broader_query(query, kind) == expected
 
 
-def test_one_empty_search_broadens_music_then_caches_the_original_intent(monkeypatch):
+def test_one_empty_search_uses_same_genre_variant_then_caches_the_original_intent(monkeypatch):
     searches, downloads = [], []
     @contextmanager
     def response(url, **kwargs):
@@ -453,10 +457,10 @@ def test_one_empty_search_broadens_music_then_caches_the_original_intent(monkeyp
     monkeypatch.setattr(audio_sources, "_response", response)
     monkeypatch.setattr(audio_library, "_probe_audio", lambda path: .1)
     options = {"kind": "music", "profile_id": "default", "mood": "subtle"}
-    query = "gentle instrumental background music"
+    query = "calm ambient instrumental music without vocals, low tempo, suitable for documentary narration"
     asset = audio_sources.acquire_audio(query, **options)
     assert asset is not None and asset["title"] == "Quiet piano"
-    assert searches == ["gentle instrumental background music subtle filetype:audio", "instrumental music filetype:audio"]
+    assert searches == ["ambient instrumental music filetype:audio", "ambient music filetype:audio"]
     assert len(downloads) == 1
     assert audio_sources.acquire_audio(query, **options) == asset
     assert len(searches) == 2 and len(downloads) == 1
@@ -484,7 +488,8 @@ def test_transport_failure_does_not_trigger_a_broader_query(monkeypatch):
 
 
 def test_broadened_search_shares_deadline_and_total_download_budget(monkeypatch):
-    candidates = audio_sources._candidates(_payload(), "sfx") * 8
+    candidate = audio_sources._candidates(_payload(), "sfx")[0]
+    candidates = [{**candidate, "provider_id": str(index)} for index in range(8)]
     searches, downloads = [], []
     def search(query, kind, stop_event, deadline):
         searches.append((query, deadline))
@@ -494,9 +499,9 @@ def test_broadened_search_shares_deadline_and_total_download_budget(monkeypatch)
         raise audio_sources.AudioSourceError("unusable_audio", "Unusable recording; omitted.")
     monkeypatch.setattr(audio_sources, "_search", search)
     monkeypatch.setattr(audio_sources, "_download", download)
-    assert audio_sources.acquire_audio("gentle rain ambient recording", kind="sfx",
+    assert audio_sources.acquire_audio("soft paper turn transition sound", kind="sfx",
                                       profile_id="default", mood="calm") is None
-    assert [row[0] for row in searches] == ["gentle rain ambient recording calm", "rain"]
+    assert [row[0] for row in searches] == ["paper turn", "page turn", "paper rustle"]
     assert len(downloads) == audio_sources.MAX_DOWNLOADS
     assert len({row[1] for row in searches} | set(downloads)) == 1
     assert not _cached_files()
@@ -528,5 +533,50 @@ def test_music_cached_before_suitability_checks_is_not_reused(monkeypatch):
     searches = []
     monkeypatch.setattr(audio_sources, "_search", lambda query, *args: searches.append(query) or [])
     assert audio_sources.acquire_audio(query, **options) is None
-    assert searches == ["gentle instrumental background music subtle", "instrumental music"]
+    assert searches == ["instrumental music"]
     assert audio_sources.get_status()["reason"] == "no_licensed_match"
+
+
+@pytest.mark.parametrize("query,kind,expected", [
+    ("calm ambient instrumental music without vocals, low tempo, suitable for documentary narration", "music",
+     ["ambient instrumental music", "ambient music"]),
+    ("gentle instrumental piano music without vocals or speech", "music", ["instrumental piano music", "piano music"]),
+    ("soft paper turn sound effect", "sfx", ["paper turn", "page turn", "paper rustle"]),
+    ("small quiet whoosh for narration", "sfx", ["small whoosh", "small swish"]),
+    ("gentle swoosh for a scene transition", "sfx", ["whoosh", "swish"]),
+    ("soft footsteps on gravel sound effect", "sfx", ["footsteps on gravel"]),
+    ("gentle rain without thunder recording", "sfx", ["rain without thunder"]),
+    ("fast energetic guitar music", "music", ["fast energetic guitar music"]),
+])
+def test_literal_queries_preserve_subject_and_do_not_search_usage_or_vocal_exclusions(query, kind, expected):
+    assert audio_sources._search_queries(query, kind) == expected
+
+
+def test_next_literal_query_is_tried_after_licensed_candidate_has_unsuitable_duration(monkeypatch):
+    first = audio_sources._candidates(_payload(), "sfx")[0]
+    second = {**first, "provider_id": "456", "title": "Turning a page"}
+    searches, downloads = [], []
+    def search(query, *args):
+        searches.append(query)
+        return [first] if query == "paper turn" else [second]
+    def download(candidate, path, *args):
+        downloads.append(candidate["provider_id"])
+        path.write_bytes(_wav())
+    monkeypatch.setattr(audio_sources, "_search", search)
+    monkeypatch.setattr(audio_sources, "_download", download)
+    monkeypatch.setattr(audio_library, "_probe_audio", lambda path: .01 if len(downloads) == 1 else .1)
+    asset = audio_sources.acquire_audio("soft paper turn", kind="sfx", profile_id="default", min_duration=.05)
+    assert asset["provider_id"] == "456"
+    assert searches == ["paper turn", "page turn"] and downloads == ["123", "456"]
+
+
+def test_repeated_catalogue_candidate_is_not_downloaded_again_for_every_query(monkeypatch):
+    candidate = audio_sources._candidates(_payload(), "sfx")[0]
+    searches, downloads = [], []
+    monkeypatch.setattr(audio_sources, "_search", lambda query, *args: searches.append(query) or [candidate] * 4)
+    def download(candidate, *args):
+        downloads.append(candidate["provider_id"])
+        raise audio_sources.AudioSourceError("unusable_audio", "Unusable sound")
+    monkeypatch.setattr(audio_sources, "_download", download)
+    assert audio_sources.acquire_audio("soft paper turn", kind="sfx", profile_id="default") is None
+    assert searches == ["paper turn", "page turn", "paper rustle"] and downloads == ["123"]

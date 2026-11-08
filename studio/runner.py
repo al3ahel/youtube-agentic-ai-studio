@@ -216,7 +216,7 @@ def _prepare_project_audio(narration_path, timeline, output, profile_id):
             from video.music import mix_music_with_narration
             asset, layer = resolved["music"], design["music"]
             final_audio = mix_music_with_narration(narration_path, str(output / "narration_mixed.wav"),
-                music_volume=layer["volume"], track_path=asset["path"], stop_event=stop_event)
+                music_volume=layer["volume"], track_path=asset["path"], stop_event=stop_event, auto_level=True)
             if Path(final_audio).resolve() != Path(narration_path).resolve():
                 credits.append({**public_asset(asset), "volume": layer["volume"], "mode": "bed"})
             else:
@@ -227,7 +227,7 @@ def _prepare_project_audio(narration_path, timeline, output, profile_id):
             asset, layer = resolved["ambience"], design["ambience"]
             previous = final_audio
             final_audio = mix_sound_effects(narration_path, str(output / "narration_ambience.wav"), asset["path"],
-                soundtrack_path=previous, mode="ambience", effect_volume=layer["volume"], stop_event=stop_event)
+                soundtrack_path=previous, mode="ambience", effect_volume=layer["volume"], stop_event=stop_event, auto_level=True)
             if Path(final_audio).resolve() != Path(previous).resolve():
                 credits.append({**public_asset(asset), "volume": layer["volume"], "mode": "ambience"})
             else:
@@ -238,7 +238,7 @@ def _prepare_project_audio(narration_path, timeline, output, profile_id):
             previous = final_audio
             final_audio = mix_sound_events(narration_path, str(output / "narration_effects.wav"),
                 [{key: value for key, value in event.items() if key != "asset"} for event in resolved["events"]],
-                soundtrack_path=previous, stop_event=stop_event)
+                soundtrack_path=previous, stop_event=stop_event, auto_level=True)
             if Path(final_audio).resolve() != Path(previous).resolve():
                 seen = set()
                 for event in resolved["events"]:

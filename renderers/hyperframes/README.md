@@ -25,6 +25,12 @@ Use the path that actually exists on your computer. Node, FFmpeg, browser and
 filesystem permissions are checked separately; administrator mode is not a
 normal setup requirement. `npm run doctor` invokes HyperFrames diagnostics.
 
+The pinned HyperFrames compiler may also try to cache supplemental fallback font
+faces on its first `check` or render. This can delay a cold first encode when that
+network is unavailable. YAAS's prepared composition uses copied local font files;
+the isolated browser preview does not fetch remote fonts or media. Compiler font
+discovery and the preview's network boundary are separate behaviors.
+
 ## Offline smoke video
 
 Run in the project's Python environment from the repository root:
@@ -65,7 +71,7 @@ video_path = render_motion_video(
 ```
 
 `prepare_motion_project` returns `output_dir/motion/index.html` and writes
-`project.json`, `scene.js`, `scene.css`, `preview.js`, local GSAP, Inter font files
+`project.json`, `scene.js`, `objects.js`, `scene.css`, `preview.js`, local GSAP, Inter font files
 and copied media. It does not mutate the input plan. Text is inserted with
 `textContent`; the embedded JSON escapes HTML delimiters. No remote asset URL is
 loaded by the composition. Footage must already exist under the job directory
@@ -75,6 +81,18 @@ Templates: `flow`, `comparison`, `timeline`, `chart`, `explain`, `text`, `footag
 Both 16:9 and 9:16 use dedicated layouts. The chart template requires a supplied
 finite numeric value on every item. It does not infer numbers from narration.
 The caller remains responsible for grounding those supplied values in evidence.
+
+Scenes with `graphics_version: 1` use the bounded qualitative illustrated subjects
+in `objects.js`. An item `symbol` is selected from a fixed enum and must be grounded
+by the director in the section's narration. Actors, progressive paths and labels
+use the same paused timeline, including arbitrary reverse seeks. Missing versions
+retain legacy card layouts; charts and footage keep their existing semantics.
+
+For the separate 14-second illustrated example, run `objects_demo.py` in both
+orientations, then `objects_sound_demo.py --input <output-directory>` to add real
+licensed recordings. The example has authored phrase cues and no narration; its
+listening balance is explicitly separate from production speech-mix ratios. See
+[sample reproduction and credits](../../docs/samples/README.md).
 
 Each scene supports up to six items. Beat times are scene-local seconds. Targets
 are `title`, `scene`/`all`, and `item-0` through `item-5`; explicit item IDs and

@@ -2,7 +2,7 @@
 const KEYS = [
   ["gemini_key", "Google Gemini", "Writing through a Gemini free-tier account; quota and regional availability apply.", "https://aistudio.google.com/apikey"],
   ["pexels_key", "Pexels", "High-quality stock photos for your scenes.", "https://www.pexels.com/api/"],
-  ["pixabay_key", "Pixabay", "Even more stock photos.", "https://pixabay.com/api/docs/"],
+  ["pixabay_key", "Pixabay", "Stock photos. This key does not provide music or sound effects; Automatic sound uses its own licensed collection and catalogue.", "https://pixabay.com/api/docs/"],
   ["groq_key", "Groq", "A free-tier account for writing and fallback within its quota.", "https://console.groq.com/keys"],
   ["openrouter_key", "OpenRouter", "Free models for writing, scene planning and optional visual review. Availability changes.", "https://openrouter.ai/keys"],
   ["youtube_key", "YouTube Data API", "Shows your subscribers and views on Home.", "https://console.cloud.google.com/apis/library/youtube.googleapis.com"],

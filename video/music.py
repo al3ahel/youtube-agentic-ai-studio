@@ -25,7 +25,7 @@ def _get_library_tracks(library_dir):
     return tracks
 
 
-def _run(command, stop_event=None):
+def _run(command, stop_event=None, *, capture=False):
     with tempfile.TemporaryFile() as errors:
         process = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=errors)
         deadline = time.monotonic() + 600
@@ -42,6 +42,10 @@ def _run(command, stop_event=None):
             if process.returncode:
                 errors.seek(0)
                 raise RuntimeError(errors.read(2000).decode("utf-8", "replace"))
+            if capture:
+                errors.seek(0, os.SEEK_END)
+                errors.seek(max(0, errors.tell() - 65536))
+                return errors.read(65536).decode("utf-8", "replace")
         finally:
             if process.poll() is None:
                 process.kill()
@@ -49,7 +53,7 @@ def _run(command, stop_event=None):
 
 
 def mix_music_with_narration(narration_path, output_path, music_volume=.08,
-                              library_dir="", stop_event=None, *, track_path=None):
+                              library_dir="", stop_event=None, *, track_path=None, auto_level=False):
     """Return a mixed soundtrack, or the original speech if music is unavailable."""
     if stop_event is not None and stop_event.is_set():
         raise InterruptedError("Stopped before mixing audio")
@@ -85,6 +89,12 @@ def mix_music_with_narration(narration_path, output_path, music_volume=.08,
         track = None
         for candidate in tracks[:12]:
             try:
+                if auto_level:
+                    from video.audio_levels import prepare_automatic_audio
+                    prepared = Path(work) / "calibrated-music.wav"
+                    prepare_automatic_audio(candidate, narration, prepared, stop_event=stop_event,
+                                            duration_limit=min(600, duration))
+                    candidate = str(prepared)
                 length = min(probe_duration(candidate), duration)
                 if length <= .1:
                     continue
@@ -103,11 +113,13 @@ def mix_music_with_narration(narration_path, output_path, music_volume=.08,
             print("   → No readable music track; preserving original narration.")
             return str(narration)
         fade_in, fade_out = min(1.5, duration / 5), min(2.5, duration / 5)
+        ducking = ("sidechaincompress=threshold=0.04:ratio=2:attack=30:release=300:mix=0.65"
+                   if auto_level else "sidechaincompress=threshold=0.02:ratio=6:attack=30:release=450")
         graph = (
             "[0:a]aresample=48000,asplit=2[voice][control];"
             f"[1:a]aresample=48000,volume={music_volume:.6f},"
             f"afade=t=in:d={fade_in:.6f},afade=t=out:st={duration-fade_out:.6f}:d={fade_out:.6f}[bed];"
-            "[bed][control]sidechaincompress=threshold=0.02:ratio=6:attack=30:release=450[ducked];"
+            f"[bed][control]{ducking}[ducked];"
             "[voice][ducked]amix=inputs=2:duration=first:normalize=0,"
             f"alimiter=limit=0.95:level=0:latency=1,apad,atrim=duration={duration:.9f},asetpts=PTS-STARTPTS[out]"
         )

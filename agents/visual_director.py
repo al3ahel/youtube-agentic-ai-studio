@@ -19,7 +19,7 @@ from urllib.parse import urlsplit
 
 import config
 from apis import openrouter, stock_video
-from agents import art_direction
+from agents import art_direction, object_direction
 
 TEMPLATES = frozenset({"flow", "comparison", "timeline", "chart", "explain", "text", "footage"})
 ACTIONS = frozenset({"reveal", "highlight", "connect", "draw", "count"})
@@ -394,6 +394,7 @@ def _offline_scenes(script: dict, plan: dict) -> tuple[list[dict], dict[str, dic
                 "items": items,
                 "composition": art_direction.scene_composition(template, len(scenes), getattr(config, "CHANNEL_PRESET", "general")),
             }
+            object_direction.apply_objects(scene, narration)
             scene["beats"], scene["beat_timing"] = _beats(scene, plan["words"], plan["fps"], plan["captions"])
             sources[scene["id"]] = {"section": original, "narration": narration}
             scenes.append(scene)
@@ -484,6 +485,11 @@ def _request_design(scenes: list[dict], sources: dict, instructions: str = "", *
         "Use footage only for a scene that benefits from an actual filmed event or place. "
         "Return every scene ID exactly once, with 2-6 short labels, a short title, and "
         "a concrete visual_goal. Labels must be grounded in the supplied narration. "
+        "Graphics are illustrated actors and mechanisms, not boxes of bullet points. "
+        "Name the concrete subject and action in each label (for example census records, "
+        "ore extraction, solar panels or water through roots) only when the narration supports it. "
+        "Explain scenes reveal one illustrated subject at a time; flow passes a subject through "
+        "actual steps; comparison shows alternatives together. Keep titles to six words when possible. "
         "When editing one scene, honor the user's requested change. Preserve unaffected content. "
         "Optional scene look/rhythm apply only to that scene. Do not claim new images or video were created. "
         "Do not include code, markup, paths, URLs, durations, or timestamps. "
@@ -587,6 +593,8 @@ def _apply_design(plan: dict, design: dict, sources: dict) -> set[str]:
             scene["items"] = copy.deepcopy(chart_data)
         else:
             scene["items"] = [{"label": _text(item["label"], 64)} for item in update["items"]]
+        if scene.get("graphics_version") == 1:
+            object_direction.apply_objects(scene, source["narration"])
         scene["beats"], scene["beat_timing"] = _beats(scene, plan.get("words", []), plan["fps"], plan.get("captions", []))
     return wanted_footage
 
@@ -807,8 +815,10 @@ def validate_plan(plan: dict) -> dict:
         if not isinstance(scene, dict) or not isinstance(scene.get("id"), str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,80}", scene["id"]):
             raise ValueError("A scene needs a safe string ID.")
         if set(scene) - {"id", "section_id", "template", "start", "duration", "title",
-                         "visual_goal", "items", "beats", "footage", "image", "beat_timing", "composition", "look", "rhythm"}:
+                         "visual_goal", "items", "beats", "footage", "image", "beat_timing", "composition", "look", "rhythm", "graphics_version"}:
             raise ValueError("The scene contains unsupported fields.")
+        if "graphics_version" in scene and (type(scene["graphics_version"]) is not int or scene["graphics_version"] != 1):
+            raise ValueError("Unsupported object graphics version.")
         for field, choices in (("composition", art_direction.COMPOSITIONS), ("look", art_direction.LOOKS), ("rhythm", art_direction.RHYTHMS)):
             if field in scene and scene[field] not in choices:
                 raise ValueError("The scene uses an unsupported visual direction.")
@@ -836,8 +846,10 @@ def validate_plan(plan: dict) -> dict:
         if not isinstance(items, list) or not 2 <= len(items) <= 6:
             raise ValueError("A scene needs two to six items.")
         for item in items:
-            if not isinstance(item, dict) or set(item) - {"label", "value"}:
+            if not isinstance(item, dict) or set(item) - {"label", "value", "symbol"}:
                 raise ValueError("A scene item contains unsupported fields.")
+            if "symbol" in item and (not isinstance(item["symbol"], str) or item["symbol"] not in object_direction.SYMBOLS):
+                raise ValueError("The scene item uses an unsupported graphic subject.")
             if not isinstance(item.get("label"), str) or not item["label"].strip() or len(item["label"]) > 64:
                 raise ValueError("A scene item label is invalid.")
             if "value" in item:
@@ -1014,10 +1026,11 @@ def _visible_design(scene: dict, direction=None) -> tuple:
         scene.get("image") if scene["template"] != "chart" else None)
     visible_media = ((media.get("path"), media.get("credit"), media.get("in_point"))
                      if media else None)
-    items = scene["items"] if scene["template"] in {"chart", "timeline"} else [
+    items = [{key: item[key] for key in ("label", "value") if key in item} for item in scene["items"]] if scene["template"] in {"chart", "timeline"} else [
         item["label"] for item in scene["items"]]
     style = _visible_style(scene, direction)
-    return (scene["template"], scene["title"], items, visible_media,
+    graphics = (scene.get("graphics_version"), [item.get("symbol") for item in scene["items"]]) if not media and scene["template"] != "chart" else None
+    return (scene["template"], scene["title"], items, visible_media, graphics,
             style["composition"], style["look"], style["rhythm"])
 
 
@@ -1038,6 +1051,7 @@ def regenerate_scene(plan: dict, scene_id: str, script: dict, instructions: str 
         " omit project photos ", instructions, flags=re.IGNORECASE)
     local_instructions = art_direction.positive_instruction_text(local_instructions)
     graphics_only = bool(re.search(r"\bgraphics[\s-]+only\b", local_instructions))
+    object_graphics = bool(re.search(r"\b(?:animated\s+(?:objects?|graphics?|illustrations?|diagrams?)|object\s+(?:graphics?|animation)|illustrated\s+(?:scene|objects?|diagram))\b", local_instructions))
     remove_photos = graphics_only or "omit project photos" in local_instructions
     if replace_image and remove_photos:
         raise ValueError("Removing photos conflicts with Use another saved photo. Uncheck that option and try again.")
@@ -1090,7 +1104,7 @@ def regenerate_scene(plan: dict, scene_id: str, script: dict, instructions: str 
                 result["warnings"].append("The selected free OpenRouter planner did not produce a usable design; a configured free text model supplied this scene edit.")
         except (RuntimeError, openrouter.OpenRouterError, ValueError, KeyError, TypeError):
             result.setdefault("warnings", []).append("Scene regeneration used local templates because visual AI was unavailable.")
-    supported = preference or simpler or remove_photos or graphics_only or replace_image or look or rhythm or composition
+    supported = preference or simpler or remove_photos or graphics_only or object_graphics or replace_image or look or rhythm or composition
     if instructions.strip() and not ai_applied and not supported:
         raise ValueError("No available AI could interpret this edit, so the storyboard was kept. Choose a local/free model in Settings, or request a supported layout, less text, a visual look, or removal of photos.")
     # A supported user layout takes precedence over an optional model's choice.
@@ -1129,6 +1143,8 @@ def regenerate_scene(plan: dict, scene_id: str, script: dict, instructions: str 
     elif original.get("image") and replacement["template"] != "chart" and not remove_photos:
         replacement["image"] = copy.deepcopy(original["image"])
     replacement["composition"] = art_direction.effective_composition(replacement)
+    if original.get("graphics_version") == 1 or object_graphics or graphics_only:
+        object_direction.apply_objects(replacement, narration)
     if _visible_design(replacement, result.get("visual_direction")) == _visible_design(original, result.get("visual_direction")):
         if not instructions.strip() and not preference and not original.get("footage") and original["template"] != "chart":
             _set_scene_template(replacement, "text" if original["template"] == "explain" else "explain", source_section)
@@ -1137,6 +1153,8 @@ def regenerate_scene(plan: dict, scene_id: str, script: dict, instructions: str 
     replacement["beats"], replacement["beat_timing"] = _beats(replacement, result.get("words", []), result["fps"], result.get("captions", []))
     result["scenes"][index] = replacement
     changes = []
+    if original.get("graphics_version") != replacement.get("graphics_version"):
+        changes.append("Rebuilt the scene as animated objects and diagrams.")
     before_style = {"template": original["template"], **_visible_style(original, result.get("visual_direction"))}
     after_style = {"template": replacement["template"], **_visible_style(replacement, result.get("visual_direction"))}
     for field, label in (("template", "Layout"), ("composition", "Composition"), ("look", "Visual look"), ("rhythm", "Motion rhythm")):
@@ -1144,8 +1162,10 @@ def regenerate_scene(plan: dict, scene_id: str, script: dict, instructions: str 
             changes.append(f"{label}: {before_style[field]} → {after_style[field]}.")
     if original["title"] != replacement["title"]:
         changes.append("Updated the scene heading.")
-    if original["items"] != replacement["items"]:
+    if [item["label"] for item in original["items"]] != [item["label"] for item in replacement["items"]]:
         changes.append("Updated the on-screen labels.")
+    elif replacement.get("graphics_version") == 1 and replacement["template"] not in {"footage", "chart"} and not replacement.get("image") and [item.get("symbol") for item in original["items"]] != [item.get("symbol") for item in replacement["items"]]:
+        changes.append("Updated the illustrated subjects.")
     if original.get("image") != replacement.get("image"):
         changes.append("Replaced the project photo." if replacement.get("image") else "Removed the photo.")
     if original.get("footage") != replacement.get("footage"):

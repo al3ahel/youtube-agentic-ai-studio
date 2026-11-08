@@ -1,5 +1,6 @@
 """Sound intent is automatic, channel-owned, bounded and tied to real timing."""
 from copy import deepcopy
+from concurrent.futures import ThreadPoolExecutor
 import json
 from pathlib import Path
 import threading
@@ -185,3 +186,32 @@ def test_queued_sound_uses_captured_preset_and_description_after_profile_edit(pr
     assert plan["music"] is None and plan["ambience"]
     assert all(options["mood"] == "calm" and options["profile_id"] == owner["id"] for _, options in calls)
     assert channels.get_profile(owner["id"])["preset"] == "general"
+
+
+def test_planner_provenance_uses_this_response_even_when_another_request_changes_global_provider(project, monkeypatch):
+    owner, script, timeline, _ = project
+    barrier, lock = threading.Barrier(2), threading.Lock()
+    serial = 0
+    def generate(prompt, *, provider_info, **kwargs):
+        nonlocal serial
+        with lock:
+            serial += 1
+            number = serial
+        provider_info.update(provider="groq" if number == 1 else "gemini", model=f"free-model-{number}")
+        barrier.wait(timeout=5)
+        director.gemini_client.last_provider = "Another worker's unrelated model"
+        return json.dumps({"music": {"use": False}, "ambience": {"use": False}, "events": []})
+    monkeypatch.setattr(director.gemini_client, "generate", generate)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        plans = list(pool.map(lambda _: director.direct_audio(script, timeline, owner["id"])[0], range(2)))
+    assert {plan["planner"]["provider"] for plan in plans} == {"Groq · free-model-1", "Gemini · free-model-2"}
+
+
+@pytest.mark.parametrize("intensity,music,cue", [("low", .14, .22), ("balanced", .20, .30)])
+def test_automatic_plan_records_ratios_for_the_gain_staged_mix(project, monkeypatch, intensity, music, cue):
+    owner, script, timeline, _ = project
+    channels.update_profile(owner["id"], {"defaults": {"sound_intensity": intensity}})
+    monkeypatch.setattr(director.gemini_client, "generate", lambda *args, **kwargs: json.dumps(intent()))
+    plan, files = director.direct_audio(script, timeline, owner["id"])
+    assert plan["music"]["volume"] == music
+    assert plan["events"][0]["volume"] == files["events"][0]["volume"] == cue

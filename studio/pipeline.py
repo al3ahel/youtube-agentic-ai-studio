@@ -65,7 +65,7 @@ def start_run():
         with config.profile_context(profile_values):
             steps, visual_mode = _run_options(body)
         expected_revision = validate_expected_revision(body.get("expected_plan_revision"))
-        if expected_revision is not None and set(steps) not in ({"video"}, {"music", "video"}, {"visuals", "video"}):
+        if expected_revision is not None and set(steps) not in ({"video"}, {"music", "video"}, {"visuals", "video"}, {"music", "visuals", "video"}):
             raise ValueError("A storyboard revision can only render the current video, rebuild its visuals, or apply music and sound effects.")
         topic, focus_angle = body.get("topic", ""), body.get("focus_angle", "")
         if not isinstance(topic, str) or not isinstance(focus_angle, str) or len(topic) > 2000 or len(focus_angle) > 2000:

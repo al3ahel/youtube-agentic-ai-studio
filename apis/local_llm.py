@@ -170,8 +170,13 @@ def list_models(base_url=None, stop_event=None):
     return sorted(unique.values(), key=lambda row: (row["size"], row["id"]))
 
 
-def generate(prompt, model=None, base_url=None, temperature=.7, stop_event=None):
+def generate(prompt, model=None, base_url=None, temperature=.7, stop_event=None, *, json_mode=False,
+             provider_info=None):
     """Generate text locally after verifying the selected installed model twice."""
+    if not isinstance(json_mode, bool):
+        raise LocalLLMError("invalid_options", "json_mode must be true or false.")
+    if provider_info is not None:
+        provider_info.clear()
     if not isinstance(prompt, str) or not prompt.strip() or len(prompt) > MAX_PROMPT_CHARS:
         raise LocalLLMError("invalid_prompt", "Provide a nonempty prompt within the local model's input limit.")
     if (isinstance(temperature, bool) or not isinstance(temperature, (int, float))
@@ -203,6 +208,10 @@ def generate(prompt, model=None, base_url=None, temperature=.7, stop_event=None)
     from apis.openrouter import _redact
     request_body = {"model": selected, "messages": [{"role": "user", "content": _redact(prompt)}],
                     "stream": False, "options": {"temperature": temperature, "num_predict": 8192}, "keep_alive": "5m"}
+    if json_mode:
+        request_body["format"] = "json"
+        request_body["messages"].insert(0, {"role": "system", "content":
+            "Return one complete JSON object without Markdown or other text."})
     result = _request_json(origin, "/api/chat", body=request_body, stop_event=stop_event,
                            timeout=MAX_GENERATION_SECONDS)
     if result.get("remote_host") or result.get("remote_model"):
@@ -211,6 +220,10 @@ def generate(prompt, model=None, base_url=None, temperature=.7, stop_event=None)
     text = message.get("content") if isinstance(message, dict) else None
     if not isinstance(text, str) or not text.strip() or result.get("done") is not True:
         raise LocalLLMError("invalid_response", "The local model did not finish a usable text response.")
-    if result.get("done_reason") == "length":
+    if result.get("done_reason") == "length" and not json_mode:
         raise LocalLLMError("incomplete_response", "The local model reached its output limit. Use a shorter request or another installed model.")
+    if json_mode and provider_info is not None:
+        reason = result.get("done_reason")
+        if reason in ("stop", "length"):
+            provider_info["finish_reason"] = reason
     return _redact(text).strip()

@@ -162,3 +162,57 @@ Final follow-up verification on 2026-11-08:
 Provider failures are controlled fixtures in these routing tests; they do not
 establish current availability of the user's provider accounts. The licensed
 sample videos and real mixing evidence above remain unchanged by the log fix.
+
+## Follow-up: complete script JSON and bounded recovery
+
+A subsequent run on `58111741` confirmed that provider fallback was working:
+Gemini timed out, Groq answered, and later stages skipped Gemini. The next failure
+was different: Scriptwriter could not parse Groq's response. The old error exposed
+only the first 600 characters of that response, so its excerpt cannot establish
+the precise invalid token at the reported later line/column.
+
+Script writing and editorial review now request the provider's JSON-object mode.
+Gemini uses the JSON response MIME type; Groq/OpenRouter use `json_object`, with
+OpenRouter requiring endpoint parameter support while retaining its validated
+free model and quota/cost checks. Installed local Ollama uses `format="json"`.
+JSON mode does not replace validation of the application's required fields.
+
+The script path now requires a complete object with valid title, narration and
+metadata. It rejects unfinished strings/containers, duplicate keys, multiple
+documents, nonfinite numbers and text that cannot be saved as UTF-8. It never
+adds invented closing quotes to truncated narration. A provider-declared output
+limit is rejected even if the fragment parses. Duration estimates are computed
+by the app rather than requested as model-generated arithmetic.
+
+One invalid response may trigger one complete replacement from the original
+research, channel, format and word-budget prompt. Both responses share provider
+health, cancellation and the cloud request budget. Invalid raw text is neither
+logged nor added to the replacement prompt. The exact Groq HTTP 400
+`json_validate_failed` content error also spends this same replacement allowance;
+other request/transport failures retain their existing routing behavior.
+
+If replacement still fails, the run stops with a concise explanation before that
+response can become narration. Invalid or incomplete editorial output keeps the
+original validated script. Script-only validation failure preserves the existing
+script and dependent files. A new-topic Research step still intentionally
+invalidates previous-topic dependencies when research succeeds; this change does
+not make the entire multi-stage job one transaction.
+
+Provider references: [Groq JSON object mode](https://console.groq.com/docs/structured-outputs#json-object-mode),
+[Google SDK JSON configuration](https://googleapis.github.io/python-genai/),
+[OpenRouter parameter support](https://openrouter.ai/docs/guides/routing/provider-selection),
+and [Ollama chat format](https://docs.ollama.com/api/chat).
+
+JSON-recovery verification on 2026-11-08:
+
+| Check | Result |
+| --- | --- |
+| Complete Python suite with the real browser configured | **1,341 passed**, no skips |
+| Complete renderer/Studio browser suite | **42 passed**, no skips |
+| Focused writer/editor/provider/profile integration | **172 passed** |
+| Exact SDK 2.33.0 compatibility: JSON output and provider sessions | **69 passed** |
+
+These checks use controlled provider responses, including invalid syntax, typed
+HTTP validation failures and output-limit signals. They exercise the real writer
+and runner persistence boundaries without live inference or TTS. They do not
+establish current provider availability or the factual accuracy of a new script.

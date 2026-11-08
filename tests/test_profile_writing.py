@@ -25,7 +25,7 @@ SCRIPT = {"title": "The river", "sections": [
 
 def test_profile_duration_and_style_reach_writer_without_changing_base(monkeypatch):
     prompts = []
-    monkeypatch.setattr(scriptwriter, "generate", lambda prompt: prompts.append(prompt) or json.dumps(SCRIPT))
+    monkeypatch.setattr(scriptwriter, "generate", lambda prompt, **kwargs: prompts.append(prompt) or json.dumps(SCRIPT))
     original = config.CHANNEL_NAME
     with config.profile_context({"CHANNEL_NAME": "Quiet River", "CHANNEL_DESCRIPTION": "Restful river walks.",
                                  "CHANNEL_PRESET": "asmr", "TARGET_DURATION_MINUTES": 10, "VOICE_RATE": "-15%"}):
@@ -45,7 +45,7 @@ def test_profile_duration_and_style_reach_writer_without_changing_base(monkeypat
 
 
 def test_short_word_budget_respects_slow_voice_and_keeps_short_format(monkeypatch):
-    monkeypatch.setattr(scriptwriter, "generate", lambda prompt: json.dumps(SCRIPT))
+    monkeypatch.setattr(scriptwriter, "generate", lambda prompt, **kwargs: json.dumps(SCRIPT))
     with config.profile_context({"CHANNEL_PRESET": "asmr", "VOICE_RATE": "-15%", "TARGET_DURATION_MINUTES": 30}):
         calm_budget = scriptwriter._word_budget("shorts")
         result = scriptwriter.write_script(RESEARCH, "shorts")
@@ -57,7 +57,7 @@ def test_short_word_budget_respects_slow_voice_and_keeps_short_format(monkeypatc
 
 
 def test_script_timing_is_estimated_until_audio_is_measured(monkeypatch):
-    monkeypatch.setattr(scriptwriter, "generate", lambda prompt: json.dumps(SCRIPT))
+    monkeypatch.setattr(scriptwriter, "generate", lambda prompt, **kwargs: json.dumps(SCRIPT))
     result = scriptwriter.write_script(RESEARCH)
     assert result["timing_source"] == "estimated_before_recording"
     assert [section["id"] for section in result["sections"]] == [1, 2, 3]
@@ -67,7 +67,7 @@ def test_script_timing_is_estimated_until_audio_is_measured(monkeypatch):
 def test_empty_narration_is_rejected_before_recording(monkeypatch):
     malformed = deepcopy(SCRIPT)
     malformed["sections"][1]["narration"] = "  "
-    monkeypatch.setattr(scriptwriter, "generate", lambda prompt: json.dumps(malformed))
+    monkeypatch.setattr(scriptwriter, "generate", lambda prompt, **kwargs: json.dumps(malformed))
     with pytest.raises(ValueError, match="section 2"):
         scriptwriter.write_script(RESEARCH)
 

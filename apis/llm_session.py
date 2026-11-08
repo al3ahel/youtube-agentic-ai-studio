@@ -34,6 +34,13 @@ CLOUD_ATTEMPT_SECONDS = 30
 SINGLE_PROVIDER_SECONDS = 60
 
 
+class StructuredOutputError(RuntimeError):
+    """Generated content failed validation; the caller owns its replacement budget."""
+
+    def __init__(self):
+        super().__init__("The provider rejected the generated JSON as invalid.")
+
+
 @dataclass(frozen=True)
 class Failure:
     code: str

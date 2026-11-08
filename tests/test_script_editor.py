@@ -1,6 +1,7 @@
 """The editorial agent keeps valid sources/identity and rejects unsafe rewrites."""
 from copy import deepcopy
 import json
+import threading
 
 import pytest
 
@@ -83,3 +84,82 @@ def test_news_review_cannot_turn_uncertainty_into_a_confirmed_fact(monkeypatch):
     assert result["sections"] == original["sections"]
     assert result["quality_review"]["rewritten"] is False
     assert result["quality_review"]["status"] == "suggestions"
+
+
+def test_truncated_editor_narration_keeps_original_script_exactly(monkeypatch):
+    original = deepcopy(SCRIPT)
+    raw = json.dumps(response(original))
+    # The old tolerant parser supplied a closing quote/brackets and accepted
+    # the incomplete final word as an apparently successful editorial change.
+    raw = raw[:raw.rfind("day.")] + "da"
+    monkeypatch.setattr(script_editor, "generate", lambda *args, **kwargs: raw)
+    result = script_editor.review_script(original, {})
+    assert result["quality_review"]["status"] == "original_kept"
+    assert result["quality_review"]["rewritten"] is False
+    assert {key: result[key] for key in original} == original == SCRIPT
+
+
+@pytest.mark.parametrize("trailing_comma", [False, True])
+def test_editor_does_not_rewrite_literal_comma_braces(monkeypatch, trailing_comma):
+    original = deepcopy(SCRIPT)
+    original["sections"][0]["narration"] += " The literal marks ,} and ,] remain unchanged."
+    raw = json.dumps(response(original))
+    if trailing_comma:
+        raw = raw[:-1] + ",}"
+    monkeypatch.setattr(script_editor, "generate", lambda *args, **kwargs: raw)
+    result = script_editor.review_script(original, {})
+    assert result["quality_review"]["status"] == ("original_kept" if trailing_comma else "reviewed")
+    assert result["quality_review"]["rewritten"] is False
+    assert {key: result[key] for key in original} == original
+
+
+@pytest.mark.parametrize("number", ["NaN", "Infinity", "-Infinity", "1e999"])
+def test_nonfinite_editor_metadata_keeps_original(monkeypatch, number):
+    raw = json.dumps(response()).replace('["A clearer spoken explanation."]', f"[{number}]")
+    monkeypatch.setattr(script_editor, "generate", lambda *args, **kwargs: raw)
+    result = script_editor.review_script(SCRIPT, {})
+    assert result["quality_review"]["status"] == "original_kept"
+    assert result["quality_review"]["rewritten"] is False
+    assert {key: result[key] for key in SCRIPT} == SCRIPT
+
+
+@pytest.mark.parametrize("field", ["notes", "narration"])
+def test_invalid_utf8_editor_text_keeps_original(monkeypatch, field):
+    changed = response()
+    if field == "notes":
+        changed["notes"] = ["An invalid Unicode note: \ud800"]
+    else:
+        changed["sections"][0]["narration"] += " \ud800"
+    # JSON permits an escaped lone surrogate syntactically, but the committed
+    # UTF-8 script cannot contain it. Reject notes as well as spoken text.
+    raw = json.dumps(changed, ensure_ascii=True)
+    monkeypatch.setattr(script_editor, "generate", lambda *args, **kwargs: raw)
+    result = script_editor.review_script(SCRIPT, {})
+    assert result["quality_review"]["status"] == "original_kept"
+    assert result["quality_review"]["rewritten"] is False
+    assert {key: result[key] for key in SCRIPT} == SCRIPT
+    json.dumps(result, ensure_ascii=False, allow_nan=False).encode("utf-8")
+
+
+def test_complete_json_with_provider_output_limit_keeps_original(monkeypatch):
+    changed = response()
+    changed["sections"][0]["narration"] = "This river carries water and supports many living things along its green banks."
+    def limited_response(prompt, **kwargs):
+        assert kwargs["json_mode"] is True
+        kwargs["provider_info"].update(provider="fixture", finish_reason="length")
+        return json.dumps(changed)
+    monkeypatch.setattr(script_editor, "generate", limited_response)
+    result = script_editor.review_script(SCRIPT, {})
+    assert result["quality_review"]["status"] == "original_kept"
+    assert result["quality_review"]["rewritten"] is False
+    assert {key: result[key] for key in SCRIPT} == SCRIPT
+
+
+def test_editor_json_request_propagates_cancellation(monkeypatch):
+    stop = threading.Event()
+    def cancelled_response(prompt, **kwargs):
+        assert kwargs["json_mode"] is True and kwargs["stop_event"] is stop
+        raise InterruptedError("Stopped during editorial review")
+    monkeypatch.setattr(script_editor, "generate", cancelled_response)
+    with pytest.raises(InterruptedError, match="Stopped during editorial review"):
+        script_editor.review_script(SCRIPT, {}, stop_event=stop)

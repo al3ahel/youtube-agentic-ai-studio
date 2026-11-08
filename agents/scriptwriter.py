@@ -5,7 +5,9 @@ import re
 
 import config
 from agents.gemini_client import generate
-from agents.json_utils import extract_json
+from agents.json_utils import extract_complete_json
+from apis.llm_session import (StructuredOutputError, check_stop, effective_stop_event,
+                              request_scope, session_scope)
 
 
 def _facts_block(research: dict, limit: int = 5000) -> str:
@@ -71,7 +73,99 @@ def _style_rules(preset):
 - Make the title accurate and specific. Use a brief closing invitation only if it suits this channel."""
 
 
-def write_script(research: dict, video_type: str = "normal") -> dict:
+def _validate_script(script: dict, wpm: float) -> dict:
+    """Validate model data before the runner changes any saved script or media."""
+    title = script.get("title")
+    if not isinstance(title, str) or not title.strip() or len(title) > 500:
+        raise ValueError("Script needs a nonempty title of at most 500 characters.")
+    if "description" in script and (not isinstance(script["description"], str)
+                                     or len(script["description"]) > 10000):
+        raise ValueError("Script description must be text of at most 10,000 characters.")
+    if "tags" in script and (not isinstance(script["tags"], list) or len(script["tags"]) > 50
+            or any(not isinstance(tag, str) or len(tag) > 100 for tag in script["tags"])):
+        raise ValueError("Script tags must be a list of at most 50 short text tags.")
+    sections = script.get("sections")
+    if not isinstance(sections, list) or not 2 <= len(sections) <= 30:
+        raise ValueError("Script must contain between 2 and 30 sections.")
+    text_fields = {"title": 500, "section_type": 32, "caption_text": 1000,
+                   **{key: 500 for key in ("image_query", "image_query_2", "image_query_3", "image_query_4")}}
+    for index, section in enumerate(sections, 1):
+        if not isinstance(section, dict) or not isinstance(section.get("narration"), str) or not section["narration"].strip():
+            raise ValueError(f"Script section {index} is missing spoken narration.")
+        if len(section["narration"]) > 30_000:
+            raise ValueError(f"Script section {index} is too long to record safely.")
+        for field, limit in text_fields.items():
+            if field in section and (not isinstance(section[field], str) or len(section[field]) > limit):
+                raise ValueError(f"Script section {index} has invalid {field}; it must be text of at most {limit} characters.")
+        bullets = section.get("bullet_points", [])
+        if not isinstance(bullets, list) or len(bullets) > 8 or any(
+                not isinstance(point, str) or len(point) > 500 for point in bullets):
+            raise ValueError(f"Script section {index} bullet_points must be a list of at most 8 short text points.")
+        section["id"] = index
+        section["narration"] = section["narration"].strip()
+        # Model timing is unnecessary and may contain invalid arithmetic. The
+        # app computes writing estimates; the later recording is measured.
+        section["duration_seconds"] = round(max(1, len(section["narration"].split()) / wpm * 60), 2)
+    script["title"] = title.strip()
+    try:
+        json.dumps(script, ensure_ascii=False, allow_nan=False).encode("utf-8")
+    except (ValueError, TypeError, UnicodeError, RecursionError, OverflowError):
+        raise ValueError("Script contains text that cannot be saved as UTF-8 JSON.") from None
+    return script
+
+
+def _generate_script(prompt: str, wpm: float, *, stop_event=None) -> dict:
+    """Allow one complete regeneration for invalid JSON/schema, never a loop.
+
+    Both responses share routing health and a cloud request budget. The retry
+    keeps the original source/profile prompt and never feeds back malformed
+    text as new evidence or exposes it in the run log.
+    """
+    event = effective_stop_event(stop_event)
+    with session_scope(event), request_scope():
+        request = prompt
+        for attempt in range(2):
+            check_stop(event)
+            response_info = {}
+            invalid_response = False
+            try:
+                raw = generate(request, json_mode=True, stop_event=event, provider_info=response_info)
+            except StructuredOutputError:
+                # A known provider JSON-validation error is a response problem,
+                # not an outage. It shares this same single replacement budget.
+                invalid_response = True
+            check_stop(event)
+            try:
+                if invalid_response:
+                    raise ValueError("The provider could not produce a valid JSON response.")
+                if response_info.get("finish_reason") == "length":
+                    raise ValueError("Scriptwriter reached the model output limit before completing the script.")
+                script = _validate_script(extract_complete_json(raw, "Scriptwriter"), wpm)
+            except ValueError as exc:
+                check_stop(event)
+                reason = str(exc)  # Only fixed parser/schema diagnostics reach this branch.
+                if attempt:
+                    raise ValueError("Scriptwriter could not produce a valid complete script after one automatic retry. "
+                                     + reason + " Retry the Script step or choose another configured free/local model.") from None
+                print(f"   ⚠ Script response failed validation: {reason} Requesting one complete replacement…")
+                request = prompt + "\n\nRETRY — RETURN ONE COMPLETE JSON OBJECT:\n" + (
+                    "The previous response failed application validation: " + reason
+                    + "\nGenerate the whole script again from the SAME research and channel instructions above. "
+                    "Keep the requested subject, source qualifications, format and word budget. "
+                    "Do not invent facts to fill missing content. Return every complete narration section. "
+                    "Use quoted strings, JSON lists and valid numeric literals; no comments, trailing commas, "
+                    "arithmetic expressions, NaN, Infinity, duplicated keys, Markdown or text outside the object. "
+                    "Do not return a patch or only the missing fragment."
+                )
+                continue
+            check_stop(event)
+            if attempt:
+                print(f"   ✓ Script recovered: complete JSON with {len(script['sections'])} narrated sections.")
+            return script
+    raise AssertionError("Script generation attempts were exhausted unexpectedly")
+
+
+def write_script(research: dict, video_type: str = "normal", *, stop_event=None) -> dict:
     """Write for this profile. Timing estimates guide writing; narration is measured later."""
     if video_type not in {"normal", "shorts"}:
         raise ValueError("Choose a normal video or Short.")
@@ -94,7 +188,7 @@ def write_script(research: dict, video_type: str = "normal") -> dict:
             "image_query_3": "A related setting or subject that adds context",
             "image_query_4": "One additional distinct view for a Short",
             "bullet_points": ["A concise, supported point"],
-            "caption_text": "Brief, readable on-screen text", "duration_seconds": round(seconds / section_count, 1),
+            "caption_text": "Brief, readable on-screen text",
         }],
     }
     prompt = f"""You are writing a video for the selected YouTube channel.
@@ -127,23 +221,13 @@ VISUALS AND OUTPUT:
   that generic stock photographs depict the actual event, person or location.
 - Use short titles and at most 4 brief bullet points per section. Do not invent chart data or statistics.
 - Narration must contain only complete words to speak: no placeholders, markup or production directions.
+- Use a JSON object with quoted strings and JSON arrays. No comments, trailing commas, arithmetic
+  expressions or non-finite numbers. Do not write duration_seconds; the application calculates estimates.
 - Return ONLY valid JSON matching this shape, expanded to {section_count} distinct sections:
 {json.dumps(example, ensure_ascii=False, indent=2)}
 """
     print(f"   → Writing a {preset} script for approximately {seconds:g} seconds…")
-    script = extract_json(generate(prompt), "Scriptwriter")
-    sections = script.get("sections")
-    if not isinstance(sections, list) or not 2 <= len(sections) <= 30:
-        raise ValueError("Script must contain between 2 and 30 sections.")
-    for index, section in enumerate(sections, 1):
-        if not isinstance(section, dict) or not isinstance(section.get("narration"), str) or not section["narration"].strip():
-            raise ValueError(f"Script section {index} is missing spoken narration.")
-        section["id"] = index
-        section["narration"] = section["narration"].strip()
-        if len(section["narration"]) > 30_000:
-            raise ValueError(f"Script section {index} is too long to record safely.")
-        # Preserve estimates for old tools, without labelling them measured.
-        section["duration_seconds"] = round(max(1, len(section["narration"].split()) / wpm * 60), 2)
+    script = _generate_script(prompt, wpm, stop_event=stop_event)
     script["video_type"] = video_type
     script["channel_preset"] = preset
     script["target_duration_seconds"] = seconds

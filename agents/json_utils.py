@@ -4,7 +4,65 @@ Strips markdown fences, finds the outermost object, and repairs the most
 common model mistakes (unclosed brackets, trailing commas) before parsing.
 """
 import json
+import math
 import re
+
+
+class _StrictJSONError(ValueError):
+    """A fixed diagnostic that never contains model-supplied text."""
+
+
+def extract_complete_json(raw: str, label: str = "Model") -> dict:
+    """Parse a complete JSON object without inventing missing model output.
+
+    Scripts must not silently acquire a closing quote or lose half a section.
+    A single enclosing Markdown fence is harmless; partial objects, duplicate
+    keys, nonfinite numbers and additional documents are rejected. Keep the
+    older tolerant extractor below for its existing callers.
+    """
+    if not isinstance(raw, str) or not raw.strip():
+        raise ValueError(f"{label} returned an empty JSON response.")
+    if len(raw) > 200_000:
+        raise ValueError(f"{label} JSON response exceeds the supported size.")
+    text = raw.strip()
+    fenced = re.fullmatch(r"```(?:json)?\s*([\s\S]*?)\s*```", text, flags=re.IGNORECASE)
+    if fenced:
+        text = fenced.group(1).strip()
+
+    def object_pairs(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise _StrictJSONError("duplicate object keys are not allowed")
+            result[key] = value
+        return result
+
+    def constant(_):
+        raise _StrictJSONError("numbers must be finite")
+
+    def number(value):
+        parsed = float(value)
+        if not math.isfinite(parsed):
+            raise _StrictJSONError("numbers must be finite")
+        return parsed
+
+    try:
+        result = json.loads(text, object_pairs_hook=object_pairs,
+                            parse_constant=constant, parse_float=number)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"{label} returned invalid or incomplete JSON "
+                         f"(line {exc.lineno}, column {exc.colno}).") from None
+    except _StrictJSONError as exc:
+        raise ValueError(f"{label} returned invalid JSON: {exc}.") from None
+    except (ValueError, TypeError, RecursionError, OverflowError):
+        raise ValueError(f"{label} returned JSON outside the supported limits.") from None
+    if not isinstance(result, dict):
+        raise ValueError(f"{label} must return one complete JSON object.")
+    try:
+        json.dumps(result, ensure_ascii=False, allow_nan=False).encode("utf-8")
+    except (ValueError, TypeError, UnicodeError, RecursionError, OverflowError):
+        raise ValueError(f"{label} returned text that cannot be saved as UTF-8 JSON.") from None
+    return result
 
 
 def _close_brackets(s: str) -> str:

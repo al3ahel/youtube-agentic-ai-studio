@@ -9,7 +9,7 @@ import re
 
 import config
 from agents.gemini_client import generate
-from agents.json_utils import extract_json
+from agents.json_utils import extract_complete_json
 
 
 def assess_script(script, preset="general"):
@@ -74,7 +74,11 @@ Return JSON only: {"notes":["brief editorial finding"],"sections":[{"id":1,"narr
 \nDATA:\n""" + json.dumps({"preset": preset, "channel": config.CHANNEL_DESCRIPTION[:2000],
         "sections": original, "source_material": source or {}, "local_checks": before}, ensure_ascii=False)[:46000]
     try:
-        raw = extract_json(generate(prompt, stop_event=stop_event), "Script editor")
+        provider_info = {}
+        text = generate(prompt, stop_event=stop_event, json_mode=True, provider_info=provider_info)
+        if provider_info.get("finish_reason") == "length":
+            raise ValueError("The editor response reached the provider output limit")
+        raw = extract_complete_json(text, "Script editor")
         if not isinstance(raw, dict) or set(raw) - {"notes", "sections"}:
             raise ValueError("Invalid editorial response")
         rows, notes = raw.get("sections"), raw.get("notes", [])

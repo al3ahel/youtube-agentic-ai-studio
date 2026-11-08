@@ -10,7 +10,7 @@ LLM Client — shared across all agents.
 """
 import time
 import config
-from apis.llm_session import (BudgetExceeded, Failure, check_stop, classify_failure,
+from apis.llm_session import (BudgetExceeded, Failure, StructuredOutputError, check_stop, classify_failure,
                               effective_stop_event, request_scope, session_scope)
 
 # Full list of supported models in preference order.
@@ -94,7 +94,7 @@ def _should_switch_model(err: Exception) -> bool:
 
 
 def _generate_gemini(prompt: str, starting_model: str | None, stop_event=None, *, provider_info=None,
-                     has_fallback=False) -> str:
+                     has_fallback=False, json_mode=False) -> str:
     global last_provider
     types = _sdk_types()
     client = _get_client()
@@ -115,12 +115,16 @@ def _generate_gemini(prompt: str, starting_model: str | None, stop_event=None, *
                 timeout = budget.timeout("gemini", alternatives=has_fallback)
                 started = time.monotonic()
                 print(f"   → Trying Gemini {_redact(model)} (up to {timeout:.0f}s)…")
+                output_options = ({"response_mime_type": "application/json",
+                                   "system_instruction": "Return one complete JSON object without Markdown or other text."}
+                                  if json_mode else {})
                 response = client.models.generate_content(
                     model=model,
                     contents=prompt,
                     config=types.GenerateContentConfig(temperature=0.9,
                         http_options=types.HttpOptions(timeout=max(1, round(timeout * 1000)),
-                                                       retry_options=types.HttpRetryOptions(attempts=1))),
+                                                       retry_options=types.HttpRetryOptions(attempts=1)),
+                        **output_options),
                 )
                 check_stop(stop_event)
                 if not isinstance(response.text, str) or not response.text.strip():
@@ -129,6 +133,16 @@ def _generate_gemini(prompt: str, starting_model: str | None, stop_event=None, *
                 session.succeeded("gemini", model)
                 if provider_info is not None:
                     provider_info.update(provider="gemini", model=model)
+                    if json_mode:
+                        candidates = getattr(response, "candidates", None) or []
+                        reason = getattr(candidates[0], "finish_reason", None) if candidates else None
+                        reason = getattr(reason, "value", reason)
+                        normalized = ({"STOP": "stop", "MAX_TOKENS": "length", "SAFETY": "content_filter",
+                                       "RECITATION": "content_filter", "BLOCKLIST": "content_filter",
+                                       "PROHIBITED_CONTENT": "content_filter"}.get(reason)
+                                      if isinstance(reason, str) else None)
+                        if normalized:
+                            provider_info["finish_reason"] = normalized
                 print(f"   ✓ Gemini {_redact(model)} answered in {time.monotonic() - started:.1f}s.")
                 return _redact(response.text).strip()
             except InterruptedError:
@@ -153,16 +167,21 @@ def _generate_gemini(prompt: str, starting_model: str | None, stop_event=None, *
 
 
 def generate(prompt: str, starting_model: str | None = None, *, stop_event=None,
-             exclude_providers=(), provider_info=None) -> str:
+             exclude_providers=(), provider_info=None, json_mode=False) -> str:
+    """Generate text; opt-in JSON output still requires caller schema validation."""
     with session_scope(stop_event), request_scope():
         return _generate(prompt, starting_model, stop_event=effective_stop_event(stop_event),
-                         exclude_providers=exclude_providers, provider_info=provider_info)
+                         exclude_providers=exclude_providers, provider_info=provider_info,
+                         json_mode=json_mode)
 
 
-def _generate(prompt, starting_model=None, *, stop_event=None, exclude_providers=(), provider_info=None):
+def _generate(prompt, starting_model=None, *, stop_event=None, exclude_providers=(), provider_info=None,
+              json_mode=False):
     global last_provider
     from apis import llm
     check_stop(stop_event)
+    if not isinstance(json_mode, bool):
+        raise ValueError("json_mode must be true or false.")
 
     if provider_info is not None:
         provider_info.clear()
@@ -179,11 +198,15 @@ def _generate(prompt, starting_model=None, *, stop_event=None, exclude_providers
         from apis import local_llm
         try:
             print(f"   → Trying local Ollama {_redact(local_model)}…")
-            text = local_llm.generate(prompt, stop_event=stop_event)
+            local_info = {}
+            text = local_llm.generate(prompt, stop_event=stop_event, json_mode=json_mode,
+                                      provider_info=local_info)
             check_stop(stop_event)
             last_provider = "Ollama · " + config.OLLAMA_MODEL
             if provider_info is not None:
                 provider_info.update(provider="ollama", model=config.OLLAMA_MODEL)
+                if json_mode and "finish_reason" in local_info:
+                    provider_info["finish_reason"] = local_info["finish_reason"]
             with session_scope(stop_event) as session:
                 session.succeeded("ollama", config.OLLAMA_MODEL)
             print(f"   ✓ Local Ollama {_redact(config.OLLAMA_MODEL)} answered.")
@@ -208,7 +231,7 @@ def _generate(prompt, starting_model=None, *, stop_event=None, exclude_providers
         try:
             alternatives = any(provider[0] not in exclude_providers for provider in llm.providers())
             return _generate_gemini(prompt, starting_model, stop_event, provider_info=provider_info,
-                                    has_fallback=alternatives)
+                                    has_fallback=alternatives, json_mode=json_mode)
         except InterruptedError:
             raise
         except Exception as e:
@@ -237,14 +260,14 @@ def _generate(prompt, starting_model=None, *, stop_event=None, exclude_providers
     try:
         response_info = {}
         text = llm.chat(prompt, stop_event=stop_event, exclude_providers=exclude_providers,
-                        provider_info=response_info)
+                        provider_info=response_info, json_mode=json_mode)
         if provider_info is not None:
             provider_info.update(response_info)
         provider = response_info.get("provider")
         last_provider = (({"groq": "Groq", "openrouter": "OpenRouter", "ollama": "Ollama"}.get(provider, provider)
                           + " · " + response_info["model"]) if provider and response_info.get("model") else "configured free AI")
         return text
-    except InterruptedError:
+    except (InterruptedError, StructuredOutputError):
         raise
     except Exception as e:
         if isinstance(gemini_err, GeminiSDKCompatibilityError):

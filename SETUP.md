@@ -347,6 +347,7 @@ hosting details are in [Channels and schedules](docs/CHANNELS_AND_SCHEDULES.md).
 | Speech preview fails with a certificate error | Check system certificates and network/proxy trust, then retry; keep secure certificate verification enabled |
 | `ffmpeg` or `ffprobe` not found | Install both and reopen the terminal after updating `PATH` |
 | Provider quota / 429 | Wait for that provider's quota to recover or choose another supported provider; free-tier availability is external |
+| Scriptwriter returned invalid JSON | Update and restart YAAS, then retry generation. Script writing now requests JSON mode and allows one validated replacement; incomplete narration is never silently closed. A persistent validation failure stops before recording and explains the validation problem. |
 | YouTube sign-in / token error | Select the correct profile and **Reconnect YouTube**; verify the test user, scopes and bound channel |
 | Wrong-channel connection blocked | Create a new profile for the other channel; existing projects keep their verified binding |
 | Scheduler unavailable or not running | Keep one app/scheduler-only process alive; check for another process owning its lock |

@@ -5,14 +5,17 @@ Hosted free-tier fallback chain, used when Gemini is unavailable.
   openrouter    free key   · ":free" community models
 The retired unauthenticated Pollinations generation URL is never contacted.
 """
+import json
 import time
 import threading
 from decimal import Decimal
 
+import requests
+
 import config
 from apis.http import post_json
 from apis import openrouter
-from apis.llm_session import (BudgetExceeded, Failure, check_stop, classify_failure,
+from apis.llm_session import (BudgetExceeded, Failure, StructuredOutputError, check_stop, classify_failure,
                               effective_stop_event, generation_session, request_scope, session_scope)
 
 _DEFAULT_GROQ_MODEL = "openai/gpt-oss-120b"
@@ -22,6 +25,24 @@ _GROQ_REPLACEMENTS = {
 }
 _migration_lock = threading.Lock()
 _announced_migrations = set()
+
+
+def _groq_json_validation_failure(error):
+    """Recognize one explicit content-error code without retaining private output."""
+    if not isinstance(error, requests.HTTPError):
+        return False
+    response = error.response
+    if response is None or response.status_code != 400:
+        return False
+    body = response.content
+    if not isinstance(body, bytes) or not 0 < len(body) <= 64 * 1024:
+        return False
+    try:
+        payload = json.loads(body)
+    except (ValueError, RecursionError):
+        return False
+    details = payload.get("error") if isinstance(payload, dict) else None
+    return isinstance(details, dict) and details.get("code") == "json_validate_failed"
 
 
 def effective_groq_model(value=None):
@@ -66,28 +87,37 @@ def providers() -> list:
 
 
 def chat(prompt: str, temperature: float = 0.9, stop_event=None, *,
-         exclude_providers=(), provider_info=None) -> str:
+         exclude_providers=(), provider_info=None, json_mode=False) -> str:
     """Try the configured free chain, optionally skipping a failed provider.
 
     ``provider_info`` is filled only by the request that returned the text; it
     avoids guessing the responder from which credentials happen to be saved.
+    ``json_mode`` requests a JSON object, without imposing a provider schema.
+    The caller must still validate the complete response and its own fields.
     """
     with session_scope(stop_event) as session, request_scope() as budget:
         return _chat(prompt, temperature, effective_stop_event(stop_event), exclude_providers,
-                     provider_info, session, budget)
+                     provider_info, session, budget, json_mode=json_mode)
 
 
-def _chat(prompt, temperature, stop_event, exclude_providers, provider_info, session, budget):
+def _chat(prompt, temperature, stop_event, exclude_providers, provider_info, session, budget,
+          *, json_mode=False):
     check_stop(stop_event)
+    if not isinstance(json_mode, bool):
+        raise ValueError("json_mode must be true or false.")
     if provider_info is not None:
         provider_info.clear()
     if getattr(config, "LLM_ROUTE", "auto") == "local":
         from apis.local_llm import generate
-        text = generate(prompt, temperature=temperature, stop_event=stop_event)
+        local_info = {}
+        text = generate(prompt, temperature=temperature, stop_event=stop_event, json_mode=json_mode,
+                        provider_info=local_info)
         check_stop(stop_event)
         session.succeeded("ollama", getattr(config, "OLLAMA_MODEL", ""))
         if provider_info is not None:
             provider_info.update(provider="ollama", model=getattr(config, "OLLAMA_MODEL", ""))
+            if json_mode and "finish_reason" in local_info:
+                provider_info["finish_reason"] = local_info["finish_reason"]
         return text
     errors = []
     configured = [provider for provider in providers() if provider[0] not in exclude_providers]
@@ -110,7 +140,8 @@ def _chat(prompt, temperature, stop_event, exclude_providers, provider_info, ses
             try:
                 # A legacy saved model may be paid or have disappeared. Never
                 # submit it speculatively, and never remove the :free suffix.
-                # Plain text generation needs no strict JSON-schema support.
+                # JSON object mode needs no strict JSON-schema support. Its
+                # endpoint capability is enforced by require_parameters below.
                 model = openrouter._select_model(model, require_schema=False)
             except openrouter.OpenRouterError as exc:
                 check_stop(stop_event)
@@ -129,11 +160,21 @@ def _chat(prompt, temperature, stop_event, exclude_providers, provider_info, ses
                     # Share the local free quota with the visual planner. Failed
                     # provider requests also consume this conservative budget.
                     openrouter._claim_request(getattr(config, "OPENROUTER_API_KEY", ""))
-                d = post_json(url, {
+                payload = {
                     "model": model,
                     "messages": [{"role": "user", "content": openrouter._redact(prompt)}],
                     "temperature": temperature,
-                }, timeout=timeout, headers=headers)
+                }
+                if json_mode:
+                    payload["messages"].insert(0, {"role": "system", "content":
+                        "Return one complete JSON object without Markdown or other text."})
+                    payload["response_format"] = {"type": "json_object"}
+                    if name == "openrouter":
+                        # The default router may ignore unsupported parameters.
+                        # Keep the validated free model and fail if no endpoint
+                        # can honor JSON output; never retry as plain text.
+                        payload["provider"] = {"require_parameters": True}
+                d = post_json(url, payload, timeout=timeout, headers=headers)
                 check_stop(stop_event)
                 if name == "openrouter":
                     usage = d.get("usage") or {}
@@ -146,6 +187,13 @@ def _chat(prompt, temperature, stop_event, exclude_providers, provider_info, ses
                     session.succeeded(name, model)
                     if provider_info is not None:
                         provider_info.update(provider=name, model=model)
+                        if json_mode:
+                            reason = d["choices"][0].get("finish_reason")
+                            normalized = ({"stop": "stop", "length": "length",
+                                           "content_filter": "content_filter", "tool_calls": "tool_calls"}.get(reason)
+                                          if isinstance(reason, str) else None)
+                            if normalized:
+                                provider_info["finish_reason"] = normalized
                     print(f"   ✓ {name.title()} {openrouter._redact(str(model))} answered in {time.monotonic() - started:.1f}s.")
                     return text
                 errors.append(f"{name}: empty response")
@@ -164,6 +212,12 @@ def _chat(prompt, temperature, stop_event, exclude_providers, provider_info, ses
                 break
             except Exception as e:
                 check_stop(stop_event)
+                if json_mode and name == "groq" and _groq_json_validation_failure(e):
+                    # This is invalid generated content, not a broken provider.
+                    # The script caller owns the one bounded replacement; do
+                    # not hide another request or poison later job stages here.
+                    print("   ⚠ Groq rejected invalid JSON output.")
+                    raise StructuredOutputError() from None
                 if isinstance(e, openrouter.OpenRouterError):
                     print(f"   ⚠ {name} unavailable: {e}")
                     errors.append(f"{name}: {e.code}")

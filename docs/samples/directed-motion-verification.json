@@ -1,0 +1,286 @@
+{
+  "purpose": "Real local-planner scene-direction and encoded-media verification",
+  "planner": "local fallback; no cloud inference or live stock API calls",
+  "clock": "14-second authored phrase cues; no speech alignment claimed",
+  "audio": "Licensed instrumental bed and two authored transition whooshes; no narration",
+  "files": [
+    {
+      "file": "directed-motion-landscape.mp4",
+      "bytes": 654201,
+      "sha256": "3d2f998313daba3adbd9cc06bdc5509d1e113790b8b99dbc65c6b5a9043ce2d7",
+      "width": 640,
+      "height": 360,
+      "duration_seconds": 14.0,
+      "fps": "12/1",
+      "decoded_video_frames": 168,
+      "video_codec": "h264",
+      "audio_codec": "aac",
+      "decoded_video_sha256": "698057f074084d7a5279d18657e4e23fe2223c708e3837df551ee63ea49477eb",
+      "video_unchanged_by_audio_mux": true,
+      "decoded_audio_samples_in_14s": 672000,
+      "decoded_audio_sample_rate": 48000,
+      "decoded_audio_channels": 2,
+      "full_decode_succeeded": true,
+      "palette": "ocean",
+      "scenes": [
+        {
+          "title": "When water reaches home",
+          "staging": {
+            "version": 1,
+            "world": "flood",
+            "action": "rise",
+            "camera": "wide"
+          },
+          "actors": [
+            {
+              "label": "Floodwater",
+              "symbol": "water",
+              "role": "subject"
+            },
+            {
+              "label": "Homes",
+              "symbol": "building",
+              "role": "support"
+            }
+          ]
+        },
+        {
+          "title": "Homes that rise with water",
+          "staging": {
+            "version": 1,
+            "world": "flood",
+            "action": "float",
+            "camera": "wide"
+          },
+          "actors": [
+            {
+              "label": "Floating homes",
+              "symbol": "building",
+              "role": "subject"
+            },
+            {
+              "label": "Water",
+              "symbol": "water",
+              "role": "context"
+            },
+            {
+              "label": "Communities",
+              "symbol": "people",
+              "role": "support"
+            }
+          ]
+        },
+        {
+          "title": "Power moves through the system",
+          "staging": {
+            "version": 1,
+            "world": "generic",
+            "action": "connect",
+            "camera": "follow"
+          },
+          "actors": [
+            {
+              "label": "Solar panels",
+              "symbol": "solar",
+              "role": "subject"
+            },
+            {
+              "label": "Batteries",
+              "symbol": "battery",
+              "role": "support"
+            },
+            {
+              "label": "Homes",
+              "symbol": "building",
+              "role": "support"
+            }
+          ]
+        }
+      ],
+      "soundtrack": {
+        "purpose": "Directed scene graphics and licensed audio listening sample; no narration",
+        "clock": "Authored phrase cues; not measured speech alignment",
+        "duration": 14,
+        "fps": 12,
+        "music": "Cylinder One — 45-second excerpt",
+        "events": [
+          {
+            "title": "Small whoosh",
+            "start": 4
+          },
+          {
+            "title": "Small whoosh",
+            "start": 10
+          }
+        ],
+        "mix": "Music-only demo ratios: bed 0.35, calibrated effects 0.75; production voice ratios differ",
+        "mastering": {
+          "version": 1,
+          "status": "target_shortfall",
+          "preset": "general",
+          "normalization": "constant_gain",
+          "target_lufs": -16.0,
+          "true_peak_limit_dbtp": -1.5,
+          "max_boost_db": 9.0,
+          "duration": 14.0,
+          "sample_rate": 48000,
+          "input_lufs": -31.49,
+          "input_true_peak_dbtp": -15.88,
+          "output_lufs": -22.49,
+          "output_true_peak_dbtp": -6.88,
+          "applied_gain_db": 9.0,
+          "warnings": [
+            "Kept the soundtrack dynamics and peak headroom; finished at -22.5 LUFS instead of forcing -16 LUFS."
+          ],
+          "limited_by": [
+            "boost_limit",
+            "true_peak_headroom"
+          ]
+        },
+        "sha256": "3d2f998313daba3adbd9cc06bdc5509d1e113790b8b99dbc65c6b5a9043ce2d7"
+      }
+    },
+    {
+      "file": "directed-motion-portrait.mp4",
+      "bytes": 628057,
+      "sha256": "68d75628b560e62482b2c22a25451bbd8dcea04ea3a1e3f0a728c0fd73200948",
+      "width": 360,
+      "height": 640,
+      "duration_seconds": 14.0,
+      "fps": "12/1",
+      "decoded_video_frames": 168,
+      "video_codec": "h264",
+      "audio_codec": "aac",
+      "decoded_video_sha256": "5dabc680b7922fd70f9b1d430fdb543bc6e94af352352404568389ee9054d51a",
+      "video_unchanged_by_audio_mux": true,
+      "decoded_audio_samples_in_14s": 672000,
+      "decoded_audio_sample_rate": 48000,
+      "decoded_audio_channels": 2,
+      "full_decode_succeeded": true,
+      "palette": "ocean",
+      "scenes": [
+        {
+          "title": "When water reaches home",
+          "staging": {
+            "version": 1,
+            "world": "flood",
+            "action": "rise",
+            "camera": "wide"
+          },
+          "actors": [
+            {
+              "label": "Floodwater",
+              "symbol": "water",
+              "role": "subject"
+            },
+            {
+              "label": "Homes",
+              "symbol": "building",
+              "role": "support"
+            }
+          ]
+        },
+        {
+          "title": "Homes that rise with water",
+          "staging": {
+            "version": 1,
+            "world": "flood",
+            "action": "float",
+            "camera": "wide"
+          },
+          "actors": [
+            {
+              "label": "Floating homes",
+              "symbol": "building",
+              "role": "subject"
+            },
+            {
+              "label": "Water",
+              "symbol": "water",
+              "role": "context"
+            },
+            {
+              "label": "Communities",
+              "symbol": "people",
+              "role": "support"
+            }
+          ]
+        },
+        {
+          "title": "Power moves through the system",
+          "staging": {
+            "version": 1,
+            "world": "generic",
+            "action": "connect",
+            "camera": "follow"
+          },
+          "actors": [
+            {
+              "label": "Solar panels",
+              "symbol": "solar",
+              "role": "subject"
+            },
+            {
+              "label": "Batteries",
+              "symbol": "battery",
+              "role": "support"
+            },
+            {
+              "label": "Homes",
+              "symbol": "building",
+              "role": "support"
+            }
+          ]
+        }
+      ],
+      "soundtrack": {
+        "purpose": "Directed scene graphics and licensed audio listening sample; no narration",
+        "clock": "Authored phrase cues; not measured speech alignment",
+        "duration": 14,
+        "fps": 12,
+        "music": "Cylinder One — 45-second excerpt",
+        "events": [
+          {
+            "title": "Small whoosh",
+            "start": 4
+          },
+          {
+            "title": "Small whoosh",
+            "start": 10
+          }
+        ],
+        "mix": "Music-only demo ratios: bed 0.35, calibrated effects 0.75; production voice ratios differ",
+        "mastering": {
+          "version": 1,
+          "status": "target_shortfall",
+          "preset": "general",
+          "normalization": "constant_gain",
+          "target_lufs": -16.0,
+          "true_peak_limit_dbtp": -1.5,
+          "max_boost_db": 9.0,
+          "duration": 14.0,
+          "sample_rate": 48000,
+          "input_lufs": -31.49,
+          "input_true_peak_dbtp": -15.88,
+          "output_lufs": -22.49,
+          "output_true_peak_dbtp": -6.88,
+          "applied_gain_db": 9.0,
+          "warnings": [
+            "Kept the soundtrack dynamics and peak headroom; finished at -22.5 LUFS instead of forcing -16 LUFS."
+          ],
+          "limited_by": [
+            "boost_limit",
+            "true_peak_headroom"
+          ]
+        },
+        "sha256": "68d75628b560e62482b2c22a25451bbd8dcea04ea3a1e3f0a728c0fd73200948"
+      }
+    }
+  ],
+  "renderer_sources": {
+    "worlds.js": "dc2de226542e14256de30484ae34d62dd0e36c06defb9997aa28222405bdced4",
+    "worlds.css": "a768e1b08aabf8c06dc7632d2332e324c3913b1ab7868c53d90d0bfae2c9285c",
+    "scene.js": "81923a7d2f18b10a87c151696748d313f84f9ddbe93b3deefac678e6d95fcb4c",
+    "index.html": "8d1d08aeb238f2f3d4a5073e77ccef39b1040133c1c6e4f81cd07684d61ffcd4"
+  }
+}

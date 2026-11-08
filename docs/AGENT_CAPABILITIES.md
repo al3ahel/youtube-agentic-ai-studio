@@ -25,14 +25,33 @@ The renderer supports `flow`, `comparison`, `timeline`, `chart`, `explain`, `tex
 
 The saved `visual_direction` has its own version and rationale. Scene-level choices are validated against the same catalogue. A change must reach the renderer payload and the actual HTML/CSS/GSAP behavior to count as a capability. A rationale or `visual_goal` alone does not animate anything.
 
-`agents/object_direction.py` grounds each new illustrated subject in its source
-section. Scenes opt in with `graphics_version: 1` and allowlisted item `symbol`
-values; `templates/objects.js` implements the actual vector actors and movement.
-Supported subjects include census/undercount, people, mining, solar, battery,
-circuit, water, plant, network, trade, conflict, document, orbit and buildings.
-Unknown subjects remain labeled abstract diagrams. These are qualitative drawings,
-not inferred statistics, accurate maps or arbitrary generated character scenes.
-New plans and explicit rebuilds use them; old plans preserve their saved layout.
+New or explicitly rebuilt scenes use `graphics_version: 2`. The director supplies
+grounded item `symbol` and `role` values and a versioned `staging` contract with a
+world, action and camera choice. `templates/worlds.js` places actors in one scene
+space and animates the requested action. The renderer consumes those decisions;
+it does not reassign every AI subject by scanning for the first matching noun.
+The film's `creative_brief` supplies its theme, premise, continuity and named
+palette. A scene can have a palette override without restyling the other scenes.
+
+The supported world/action vocabulary includes rising floodwater, adaptation,
+source-explicit floating homes, census recording/gaps, mining extraction/transfer,
+and general actor reveal/assembly/connection/comparison. Camera choices are
+locked, wide, detail, follow and reveal. Shared actors include census/undercount,
+people, mining, solar, battery, circuit, water, plant, network, trade, conflict,
+document, orbit and buildings. Unknown subjects remain labeled abstract diagrams.
+These are qualitative drawings, not inferred statistics, accurate maps, arbitrary
+3D worlds or generated character films. Grounding is a bounded lexical check,
+not a factual or perceptual proof. Old `graphics_version: 1` scenes retain their
+`templates/objects.js` renderer until explicitly rebuilt.
+
+Hybrid footage acquisition uses Pixabay and Pexels through `apis/stock_video.py`.
+The scene's concrete subject must match provider metadata before theme, framing
+and decoded-frame palette can influence selection. `video/stock_media.py` probes
+the actual file and decodes samples. Modern assets carry script/channel/scene and
+file fingerprints; the current storyboard determines their credits and active
+archive references. Palette measurement does not establish that a scene is semantically
+correct. See [the scene-direction update](SCENE_DIRECTION_UPDATE.md) for the full
+pipeline map and verification scope.
 
 Motion defaults to graphics without project photos; Hybrid and the explicit photo-animation workflow can use trusted media. Existing photo-based projects retain their saved policy. A motion instruction is not permission to fetch arbitrary URLs, create a fabricated photograph or replace the source narration.
 

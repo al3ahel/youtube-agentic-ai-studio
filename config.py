@@ -61,7 +61,7 @@ PEXELS_API_KEY     = os.getenv("PEXELS_API_KEY",     "")   # pexels.com/api
 ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY", "")   # optional, unused by default
 
 # Optional free keys — each one unlocks an extra provider
-PIXABAY_API_KEY    = os.getenv("PIXABAY_API_KEY",    "")   # pixabay.com/api/docs — more stock images
+PIXABAY_API_KEY    = os.getenv("PIXABAY_API_KEY",    "")   # pixabay.com/api/docs — stock photos + videos
 GROQ_API_KEY       = os.getenv("GROQ_API_KEY",       "")   # console.groq.com — fast LLM fallback
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")   # openrouter.ai — free LLM fallback
 YOUTUBE_API_KEY    = os.getenv("YOUTUBE_API_KEY",    "")   # console.cloud.google.com — channel stats

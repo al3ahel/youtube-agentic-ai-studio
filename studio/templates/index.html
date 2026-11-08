@@ -92,7 +92,7 @@
             <option value="hybrid">Hybrid — motion, photos and footage</option>
             <option value="classic">Classic — photos and transitions</option>
           </select>
-          <div class="hint" id="visual-mode-note">Diagrams, comparisons, timelines and text move with the narration.</div>
+          <div class="hint" id="visual-mode-note">Animated scenes show the subject and action in the narration.</div>
           <div class="hint">Applies to new or rebuilt scenes. Review keeps the saved storyboard's style.</div>
         </div>
         <label class="toggle first"><span><b>Draft preview first</b><small>Review the storyboard and a quick MP4 before the final render</small></span><input type="checkbox" id="draft-preview"><span class="switch"></span></label>
@@ -279,12 +279,15 @@
   <article class="card s24 review-part" id="rv-storyboard" hidden>
     <div class="card-label">Storyboard <span class="tag" id="storyboard-status">Draft</span></div>
     <p class="card-intro">Review the explanation scene by scene. Changing one scene keeps your script and narration, then updates the preview and renders a replacement draft video.</p>
+    <p class="hint" id="film-direction" hidden></p>
+    <p class="hint" id="direction-check-note" hidden></p>
     <div class="storyboard-layout">
       <div>
         <iframe id="motion-preview" title="Motion storyboard preview" sandbox="allow-scripts" referrerpolicy="no-referrer" allow="autoplay 'none'; camera 'none'; microphone 'none'; geolocation 'none'"></iframe>
         <div class="hint" id="motion-preview-note">Use the preview controls to play or scrub the narration.</div>
         <div class="hint timing-note" id="timing-source-note" hidden></div>
         <div class="hint timing-note" id="image-reuse-note" hidden></div>
+        <div class="hint timing-note" id="footage-selection-note" hidden></div>
         <div class="storyboard-actions">
           <button class="btn btn-ghost btn-sm" id="render-draft">Render draft MP4</button>
           <button class="btn btn-white" id="render-final">Render final video</button>
@@ -297,7 +300,7 @@
         <div id="scene-details" class="scene-details"></div>
         <label class="label" for="scene-instructions">Change this scene</label>
         <textarea id="scene-instructions" maxlength="1000" rows="3" placeholder="For example: show the two ideas side by side and highlight each difference."></textarea>
-        <div class="hint">Describe the visual change, or ask for an editorial, blueprint, studio, botanical or poster look. Try a split, stack or focus layout. Timing and narration stay in place.</div>
+        <div class="hint">Describe what should happen on screen: for example, show floating homes rising with the water, move the camera closer, or use warmer colors. Timing and narration stay in place.</div>
         <label class="scene-photo-option"><input type="checkbox" id="replace-scene-image" aria-describedby="replace-scene-image-note"> Use another saved photo</label>
         <div class="hint" id="replace-scene-image-note">Choose a different photo already downloaded for this section.</div>
         <button class="btn btn-ghost" id="regenerate-scene">Regenerate scene &amp; draft</button>
@@ -612,6 +615,7 @@
         <label class="toggle"><span><b>Check facts</b><small>Wikipedia + arXiv lookups before writing</small></span><input type="checkbox" id="s-fact_grounding"><span class="switch"></span></label>
         <div class="field" style="margin-top:12px">
           <div class="label">Image sources after Pexels <small>tried in this order</small></div>
+          <p class="hint">Hybrid also searches Pixabay and Pexels video when their keys are saved. The scene subject comes first; color, framing and the film's theme guide the choice among matching clips.</p>
           <div class="chips" id="img-sources">
             <label class="chip"><input type="checkbox" value="pixabay">Pixabay</label>
             <label class="chip"><input type="checkbox" value="nasa">NASA</label>

@@ -78,15 +78,31 @@ Hyperframes is the deterministic renderer, not the creative agent. Previously, t
 
 Compositions (`default`, `split`, `stack`, `focus`) apply to supported explain/text/flow layouts. Rhythm changes bounded entrances and emphasis, never scene lengths or speech-event boundaries. Old plans without these fields retain their original appearance. Topic-derived local choices are deterministic: rerendering the same saved project does not restyle it randomly.
 
-New or explicitly rebuilt scenes have `graphics_version: 1`. Grounded `symbol`
-values select qualitative vector actors such as a census ledger, mining cutaway,
-solar panel or plant. The renderer progressively draws paths and moves meaningful
-parts on the paused scene timeline. It does not generate geographic maps, infer
-quantities or substitute an old picture. Unknown subjects use a labeled abstract
-diagram. Existing saved plans without this version keep the earlier layout until
-the user explicitly rebuilds or requests the supported illustrated edit.
+New or explicitly rebuilt scenes have `graphics_version: 2`. A whole-film
+creative brief supplies a consistent palette; each scene specifies grounded
+actors and roles, a supported world/action and camera framing. The deterministic
+world renderer composes those actors together and animates the stated mechanism
+on the same paused narration timeline. It does not generate geographic maps,
+infer quantities or substitute an old picture. Unknown subjects use a labeled
+abstract diagram. Existing version-1 scenes keep their earlier appearance until
+explicitly rebuilt. The [scene-direction update](SCENE_DIRECTION_UPDATE.md)
+documents the exact capabilities, media selection and checks.
 
 Pure Motion has an explicit `use_project_photos=false` policy and rejects attached photos/footage at validation. Hybrid and the explicit old-photo workflow can use current project media. New image bindings join profile, script, ordered map and file fingerprints. An invalid binding is not permission to scan a folder for an old `section_01` picture. Classic retains its explicit legacy compatibility path.
+
+Hybrid video searches now use the existing Pixabay key as well as Pexels.
+Concrete subject metadata is an admission gate; theme and sampled color only
+rank admitted clips. Each bounded acquisition verifies decoded frames, measured
+dimensions, duration and framing. Its receipt binds the asset to the script,
+channel, scene and exact bytes. Used credits come from active scene references,
+not an accumulating download ledger. Archive restoration verifies the original
+receipt before moving its path into the current project.
+
+The optional frame critic receives early/late pairs for at most three sampled
+scenes, plus their stated intent, actors and action. One bounded free-model call
+can flag irrelevant generic icons, empty stages, clipping and weak visible
+development. It remains opt-in; local-only routing does not send frames remotely,
+and still images cannot prove smooth animation or factual accuracy.
 
 ## 5. Sound decisions and the meaning of music settings
 

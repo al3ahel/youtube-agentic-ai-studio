@@ -77,6 +77,54 @@ def test_bounded_art_direction_and_scene_override_survive_preparation(plan, audi
     assert plan == original
 
 
+def test_composed_world_contract_and_palette_survive_preparation(plan, audio, tmp_path, vendor):
+    plan["creative_brief"] = {"version": 1, "theme": "Energy", "premise": "Follow energy into storage",
+                              "continuity": "Keep the same system visible", "palette": "forest"}
+    plan["palette_colors"] = {"ink": "url(https://untrusted.invalid)"}
+    scene = plan["scenes"][0]
+    scene.update(graphics_version=2, staging={"version": 1, "world": "generic", "action": "connect", "camera": "follow"},
+                 palette="sand", items=[{"label": "Solar panels", "symbol": "solar", "role": "subject"},
+                                        {"label": "Battery storage", "symbol": "battery", "role": "support"}])
+    original = copy.deepcopy(plan)
+    entry = renderer.prepare_motion_project(plan, str(audio), str(tmp_path))
+    saved = json.loads((entry.parent / "project.json").read_text())
+    assert saved["scenes"][0]["staging"] == scene["staging"]
+    assert saved["scenes"][0]["items"] == scene["items"]
+    assert saved["palette_colors"] == renderer.PALETTES["forest"]
+    assert saved["scenes"][0]["palette_colors"] == renderer.PALETTES["sand"]
+    assert (entry.parent / "worlds.js").is_file()
+    assert (entry.parent / "worlds.css").is_file()
+    assert "untrusted.invalid" not in entry.read_text()
+    assert plan == original
+
+
+@pytest.mark.parametrize("mutation", [
+    lambda row: row.update(staging={"version": 1, "world": "flood", "action": "invent_dam", "camera": "wide"}),
+    lambda row: row["staging"].update(camera="javascript:alert(1)"),
+    lambda row: row["staging"].update(code="alert(1)"),
+    lambda row: row["items"][0].update(role="context"),
+    lambda row: row["items"].append({"label": "Second subject", "symbol": "solar", "role": "subject"}),
+    lambda row: row["items"][0].update(symbol="<svg onload=alert(1)>"),
+    lambda row: row.update(palette="url(https://untrusted.invalid)"),
+    lambda row: row.update(image={"path": "saved.png"}),
+])
+def test_composed_world_rejects_unsupported_code_roles_and_media(plan, mutation):
+    scene = plan["scenes"][0]
+    scene.update(graphics_version=2, staging={"version": 1, "world": "generic", "action": "connect", "camera": "wide"},
+                 items=[{"label": "A circuit", "symbol": "circuit", "role": "subject"}])
+    mutation(scene)
+    with pytest.raises(ValueError):
+        renderer._validate_plan(plan)
+
+
+def test_legacy_object_scene_is_not_silently_upgraded(plan):
+    plan["scenes"][0].update(graphics_version=1, items=[{"label": "Solar panel", "symbol": "solar"}])
+    saved = renderer._validate_plan(plan)
+    assert saved["scenes"][0]["graphics_version"] == 1
+    assert "staging" not in saved["scenes"][0]
+    assert "role" not in saved["scenes"][0]["items"][0]
+
+
 @pytest.mark.parametrize("field,value", [("look", "url(https://example.com)"), ("look", []),
                                         ("rhythm", "random"), ("rhythm", 1),
                                         ("composition", "<script>"), ("composition", None)])

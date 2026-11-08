@@ -156,6 +156,12 @@ def test_ai_unsupported_composition_cannot_claim_a_visible_edit(project, monkeyp
     plan = visual_director.plan_scenes(script, timeline, use_ai=False)
     scene = plan["scenes"][0]
     scene.update(template=template, composition="default")
+    # This gate exercises the legacy layout/composition contract. Native v2
+    # worlds use the new staging/action contract, covered separately.
+    scene.pop("graphics_version", None)
+    scene.pop("staging", None)
+    for item in scene["items"]:
+        item.pop("role", None)
     if template == "chart":
         scene["items"] = [{**item, "value": index + 1} for index, item in enumerate(scene["items"])]
         script["sections"][0]["chart_data"] = deepcopy(scene["items"])
@@ -211,6 +217,9 @@ def test_negated_local_word_does_not_override_an_ai_alternative(project, monkeyp
     scene = plan["scenes"][0]
     design = _design_for_scene(plan, scene)
     design["scenes"][0][field] = value
+    if field == "template":
+        design["scenes"][0]["staging"] = {**scene["staging"], "action": "connect", "camera": "detail"}
+        design["scenes"][0]["items"] = deepcopy(scene["items"])
     monkeypatch.setattr(config, "GEMINI_API_KEY", "configured-free-test-key")
     monkeypatch.setattr(gemini_client, "generate", lambda *a, **kw: json.dumps(design))
     updated = visual_director.regenerate_scene(plan, scene["id"], script, instruction)

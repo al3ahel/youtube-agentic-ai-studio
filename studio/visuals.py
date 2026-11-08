@@ -164,8 +164,17 @@ def regenerate(scene_id):
     try:
         from agents.visual_director import regenerate_scene
         from video.renderers.html import prepare_motion_project
-        options = {"replace_image": True, "image_map": image_map, "output_dir": str(output)} if replace_image else {}
+        from studio.footage_assets import validate_bound_footage
+        from video.timeline import script_signature
+        validate_bound_footage(plan, output, script_signature=script_signature(script),
+                               profile_id=state.get("profile_id") or "default")
+        options = {"output_dir": str(output), "profile_id": state.get("profile_id") or "default"}
+        if replace_image:
+            options.update(replace_image=True, image_map=image_map)
         updated = regenerate_scene(plan, scene_id, script, instructions=instructions.strip(), **options)
+        from studio.description import ensure_media_credits, load_credits
+        description = ensure_media_credits(state.get("description") or "", state.get("timeline"),
+                                           plan=updated, previous_credits=load_credits())
         output.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(prefix=".motion-edit-", dir=output) as directory:
             staging = Path(directory)
@@ -191,6 +200,7 @@ def regenerate(scene_id):
         with job_lock:
             state.update(visual_plan=updated, visual_qa=None, video_path=None,
                          preview_path=None, library_id=None, yt_url=None, error=None,
+                         description=description,
                          visual_revision=state.get("visual_revision", 0) + 1)
             state["stages"]["visuals"] = "done"
             state["stages"]["video"] = "pending"

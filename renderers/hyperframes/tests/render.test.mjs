@@ -42,7 +42,7 @@ async function domState(page) {
   return page.evaluate(() => [...document.querySelectorAll("#design-canvas *")].map((node, index) => {
     const style = getComputedStyle(node), rect = node.getBoundingClientRect();
     return {index, class: node.getAttribute("class"), text: node.children.length ? null : node.textContent,
-      opacity: style.opacity, visibility: style.visibility, transform: style.transform,
+      opacity: style.opacity, visibility: style.visibility, transform: style.transform, fill: style.fill, stroke: style.stroke,
       strokeDashoffset: style.strokeDashoffset,
       x: rect.x, y: rect.y, width: rect.width, height: rect.height};
   }));
@@ -105,7 +105,108 @@ async function openFixture(orientation, preview = false, viewport, transformPlan
 }
 
 for (const orientation of ["landscape", "portrait"]) {
-  test(`${orientation}: actual new director plan animates census and mining actors, with deterministic seeks`, {skip: skipped}, async () => {
+  test(`${orientation}: actual v2 director plan shows rise, flotation and power transfer on the saved clock`, {skip: skipped}, async () => {
+    const page = await browser.newPage();
+    page.on("pageerror", error => errors.push(error.message));
+    await page.setViewport(orientation === "portrait" ? {width: 360, height: 640} : {width: 640, height: 360});
+    await page.goto(`${origin}/directed-${orientation}/motion/index.html`, {waitUntil: "domcontentloaded"});
+    const plan = await page.evaluate(async () => (await window.YAASMotionReady).plan);
+    assert.deepEqual(plan.scenes.map(scene => [scene.graphics_version, scene.staging.world, scene.staging.action]),
+      [[2, "flood", "rise"], [2, "flood", "float"], [2, "generic", "connect"]]);
+    assert.equal(await page.$$eval(".node-card,.arranged-card,.orbit-card,.illustrated-item", nodes => nodes.length), 0);
+    const snapshots = new Map();
+    await mkdir(path.join(fixtureRoot, "screenshots"), {recursive: true});
+    for (const time of [.5, 3.25, 4.5, 8.75, 10.5, 13.5]) {
+      await seekForCapture(page, time);
+      const state = await domState(page);
+      const frame = await page.screenshot({path: path.join(fixtureRoot, "screenshots", `directed-${orientation}-${time}.png`)});
+      const bounds = await page.evaluate(() => {
+        const scene = [...document.querySelectorAll(".world-scene")].find(node => Number(getComputedStyle(node).opacity) > .99);
+        const stage = scene.querySelector(".world-stage").getBoundingClientRect();
+        const labels = [...scene.querySelectorAll(".world-label")].map(label => {
+          const range = document.createRange(); range.selectNodeContents(label);
+          const r = range.getBoundingClientRect();
+          return {text: label.textContent, fits: r.left >= stage.left - 1 && r.right <= stage.right + 1 && r.top >= stage.top - 1 && r.bottom <= stage.bottom + 1};
+        });
+        const heading = scene.querySelector(".scene-title");
+        const actor = scene.querySelector('.world-actor[data-role="subject"]')?.getBoundingClientRect();
+        return {labels, titleLines: heading.offsetHeight / parseFloat(getComputedStyle(heading).lineHeight),
+          subjectWidth: actor?.width / stage.width,
+          water: scene.querySelector('[data-action-part="water-level"]')?.getAttribute("transform"),
+          home: scene.querySelector('[data-action-part="floating-home"]')?.getAttribute("transform"),
+          battery: scene.querySelector('[data-symbol="battery"] .world-energy')?.getAttribute("transform")};
+      });
+      assert.ok(bounds.labels.length && bounds.labels.every(label => label.fits), `${time}: ${JSON.stringify(bounds)}`);
+      assert.ok(bounds.titleLines <= 2.1, `${time}: ${JSON.stringify(bounds)}`);
+      assert.ok(bounds.subjectWidth >= .15, `Subject is too small: ${JSON.stringify(bounds)}`);
+      snapshots.set(time, {state, frame, bounds});
+    }
+    assert.notEqual(snapshots.get(.5).bounds.water, snapshots.get(3.25).bounds.water, "Floodwater must rise through the shared world");
+    assert.notEqual(snapshots.get(4.5).bounds.home, snapshots.get(8.75).bounds.home, "A source-explicit floating home must rise with the water");
+    assert.notEqual(snapshots.get(10.5).bounds.battery, snapshots.get(13.5).bounds.battery, "Energy transfer must leave a charged storage result");
+    await seekForCapture(page, 13.5);
+    assert.ok(await page.$eval('#scene-2 [data-action-part="powered-windows"]', node => Number(getComputedStyle(node).opacity) <= .151),
+      "The home must stay unpowered while its incoming transfer is still travelling");
+    await seekForCapture(page, 14 - 1 / 12);
+    assert.ok(await page.$eval('#scene-2 [data-action-part="powered-windows"]', node => Number(getComputedStyle(node).opacity) > .8),
+      "The power transfer must arrive and leave a visible result before the final encoded frame");
+    for (const time of [13.5, .5, 8.75, 3.25, 10.5, 4.5, .5]) {
+      await seekForCapture(page, time);
+      assert.deepEqual(await domState(page), snapshots.get(time).state, `Reverse seek at ${time}`);
+      const difference = await pixelDifference(page, snapshots.get(time).frame, await page.screenshot());
+      // Going through the fully lit final SVG frame can rerasterize a few
+      // battery/roof/caption edge pixels on Chromium's opacity layers. Exact
+      // geometry, transforms, opacity, fill and stroke are asserted above.
+      // Inspected fringes: at most 371/230400 pixels and 46/255 delta; this
+      // bounded tolerance cannot replace the actor/arrival/state assertions.
+      assert.ok(difference.maxDelta <= 48 && difference.changed <= difference.total * .002, `${time}: ${JSON.stringify(difference)}`);
+    }
+    assert.equal(await page.evaluate(() => window.__timelines["yaas-motion"].duration()), 14);
+    await page.close();
+  });
+
+  test(`${orientation}: composed worlds retain readable actors, roles and labels across bounded actions and cameras`, {skip: skipped}, async () => {
+    const cases = [
+      {world: "flood", action: "rise", camera: "wide", symbols: ["water", "building"]},
+      {world: "flood", action: "adapt", camera: "detail", symbols: ["people", "circuit", "water"]},
+      {world: "flood", action: "float", camera: "follow", symbols: ["building", "water", "people"]},
+      {world: "census", action: "record", camera: "reveal", symbols: ["census", "document"]},
+      {world: "census", action: "gap", camera: "detail", symbols: ["census-gap", "document"]},
+      {world: "mining", action: "extract", camera: "follow", symbols: ["mining", "trade"]},
+      {world: "mining", action: "transfer", camera: "wide", symbols: ["mining", "trade", "people"]},
+      {world: "generic", action: "reveal", camera: "locked", symbols: ["plant"]},
+      {world: "generic", action: "assemble", camera: "reveal", symbols: ["circuit", "network", "document"]},
+      {world: "generic", action: "connect", camera: "follow", symbols: ["solar", "battery", "building", "network"]},
+      {world: "generic", action: "compare", camera: "detail", symbols: ["plant", "water"]},
+    ];
+    const page = await openFixture(orientation, false, undefined, plan => {
+      plan.scenes = cases.map((row, index) => ({id: `world-${index}`, section_id: String(index), template: "explain", graphics_version: 2,
+        staging: {version: 1, world: row.world, action: row.action, camera: row.camera}, start: index * 4, duration: 4,
+        title: "A shared world with a visible mechanism", visual_goal: "Qualitative mechanism, not numerical data",
+        items: row.symbols.map((symbol, i) => ({symbol, role: i === 0 ? "subject" : symbol === "water" ? "context" : "support", label: symbol.replaceAll("-", " ")})),
+        beats: row.symbols.map((_, i) => ({time: .2 + i * .6, action: "reveal", target: `item-${i}`})),
+      }));
+      plan.duration = cases.length * 4; plan.captions = []; plan.words = [];
+      return plan;
+    });
+    for (let index = 0; index < cases.length; index++) {
+      for (const phase of [.3, 2.7, 3.8]) {
+        await seekForCapture(page, index * 4 + phase);
+        const check = await page.evaluate(index => {
+          const scene = document.getElementById(`scene-${index}`), stage = scene.querySelector(".world-stage").getBoundingClientRect();
+          return [...scene.querySelectorAll(".world-label")].map(label => {
+            const range = document.createRange(); range.selectNodeContents(label); const r = range.getBoundingClientRect();
+            return {text: label.textContent, fits: r.left >= stage.left - 1 && r.right <= stage.right + 1 && r.top >= stage.top - 1 && r.bottom <= stage.bottom + 1};
+          });
+        }, index);
+        assert.ok(check.length && check.every(label => label.fits), `${JSON.stringify(cases[index])} @${phase}: ${JSON.stringify(check)}`);
+      }
+    }
+    assert.equal(await page.evaluate(() => window.__timelines["yaas-motion"].duration()), cases.length * 4);
+    await page.close();
+  });
+
+  test(`${orientation}: legacy v1 census and mining actors retain deterministic seeks`, {skip: skipped}, async () => {
     const page = await browser.newPage();
     page.on("pageerror", error => errors.push(error.message));
     await page.setViewport(orientation === "portrait" ? {width: 360, height: 640} : {width: 640, height: 360});

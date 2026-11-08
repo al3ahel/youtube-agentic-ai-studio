@@ -208,9 +208,10 @@ def _editable_plan(monkeypatch):
     module = types.ModuleType("agents.visual_director")
     module.validate_plan = validate_plan
     module.plan_uses_project_photos = plan_uses_project_photos
-    def regenerate(original, scene_id, script, instructions=""):
+    def regenerate(original, scene_id, script, instructions="", **options):
         assert state["visual_editing"] and not state["running"]
         assert scene_id == "scene-001" and script["title"] == "A script"
+        assert options == {"output_dir": str(output.resolve()), "profile_id": state.get("profile_id") or "default"}
         updated = deepcopy(original)
         updated["scenes"][0]["title"] = instructions or "Updated"
         return updated
@@ -448,7 +449,8 @@ def test_photo_replacement_passes_isolated_saved_images_and_project_output(clien
     response = client.post("/api/visuals/scenes/scene-001/regenerate", json={"replace_image": True})
     assert response.status_code == 200
     assert received == [{"replace_image": True, "image_map": saved_images,
-                         "output_dir": str(Path(config.OUTPUT_DIR).resolve())}]
+                         "output_dir": str(Path(config.OUTPUT_DIR).resolve()),
+                         "profile_id": state.get("profile_id") or "default"}]
     assert state["image_map"] == saved_images
 
 
@@ -473,7 +475,14 @@ def test_guarded_visual_rebuild_accepts_existing_photo_storyboard(client, monkey
     picture = Path(config.OUTPUT_DIR) / "saved-photo.png"
     Image.new("RGB", (64, 36), "#266ca0").save(picture)
     state["visual_plan"]["use_project_photos"] = True
-    state["visual_plan"]["scenes"][0]["image"] = {"path": str(picture), "source": "local"}
+    scene = state["visual_plan"]["scenes"][0]
+    # This exercise opens an existing photo storyboard. V2 actor scenes cannot
+    # contain a photograph; represent the actual legacy photo layout instead.
+    scene.pop("graphics_version", None)
+    scene.pop("staging", None)
+    scene["items"] = [{"label": "Observe the pattern"}, {"label": "Compare the evidence"}]
+    scene["beats"] = [{"time": 0, "target": "title", "action": "reveal"}]
+    scene["image"] = {"path": str(picture), "source": "local"}
     original = deepcopy(state["visual_plan"])
     files = _review_files()
     revision = client.get("/api/visuals").json["plan_revision"]

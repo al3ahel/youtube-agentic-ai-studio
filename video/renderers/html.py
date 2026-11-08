@@ -27,7 +27,9 @@ from fractions import Fraction
 from typing import Callable
 
 import config
-from agents.object_direction import SYMBOLS
+from agents.art_direction import PALETTES, palette_colors, validate_brief
+from agents.object_direction import SYMBOLS, validate_actors, validate_staging
+from apis.stock_video import validate_selection, verify_footage
 
 
 RENDERER_DIR = Path(__file__).resolve().parents[2] / "renderers" / "hyperframes"
@@ -96,6 +98,10 @@ def _validate_plan(scene_plan: dict) -> dict:
     if not isinstance(caption_style, str) or caption_style not in {"highlight", "plain", "off"}:
         raise ValueError("Choose highlight, plain or off captions")
     plan["caption_style"] = caption_style
+    if "creative_brief" in source:
+        plan["creative_brief"] = validate_brief(source["creative_brief"])
+        # Colors come from our bounded palette table, never CSS supplied by AI.
+        plan["palette_colors"] = palette_colors(plan["creative_brief"])
     if "visual_direction" in source:
         direction = source["visual_direction"]
         if (not isinstance(direction, dict) or type(direction.get("version")) is not int
@@ -115,6 +121,11 @@ def _validate_plan(scene_plan: dict) -> dict:
         plan["use_project_photos"] = source["use_project_photos"]
     if "script_signature" in source:
         plan["script_signature"] = _text(source["script_signature"], "script_signature", 256)
+    if "profile_id" in source:
+        profile_id = source["profile_id"]
+        if not isinstance(profile_id, str) or not re.fullmatch(r"default|[a-f0-9]{32}", profile_id):
+            raise ValueError("Invalid storyboard channel identity")
+        plan["profile_id"] = profile_id
     if "timeline_signature" in source:
         plan["timeline_signature"] = _text(source["timeline_signature"], "timeline_signature", 256)
     if "audio_duration" in source:
@@ -164,9 +175,13 @@ def _validate_plan(scene_plan: dict) -> dict:
             "items": [], "beats": [],
         }
         if "graphics_version" in original:
-            if type(original["graphics_version"]) is not int or original["graphics_version"] != 1:
+            if type(original["graphics_version"]) is not int or original["graphics_version"] not in {1, 2}:
                 raise ValueError("Unsupported object graphics version")
-            scene["graphics_version"] = 1
+            scene["graphics_version"] = original["graphics_version"]
+        if scene.get("graphics_version") == 2:
+            if original.get("image") or original.get("footage") or scene["template"] in {"chart", "footage"}:
+                raise ValueError("Composed graphics scenes cannot contain photos, footage or numerical charts")
+            scene["staging"] = validate_staging(original.get("staging"))
         if scene["id"] in seen:
             raise ValueError(f"Duplicate scene id: {scene['id']}")
         seen.add(scene["id"])
@@ -177,9 +192,16 @@ def _validate_plan(scene_plan: dict) -> dict:
                 if not isinstance(original[key], str) or original[key] not in choices:
                     raise ValueError(f"Unsupported scene {key}")
                 scene[key] = original[key]
+        if "palette" in original:
+            if not isinstance(original["palette"], str) or original["palette"] not in PALETTES:
+                raise ValueError("Unsupported scene palette")
+            scene["palette"] = original["palette"]
+            scene["palette_colors"] = dict(PALETTES[original["palette"]])
         items = original.get("items", [])
         if not isinstance(items, list) or len(items) > 6:
             raise ValueError("Each motion scene supports at most six items")
+        if scene.get("graphics_version") == 2:
+            items = validate_actors(items)
         for item_index, item in enumerate(items):
             if not isinstance(item, dict):
                 raise ValueError("Scene items must be objects")
@@ -188,6 +210,8 @@ def _validate_plan(scene_plan: dict) -> dict:
                 if not isinstance(item["symbol"], str) or item["symbol"] not in SYMBOLS:
                     raise ValueError("Unsupported object graphic subject")
                 clean["symbol"] = item["symbol"]
+            if scene.get("graphics_version") == 2:
+                clean["role"] = item["role"]
             if "id" in item:
                 clean["id"] = _text(str(item["id"]), "item.id", 100)
             if item.get("value") is not None:
@@ -246,6 +270,11 @@ def _validate_plan(scene_plan: dict) -> dict:
                 "credit": _text(footage.get("credit", ""), "footage.credit", 500),
                 "in_point": _number(footage.get("in_point", 0), "footage.in_point"),
             }
+            if "selection" in footage:
+                scene["footage"]["selection"] = validate_selection(
+                    footage["selection"], script_signature=plan.get("script_signature"),
+                    profile_id=plan.get("profile_id"), scene_id=scene["id"],
+                )
         if scene["template"] == "footage" and not scene.get("footage", {}).get("path"):
             raise ValueError("A footage scene needs a downloaded local video")
         for key in ("source", "source_url"):
@@ -318,6 +347,28 @@ def _media_path(value: str, output: Path, extensions: set, *, restrict=False) ->
     raise ValueError(f"Missing or unsupported local media file: {value}")
 
 
+def _footage_path(scene: dict, plan: dict, output: Path) -> Path:
+    """Check ownership and bytes before a direct caller copies or probes a clip."""
+    footage = scene["footage"]
+    source = _media_path(footage["path"], output, VIDEO_EXTENSIONS, restrict=True)
+    if "selection" not in footage:
+        return source  # Saved legacy clips still receive the normal media probe.
+    # Scene editing prepares a temporary composition beside the live workspace.
+    # Its source may therefore be in OUTPUT_DIR, but never an arbitrary parent.
+    roots = (output, Path(getattr(config, "OUTPUT_DIR", "output")).expanduser().resolve())
+    local = {**footage, "path": str(source)}
+    for root in roots:
+        if _inside(source, root) and verify_footage(
+            local, root, script_signature=plan.get("script_signature"),
+            profile_id=plan.get("profile_id"), scene_id=scene["id"],
+        ) is True:
+            return source
+    raise ValueError(
+        f"Footage for scene {scene['id']} changed or belongs to another project. "
+        "Rebuild Visuals to select a verified clip before rendering."
+    )
+
+
 def _copy_asset(source: Path, assets: Path, prefix: str) -> str:
     stat = source.stat()
     fingerprint = hashlib.sha256(
@@ -386,9 +437,7 @@ def prepare_motion_project(scene_plan: dict, audio_path: str, output_dir: str) -
     image_sources = {}
     for index, scene in enumerate(plan["scenes"]):
         if scene.get("footage"):
-            footage_sources[index] = _media_path(
-                scene["footage"]["path"], output, VIDEO_EXTENSIONS, restrict=True,
-            )
+            footage_sources[index] = _footage_path(scene, plan, output)
         if scene.get("image"):
             image_sources[index] = _media_path(
                 scene["image"]["path"], output, IMAGE_EXTENSIONS, restrict=True,
@@ -402,7 +451,7 @@ def prepare_motion_project(scene_plan: dict, audio_path: str, output_dir: str) -
             raise ValueError("Motion output asset directories cannot be symbolic links")
         folder.mkdir(parents=True, exist_ok=True)
     _copy_vendor(project)
-    for filename in ("scene.js", "scene.css", "objects.js", "preview.js"):
+    for filename in ("scene.js", "scene.css", "objects.js", "worlds.js", "worlds.css", "preview.js"):
         _atomic_copy(RENDERER_DIR / "templates" / filename, project / filename)
     media_markup = []
     if audio:
@@ -692,7 +741,10 @@ def render_motion_video(script, audio_path: str, output_dir: str, scene_plan: di
     for scene in plan["scenes"]:
         if not scene.get("footage"):
             continue
-        source = _media_path(scene["footage"]["path"], output, VIDEO_EXTENSIONS, restrict=True)
+        try:
+            source = _footage_path(scene, plan, output)
+        except ValueError as exc:
+            raise MotionRenderError(str(exc)) from exc
         media = _probe(source, ffprobe)
         video_stream = next((stream for stream in media.get("streams", []) if stream.get("codec_type") == "video"), None)
         if not video_stream:

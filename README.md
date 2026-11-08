@@ -37,7 +37,7 @@ and **recurring video generation**. These features are on this fork's **main** b
 
 **Motion** creates illustrated moving subjects, diagrams, timelines and comparisons, without
 fetching or automatically attaching stock pictures. **Hybrid** combines those
-graphics with the original pipeline's pictures and optional Pexels video footage.
+graphics with the original pipeline's pictures and subject-matched Pixabay or Pexels video footage.
 **Classic** keeps the MoviePy photo renderer.
 Review the storyboard, change one scene, then render a draft or final MP4 with the
 saved narration. Existing photo projects have an **Animate these photos** action:
@@ -56,17 +56,22 @@ live account is shown. The schedule is paused in this demonstration.*
 
 #### Rendered video samples
 
-**New illustrated animation with real licensed sound:**
-[Landscape](docs/samples/illustrated-motion-landscape.mp4) ·
-[Portrait](docs/samples/illustrated-motion-portrait.mp4) ·
-[Audio credits](docs/samples/illustrated-motion-audio-credits.txt).
-These 14-second clips animate census records and a mining cutaway, with an ambient
-instrumental bed, a paper turn and a whoosh. Each has **168 frames at 12 fps**.
+**Directed scenes with real licensed sound:**
+[Landscape](docs/samples/directed-motion-landscape.mp4) ·
+[Portrait](docs/samples/directed-motion-portrait.mp4) ·
+[Audio credits](docs/samples/directed-motion-audio-credits.txt).
+These 14-second clips show water reaching coastal homes, floating homes rising
+with water, and a solar-panel/battery/home connection. The normal local planner
+chooses the actors, actions, camera and shared palette. Each has **168 frames at 12 fps**.
 They contain no narration; phrase cues and the music-only listening balance are
 authored for the example. They demonstrate the renderer and real recordings, not
 speech quality or measured word alignment.
 
-![Mining cutaway from the encoded illustrated Motion sample](docs/screenshots/illustrated-motion-landscape.png)
+![Floating homes from the encoded directed Motion sample](docs/screenshots/directed-motion-landscape.png)
+
+[How scene direction and Pixabay video selection work](docs/SCENE_DIRECTION_UPDATE.md) ·
+[Review of the three requested animation skill libraries](docs/ANIMATION_SKILL_REFERENCES.md).
+The earlier census/mining samples remain in the [sample archive](docs/samples/README.md).
 
 **Original template/media verification:**
 
@@ -225,7 +230,7 @@ The normal **Motion/Hybrid** pipeline is:
 ```mermaid
 flowchart TD
     A["Research and script"] --> B["Narration and timing"]
-    A --> C["Original stock-picture pipeline"]
+    A -->|Hybrid| C["Original picture and stock-video acquisition"]
     B --> D["Scene plan and HTML/SVG composition"]
     C --> D
     D --> E["HyperFrames draft or final MP4"]
@@ -243,9 +248,10 @@ the selected scene when ready. **Render draft MP4** retries the current storyboa
 **Render final video** encodes the final version. Scene edits invalidate the previous
 final render. Your publishing metadata and existing thumbnail are preserved.
 
-This fork adds the HyperFrames path while keeping the original picture acquisition
-available in every mode. **Classic** renders those pictures and narration with
-MoviePy. Old captions or audio-duration estimates can supply an explicitly labelled
+This fork adds the HyperFrames path while keeping original picture acquisition
+in **Hybrid** and **Classic**. Ordinary **Motion** uses graphics only; the explicit
+saved-photo workflow can animate an existing project's pictures. **Classic**
+renders pictures and narration with MoviePy. Old captions or audio-duration estimates can supply an explicitly labelled
 timeline when a legacy project lacks measured timing metadata. Optional
 OpenRouter frame review runs after rendering; it is separate from both the
 renderer and the interactive Review screen.
@@ -295,7 +301,7 @@ enabled imported selections stay Manual on upgrade; select Automatic explicitly
 to hand those decisions to the agent. **Off** removes added sound layers. A legacy
 music switch with an empty folder cannot create music by itself.
 
-**Pixabay music and sound effects:** YAAS uses Pixabay's API for pictures.
+**Pixabay music and sound effects:** YAAS uses Pixabay's API for photos and Hybrid video footage.
 Pixabay's [public API documentation](https://pixabay.com/api/docs/) provides image
 and video endpoints, but no documented music or sound-effect endpoint. A Pixabay
 key therefore does not enable audio acquisition. Automatic sound works without
@@ -378,7 +384,7 @@ be unavailable or limited. The app does not silently substitute a paid model.
 | Local Ollama | Writing, sound and text visual direction | installed local model; no cloud fallback in Local-only |
 | Edge TTS | Neural voiceover | keyless |
 | Pexels | Stock photos and real video clips in Hybrid mode | free key, optional |
-| Pixabay | Stock photos | free key, optional |
+| Pixabay | Stock photos and subject-matched video clips in Hybrid mode | free key, optional |
 | NASA Image Library | Public-domain space imagery | keyless |
 | Openverse | Creative Commons images (credited) | keyless |
 | Wikimedia Commons | Automatic licensed music and sound recordings | keyless; suitable licensed match required |
@@ -435,6 +441,7 @@ if you move the studio to another machine. [Storage and migration details](docs/
 │   ├── knowledge.py        ← Wikipedia + arXiv fact grounding
 │   ├── seo.py              ← YouTube autocomplete, Datamuse, findability score
 │   ├── images.py           ← Pixabay, NASA, Openverse
+│   ├── stock_video.py      ← subject-matched Pixabay/Pexels footage + verified receipts
 │   ├── llm.py              ← configured free hosted fallback
 │   ├── local_llm.py        ← installed local Ollama models only
 │   ├── audio_sources.py    ← included licensed audio + bounded Commons acquisition
@@ -442,7 +449,7 @@ if you move the studio to another machine. [Storage and migration details](docs/
 │
 ├── agents/
 │   ├── gemini_client.py    ← Gemini model chain + fallback hand-off
-│   ├── json_utils.py       ← repairs broken JSON from models
+│   ├── json_utils.py       ← strict complete JSON parsing + legacy compatibility
 │   ├── researcher.py       ← topic research (trend-aware, grounded)
 │   └── scriptwriter.py     ← script writing
 │
@@ -550,7 +557,10 @@ MoviePy 2.x removed `moviepy.editor` and changed the API, and NumPy must stay be
 <details>
 <summary><b>The video has tiny or ugly text</b></summary>
 
-Your system is missing the fonts the renderer looks for. Install DejaVu (`sudo apt install fonts-dejavu` on Ubuntu). Windows already has them.
+The Motion/Hybrid HTML renderer bundles Inter. For Classic, check the font paths
+in `config.py`: the renderer needs an installed font at one of those locations.
+On Ubuntu, `sudo apt install fonts-dejavu` supplies the listed DejaVu fonts.
+On Windows, check the configured Windows font paths; DejaVu is not assumed to be installed.
 </details>
 
 <details>
@@ -608,8 +618,8 @@ command. The branch URL never represented a running cloud application.
 - [x] Thumbnail designer (4 styles, AI text ideas, AI artwork)
 - [x] Scheduled uploads
 - [x] Analytics (channel stats + production history)
-- [x] Trend-aware topics and fact-checked scripts
-- [x] Stock video B-roll (Pexels in Hybrid mode)
+- [x] Trend-aware topics, source-grounded scripts and editorial checks
+- [x] Subject-matched stock video B-roll (Pixabay and Pexels in Hybrid mode)
 - [x] Multi-channel profiles and verified publishing identity
 - [x] Per-channel recurring generation with a persistent queue
 - [x] Explicitly animate saved photos and reuse their narration

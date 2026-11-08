@@ -879,7 +879,17 @@ test("studio: legacy photo conversion preserves the reviewed project channel and
   await page.close();
 });
 
-async function openSceneReview({visualMode = "hybrid", useProjectPhotos, legacyImage = false, illustrated = false, soundMode = "auto"} = {}) {
+function setFixtureGraphicsVersion(plan, version) {
+  for (const scene of plan.scenes) {
+    if (scene.image || ["footage", "chart"].includes(scene.template)) continue;
+    scene.graphics_version = version;
+    scene.items = [{label: scene.title, symbol: "concept", ...(version === 2 ? {role: "subject"} : {})}];
+    if (version === 2) scene.staging = {version: 1, world: "generic", action: "reveal", camera: "wide"};
+    else delete scene.staging;
+  }
+}
+
+async function openSceneReview({visualMode = "hybrid", useProjectPhotos, legacyImage = false, graphicsVersion, soundMode = "auto"} = {}) {
   let profiles = await (await fetch(`${origin}/api/channels`)).json();
   let project = profiles.profiles.find(profile => profile.name === "Review fixture");
   if (!project) project = (await (await fetch(`${origin}/api/channels`, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({name: "Review fixture"})})).json()).profile;
@@ -890,7 +900,7 @@ async function openSceneReview({visualMode = "hybrid", useProjectPhotos, legacyI
   ]};
   if (useProjectPhotos !== undefined) plan.use_project_photos = useProjectPhotos;
   if (legacyImage) plan.scenes[1].image = {path: "images/previous-photo.jpg"};
-  if (illustrated) plan.scenes.forEach(scene => scene.graphics_version = 1);
+  if (graphicsVersion !== undefined) setFixtureGraphicsVersion(plan, graphicsVersion);
   const st = {running: false, stages: {}, profile_id: project.id, profile_name: project.name,
     active_profile_id: "default", video_type: "shorts", visual_mode: visualMode, preview_only: true,
     has_preview: true, has_storyboard: true, has_audio: true, has_script: true, has_thumb: false,
@@ -996,15 +1006,19 @@ test("studio: applying saved audio and both retry paths keep the narration, scen
 
 test("studio: Review renders preserve graphics-only and legacy photo policies", {skip: skipped}, async () => {
   for (const options of [
-    {visualMode: "motion", useProjectPhotos: false, illustrated: true},
+    {visualMode: "motion", useProjectPhotos: false, graphicsVersion: 2},
+    {visualMode: "motion", useProjectPhotos: false, graphicsVersion: 1},
     {visualMode: "motion", legacyImage: true},
-    {visualMode: "motion", useProjectPhotos: true},
+    {visualMode: "motion", useProjectPhotos: true, graphicsVersion: 2},
   ]) {
     const fixture = await openSceneReview(options), {page, errors} = fixture;
     const photos = options.useProjectPhotos ?? true;
     assert.equal(await page.$eval("#replace-scene-image", node => node.closest("label").hidden), !photos);
     assert.equal(await page.$eval("#replace-scene-image", node => node.disabled), !photos);
-    assert.equal(await page.$eval("#legacy-motion-card", node => node.hidden), !photos);
+    const oldGraphics = options.graphicsVersion !== 2;
+    assert.equal(await page.$eval("#legacy-motion-card", node => node.hidden), !(photos || oldGraphics));
+    assert.equal(await page.$eval("#rebuild-motion-and-sound", node => node.hidden), !oldGraphics);
+    assert.equal(await page.$eval("#animate-legacy", node => node.hidden), !photos);
     await page.select("#visual-mode", photos ? "motion" : "hybrid");
     await page.click("#render-draft");
     await page.waitForFunction(() => reviewRender && !reviewRender.starting);
@@ -1078,27 +1092,33 @@ test("studio: sound report separates an omitted music proposal from applied effe
   await page.close();
 });
 
-test("studio: an older Motion card draft exposes guarded animation and sound rebuild without regenerating voice", {skip: skipped}, async () => {
-  const fixture = await openSceneReview({visualMode: "motion", useProjectPhotos: false}), {page, errors} = fixture;
-  assert.equal(await page.$eval("#legacy-motion-card", node => node.hidden), false);
-  assert.equal(await page.$eval("#rebuild-motion-and-sound", node => node.hidden), false);
-  assert.equal(await page.$eval("#animate-legacy", node => node.hidden), true);
-  assert.match(await page.$eval("#rebuild-visuals-note", node => node.textContent), /earlier card-based scenes/);
-  await page.click("#rebuild-motion-and-sound");
-  await page.waitForFunction(() => location.hash === "#home");
-  assert.equal(fixture.runs.length, 1);
-  assert.deepEqual(fixture.runs[0].steps, ["music", "visuals", "video"]);
-  assert.equal(fixture.runs[0].topic, "");
-  assert.equal(fixture.runs[0].profile_id, fixture.profileId);
-  assert.equal(fixture.runs[0].expected_plan_revision, "1".repeat(64));
-  assert.equal(fixture.runs[0].use_project_photos, false);
-  assert.equal(fixture.runs[0].preview_only, true);
-  await fixture.finish();
-  fixture.plan.scenes.forEach(scene => { scene.graphics_version = 1; });
-  await page.evaluate(() => loadReview({preserveEdits: true}));
-  assert.equal(await page.$eval("#legacy-motion-card", node => node.hidden), true);
-  assert.deepEqual(errors, []);
-  await page.close();
+test("studio: older Motion card and v1 object drafts offer guarded rebuild until current v2 scenes are loaded", {skip: skipped}, async () => {
+  for (const graphicsVersion of [undefined, 1]) {
+    const fixture = await openSceneReview({visualMode: "motion", useProjectPhotos: false, graphicsVersion}), {page, errors} = fixture;
+    assert.equal(await page.$eval("#legacy-motion-card", node => node.hidden), false);
+    assert.equal(await page.$eval("#rebuild-motion-and-sound", node => node.hidden), false);
+    assert.equal(await page.$eval("#animate-legacy", node => node.hidden), true);
+    assert.match(await page.$eval("#rebuild-visuals-note", node => node.textContent), /earlier scene design/);
+    assert.match(await page.$eval("#rebuild-visuals-note", node => node.textContent), /keeping the script and recorded voice/);
+    await page.click("#rebuild-motion-and-sound");
+    await page.waitForFunction(() => location.hash === "#home");
+    assert.equal(fixture.runs.length, 1);
+    assert.deepEqual(fixture.runs[0].steps, ["music", "visuals", "video"]);
+    assert.equal(fixture.runs[0].topic, "");
+    assert.equal(fixture.runs[0].profile_id, fixture.profileId);
+    assert.equal(fixture.runs[0].expected_plan_revision, "1".repeat(64));
+    assert.equal(fixture.runs[0].use_project_photos, false);
+    assert.equal(fixture.runs[0].preview_only, true);
+    await fixture.finish();
+    setFixtureGraphicsVersion(fixture.plan, 2);
+    await page.evaluate(() => loadReview({preserveEdits: true}));
+    assert.equal(await page.$eval("#legacy-motion-card", node => node.hidden), true);
+    assert.equal(await page.$eval("#rebuild-motion-and-sound", node => node.hidden), true);
+    assert.equal(await page.$eval("#replace-scene-image", node => node.disabled), true);
+    assert.equal(fixture.plan.use_project_photos, false);
+    assert.deepEqual(errors, []);
+    await page.close();
+  }
 });
 
 test("studio: scene regeneration refreshes the preview and automatically renders and seeks the draft", {skip: skipped, timeout: 60000}, async () => {

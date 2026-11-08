@@ -194,7 +194,14 @@ test("studio: real draft completion, Review retry, restart recovery and starting
   assert.equal(await page.$eval("#review-feedback", node => !node.hidden && node.classList.contains("error")), false,
     await page.$eval("#review-feedback", node => node.textContent));
   assert.equal(await page.$eval("#edit-title", node => node.value), "Ideas in motion");
-  assert.equal(await page.$eval("#edit-desc", node => node.value), "Saved description from the real output API.");
+  const creatorProse = "Saved description from the real output API.";
+  const footageStart = "Footage credits (updated by YAAS)", footageEnd = "End footage credits";
+  const fixtureSource = "https://www.pexels.com/video/offline-test-fixture-1/";
+  const expectedDescription = [creatorProse, "", footageStart,
+    `Video: Local FFmpeg test pattern · offline fixture · ${fixtureSource} · Pexels License · https://www.pexels.com/license/`,
+    footageEnd].join("\n");
+  assert.equal(await page.$eval("#edit-desc", node => node.value), expectedDescription,
+    "Review preserves exact creator prose and appends complete attribution for the used fixture clip");
   assert.deepEqual(responses, [200], "The real output endpoint must supply Review metadata");
   assert.equal(await page.$eval("#review-empty", node => node.hidden), true);
   await page.waitForFunction(() => thumb && !thumbBusy);
@@ -206,6 +213,22 @@ test("studio: real draft completion, Review retry, restart recovery and starting
   await page.waitForFunction(() => !thumbBusy);
   assert.equal(thumbnailWrites.length, 1, "The explicit preview action still generates style choices");
 
+  // A stale client's managed credit must be replaced using the actual plan.
+  // This is a draft fixture, so publishing remains covered by the upload gate;
+  // exercise the real metadata-save path and its persisted/reloaded value here.
+  const staleDescription = [creatorProse, "", footageStart,
+    "Video: Old fixture clip · https://www.pexels.com/video/old-fixture-99/", footageEnd].join("\n");
+  assert.deepEqual(await post("/api/save-output", {description: staleDescription}), {ok: true});
+  const savedOutput = await (await fetch(origin + "/api/output")).json();
+  assert.equal(savedOutput.description, expectedDescription, "Saving metadata refreshes credits without rewriting creator prose");
+  assert.equal(savedOutput.description.split(footageStart).length - 1, 1);
+  assert.equal(savedOutput.description.split(fixtureSource).length - 1, 1);
+  assert.ok(!savedOutput.description.includes("old-fixture-99"));
+  assert.equal(JSON.parse(await readFile(path.join(directory, "output/script.json"), "utf8")).description, expectedDescription);
+  assert.deepEqual(await post("/api/save-output", {description: expectedDescription}), {ok: true});
+  assert.equal((await (await fetch(origin + "/api/output")).json()).description, expectedDescription,
+    "Saving an already managed description is idempotent");
+
   await post("/_fixture/output-failure", {enabled: true});
   await page.click('#tabs a[data-view="home"]');
   await page.click('#run-done a[href="#review"]');
@@ -216,6 +239,7 @@ test("studio: real draft completion, Review retry, restart recovery and starting
   await page.click("#review-retry");
   await page.waitForFunction(() => document.querySelector("#review-feedback").hidden && document.querySelector("#player video")?.readyState >= 2);
   assert.deepEqual(responses, [200, 503, 200]);
+  assert.equal(await page.$eval("#edit-desc", node => node.value), expectedDescription);
   assert.equal(thumbnailWrites.length, 1, "Retrying Review remains read-only");
 
   await page.click('#tabs a[data-view="home"]');
@@ -236,7 +260,8 @@ test("studio: real draft completion, Review retry, restart recovery and starting
   assert.deepEqual(await readFile(path.join(directory, "output/motion_preview.mp4")), before, "Starting another video must preserve the existing draft until generation starts");
   await page.click('#tabs a[data-view="review"]');
   await page.waitForFunction(() => document.querySelectorAll("#scene-list button").length === 7 && document.querySelector("#player video")?.readyState >= 2);
-  assert.equal(await page.$eval("#edit-desc", node => node.value), "Saved description from the real output API.");
+  assert.equal(await page.$eval("#edit-desc", node => node.value), expectedDescription,
+    "Restart recovery preserves the creator prose and one current footage-credit block");
   await page.$eval("#rv-watch", node => window.scrollTo({top: window.scrollY + node.getBoundingClientRect().top - 85, behavior: "instant"}));
   await page.waitForFunction(() => Number(getComputedStyle(document.querySelector("#rv-watch")).opacity) > .99);
   const screenshots = path.join(root, "renderers/hyperframes/.smoke/screenshots");

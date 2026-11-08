@@ -353,8 +353,8 @@ function updateVisualMode() {
   $("#draft-preview").disabled = classic;
   if (classic) $("#draft-preview").checked = false;
   $("#visual-mode-note").textContent = {
-    motion: "Animated diagrams, comparisons, timelines and text. No downloaded photos or footage.",
-    hybrid: "Animated explanations with photos and licensed video footage.",
+    motion: "Animated subjects, actions and camera moves follow the narration. Motion uses generated graphics.",
+    hybrid: "Animated scenes with project photos and subject-matched Pixabay or Pexels video. The agent chooses footage to fit the scene and film's colors.",
     classic: "The original photo, zoom and transition renderer.",
   }[mode];
   const storyboard = $('#steps input[value="visuals"]');

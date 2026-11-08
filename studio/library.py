@@ -138,6 +138,13 @@ def archive_project(allow_draft=False):
     owner = state.get("profile_id") or "default"
     if image_sources and validate_binding(config.OUTPUT_DIR, image_sources, script, owner) is False:
         raise ValueError("Saved photos no longer match this project. Reload its archive or regenerate its images before archiving.")
+    from studio.footage_assets import credits_for_plan, validate_bound_footage
+    from video.timeline import script_signature
+    validate_bound_footage(state.get("visual_plan"), config.OUTPUT_DIR,
+                           script_signature=script_signature(script), profile_id=owner)
+    # An explicit Classic result has no footage plan. A previous Hybrid cache
+    # on disk must not be adopted into this newly rendered archive.
+    used_video_credits = credits_for_plan(state.get("visual_plan"))
     pid = time.strftime("%Y%m%d-%H%M%S") + "-" + slug(script.get("title")) + "-" + uuid.uuid4().hex[:6]
     d = os.path.join(LIB_DIR, pid)
     os.makedirs(d, exist_ok=True)
@@ -195,7 +202,7 @@ def archive_project(allow_draft=False):
         _copy_local_tree(source_motion, Path(d) / "motion")
         if (Path(d) / "motion" / "index.html").is_file():
             files["motion"] = "motion/index.html"
-    video_credits = _json(Path(config.OUTPUT_DIR) / "video_credits.json", [])
+    video_credits = used_video_credits
     if isinstance(video_credits, list):
         portable_credits = []
         for record in video_credits:
@@ -499,6 +506,10 @@ def _load_project(pid):
                 plan = json.loads(_relative_file(archive, "scene_plan.json").read_text(encoding="utf-8"))
                 if not isinstance(plan, dict) or not isinstance(plan.get("scenes"), list):
                     raise ValueError("Invalid archived storyboard")
+                from studio.footage_assets import validate_bound_footage
+                from video.timeline import script_signature
+                validate_bound_footage(plan, archive, script_signature=script_signature(script),
+                                       profile_id=profile["id"])
                 for scene in plan["scenes"]:
                     for kind in ("footage", "image"):
                         if scene.get(kind):
@@ -580,10 +591,11 @@ def _load_project(pid):
             # Opening an archive is an explicit project action. Validate its
             # original binding first, then bind the remapped portable files.
             save_binding(staging, staged_images, script, profile["id"])
-            video_credits = _json(archive / "video_credits.json", [])
+            from studio.footage_assets import credits_for_plan
+            video_credits = credits_for_plan(plan) if plan else _json(archive / "video_credits.json", [])
             if not isinstance(video_credits, list):
                 raise ValueError("Invalid video credit manifest")
-            for credit in video_credits:
+            for credit in video_credits if not plan else []:
                 if credit.get("path"):
                     relative = credit["path"]
                     source = _archived_media(archive, relative)

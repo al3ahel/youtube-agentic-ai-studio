@@ -44,18 +44,22 @@ def _ts(secs):
 
 def load_credits():
     credits = []
+    from studio.footage_assets import current_video_credits
     for name in ("credits.json", "video_credits.json"):
         try:
-            with open(os.path.join(config.OUTPUT_DIR, name), encoding="utf-8") as f:
-                records = json.load(f)
+            if name == "video_credits.json":
+                records = current_video_credits(config.OUTPUT_DIR)
+            else:
+                with open(os.path.join(config.OUTPUT_DIR, name), encoding="utf-8") as f:
+                    records = json.load(f)
             if not isinstance(records, list):
                 continue
             for record in records:
                 if not isinstance(record, dict):
                     continue
                 item = dict(record)
-                if item.get("provider") == "pexels":
-                    item.setdefault("source", "Pexels video")
+                if item.get("provider") in ("pexels", "pixabay"):
+                    item.setdefault("source", "Pixabay video" if item["provider"] == "pixabay" else "Pexels video")
                     item.setdefault("link", item.get("source_url", ""))
                 if item.get("source") and item not in credits:
                     credits.append(item)
@@ -208,6 +212,114 @@ AUDIO_CREDIT_START = "Audio credits (updated by YAAS)"
 AUDIO_CREDIT_END = "End audio credits"
 _MANAGED_AUDIO = re.compile(r"(?m)^" + re.escape(AUDIO_CREDIT_START) + r"\r?\n[\s\S]*?^"
                             + re.escape(AUDIO_CREDIT_END) + r"[ \t]*(?:\r?\n|$)")
+FOOTAGE_CREDIT_START = "Footage credits (updated by YAAS)"
+FOOTAGE_CREDIT_END = "End footage credits"
+_MANAGED_FOOTAGE = re.compile(r"(?m)^" + re.escape(FOOTAGE_CREDIT_START) + r"\r?\n[\s\S]*?^"
+                              + re.escape(FOOTAGE_CREDIT_END) + r"[ \t]*(?:\r?\n|$)")
+_CURRENT_PLAN = object()
+
+
+def _is_footage_credit(record):
+    return isinstance(record, dict) and (record.get("provider") in ("pixabay", "pexels")
+        or record.get("source") in ("Pixabay video", "Pexels video"))
+
+
+def _footage_credits(plan=_CURRENT_PLAN):
+    """An explicit empty plan has no clips, regardless of old files on disk."""
+    from apis.stock_video import LICENSES, PROVIDER_SOURCE_HOSTS
+    from studio.footage_assets import credits_for_plan, current_video_credits
+    records = current_video_credits(config.OUTPUT_DIR) if plan is _CURRENT_PLAN else credits_for_plan(plan)
+    result, seen = [], set()
+    for record in records:
+        if not _is_footage_credit(record):
+            continue
+        source = _safe_audio_url(record.get("source_url") or record.get("link"))
+        parsed = urlsplit(source)
+        provider = next((name for name, hosts in PROVIDER_SOURCE_HOSTS.items() if parsed.hostname in hosts), None)
+        if (not provider or parsed.scheme != "https" or parsed.query or parsed.fragment
+                or not parsed.path.startswith("/videos/" if provider == "pixabay" else "/video/")):
+            raise ValueError("A used video clip is missing its valid provider source link. Rebuild Visuals to restore its credits before publishing.")
+        license_name, license_url = LICENSES[provider]
+        if (record.get("license") not in (None, "", license_name)
+                or record.get("license_url") not in (None, "", license_url)):
+            raise ValueError("A used video clip has inconsistent license metadata. Rebuild Visuals to restore its credits before publishing.")
+        label = "Pixabay" if provider == "pixabay" else "Pexels"
+        credit = record.get("credit") or f"Video from {label}"
+        if not isinstance(credit, str) or len(credit) > 500:
+            raise ValueError("A used video clip has invalid attribution. Rebuild Visuals before publishing.")
+        key = (provider, source)
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append({"provider": provider, "source": f"{label} video", "source_url": source,
+                       "credit": " ".join(credit.split()), "license": license_name, "license_url": license_url})
+    return result
+
+
+def _footage_credit_block(credits):
+    if not credits:
+        return ""
+    return "\n".join([FOOTAGE_CREDIT_START, *(
+        f"Video: {record['credit']} · {record['source_url']} · {record['license']} · {record['license_url']}"
+        for record in credits), FOOTAGE_CREDIT_END])
+
+
+def _remove_known_legacy_footage_lines(description, current, previous=None):
+    """Migrate exact generated lines backed by known receipts, never free prose."""
+    known_lines, summaries = set(), {}
+    for records in (previous or [], current):
+        if not isinstance(records, list):
+            continue
+        used = [row for row in records if _is_footage_credit(row)]
+        if not used:
+            continue
+        for row in used:
+            # Both released formats are exact generated text: old lines did
+            # not include the license; newer ones include its name and URL.
+            for variant in (row, {key: value for key, value in row.items() if key not in {"license", "license_url"}}):
+                known_lines.update(_credit_lines([variant], detailed=True)[1:])
+        sources = sorted({str(row.get("source", "")) for row in records if isinstance(row, dict) and row.get("source")})
+        remaining = sorted({str(row.get("source", "")) for row in records
+                            if isinstance(row, dict) and row.get("source") and not _is_footage_credit(row)})
+        if sources:
+            summaries["Visuals: " + ", ".join(sources)] = "Visuals: " + ", ".join(remaining) if remaining else ""
+    lines = []
+    for line in description.splitlines(keepends=True):
+        text = line.rstrip("\r\n")
+        if text in known_lines:
+            continue
+        if text in summaries:
+            if summaries[text]:
+                lines.append(summaries[text] + line[len(text):])
+            continue
+        lines.append(line)
+    return "".join(lines).rstrip()
+
+
+def _with_media_credits(description, footage, audio_assets, *, previous_credits=None):
+    if not isinstance(description, str):
+        raise ValueError("The video description must be text.")
+    prose = _MANAGED_FOOTAGE.sub("", _MANAGED_AUDIO.sub("", description)).rstrip()
+    prose = _remove_known_legacy_footage_lines(prose, footage, previous_credits)
+    blocks = [block for block in (_footage_credit_block(footage), _audio_credit_block(audio_assets)) if block]
+    attribution = "\n\n".join(blocks)
+    result = "\n\n".join(part for part in (prose, attribution) if part)
+    if len(result) > 5000:
+        if len(attribution) > 5000:
+            raise ValueError("The applied media credits alone exceed YouTube's 5,000-character description limit. Use fewer clips or attribution-required recordings and rebuild; credits cannot be omitted.")
+        raise ValueError(f"The description and applied media credits exceed YouTube's 5,000-character limit by {len(result) - 5000} characters. Shorten your description and try again; the credits have not been removed.")
+    return result
+
+
+def ensure_media_credits(description, timeline=None, *, plan=_CURRENT_PLAN, previous_credits=None):
+    """Refresh actual footage and audio attribution without rewriting user prose.
+
+    Omit ``plan`` to read the current committed plan. Explicit ``None`` means
+    no footage (Classic or graphics-only), even when older files remain on disk.
+    Previous receipts allow exact generated legacy stock lines to be migrated.
+    """
+    return _with_media_credits(description, _footage_credits(plan),
+                               load_audio_credits(timeline, strict=True), previous_credits=previous_credits)
 
 
 def _audio_credit_block(assets):
@@ -280,15 +392,18 @@ def _credit_lines(credits, detailed=True):
             seen.add(key)
             lines.append(f"• “{c.get('author','Unknown')}” — {c.get('license','CC')} — {c.get('link','')}")
         for c in credits:
-            if c.get("provider") != "pexels" and c.get("source") != "Pexels video":
+            if c.get("provider") not in ("pexels", "pixabay") and c.get("source") not in ("Pexels video", "Pixabay video"):
                 continue
             source_url = c.get("source_url") or c.get("link") or ""
             key = (c.get("credit"), source_url)
             if key in seen:
                 continue
             seen.add(key)
-            credit = c.get("credit") or f"Video by {c.get('author', 'Pexels contributor')} on Pexels"
-            lines.append(f"• {credit} — {source_url}")
+            provider = "Pixabay" if c.get("provider") == "pixabay" else "Pexels"
+            credit = c.get("credit") or f"Video by {c.get('author', provider + ' contributor')} on {provider}"
+            license_note = f" — {c['license']}" if c.get("license") else ""
+            license_link = f" ({c['license_url']})" if c.get("license_url") else ""
+            lines.append(f"• {credit} — {source_url}{license_note}{license_link}")
     if any(c.get("source") == "NASA" for c in credits):
         lines.append("Space imagery courtesy of NASA.")
     if any(c.get("source") == "Pollinations AI" for c in credits):
@@ -375,17 +490,20 @@ def build_description(script, research, video_type: str = "normal", timeline=Non
         tail.insert(0, CREDIT_LINE + "\n")
 
     credits = load_credits()
+    footage = _footage_credits()
+    picture_credits = [record for record in credits if not _is_footage_credit(record)]
     audio_assets = load_audio_credits(timeline, strict=True)
-    block = _audio_credit_block(audio_assets)
+    block = "\n\n".join(part for part in (_footage_credit_block(footage), _audio_credit_block(audio_assets)) if part)
     # Generated prose may be shortened, but complete attribution is reserved
-    # first. A user-written description goes through ensure_audio_credits and
+    # first. A user-written description goes through ensure_media_credits and
     # receives an actionable error instead of being shortened automatically.
     prose_limit = min(4900, 5000 - len(block) - (2 if block else 0))
     if prose_limit < 0:
-        return _with_audio_credits("", audio_assets)  # raises a clear length error
+        return _with_media_credits("", footage, audio_assets)  # raises a clear length error
     for detailed in (True, False):
-        credit = _credit_lines(credits, detailed)
-        text = _MANAGED_AUDIO.sub("", "\n".join(lines + (["─"*40] + credit + [""] if credit else []) + tail)).rstrip()
+        credit = _credit_lines(picture_credits, detailed)
+        text = _MANAGED_FOOTAGE.sub("", _MANAGED_AUDIO.sub("", "\n".join(lines + (["─"*40] + credit + [""] if credit else []) + tail))).rstrip()
+        text = _remove_known_legacy_footage_lines(text, footage, credits)
         if len(text) <= prose_limit:
-            return _with_audio_credits(text, audio_assets)
-    return _with_audio_credits(text[:prose_limit], audio_assets)
+            return _with_media_credits(text, footage, audio_assets)
+    return _with_media_credits(text[:prose_limit], footage, audio_assets)

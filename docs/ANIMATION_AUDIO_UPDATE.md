@@ -1,5 +1,9 @@
 # Illustrated Motion and automatic licensed sound
 
+This document records the earlier version-1 illustration/audio release. The
+current visual update is [Directed scenes and subject-matched stock video](SCENE_DIRECTION_UPDATE.md),
+which adds version-2 scene staging and Pixabay footage while preserving this audio workflow.
+
 This update addresses the reported blue text-card output, missing music/effects,
 and confusing soundtrack report. It preserves the previous channel, schedule,
 project ownership, narration, preview-revision and publishing boundaries. The

@@ -20,6 +20,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 from agents.visual_director import plan_scenes
+from agents.object_direction import apply_objects
 from video.renderers.html import prepare_motion_project, render_motion_video
 
 
@@ -44,11 +45,28 @@ def fixture(output, portrait=False):
             {"start": index * 7 + 3.5, "end": index * 7 + 7, "text": second},
         ])
     plan = plan_scenes(script, timeline, use_ai=False, use_project_photos=False)
+    plan.pop("creative_brief", None)
     # A consistent neutral editorial treatment isolates the structure change.
     plan["visual_direction"] = {"version": 1, "look": "editorial", "rhythm": "measured",
                                 "rationale": "Qualitative illustrated explanation, not a country-specific report."}
     for scene in plan["scenes"]:
         scene["composition"] = "split"
+        # Keep this published fixture as a v1 compatibility proof. The separate
+        # directed_demo exercises the current planner's composed scene worlds.
+        section = next(row for row in script["sections"] if row["id"] == scene["section_id"])
+        scene.pop("staging", None)
+        scene.pop("palette", None)
+        scene["template"] = "explain"
+        scene["items"] = [{"label": label} for label in section["bullet_points"]]
+        scene["beats"] = [{"time": 0, "target": "title", "action": "reveal"}]
+        for index in range(len(scene["items"])):
+            scene["beats"].extend([
+                {"time": index * 3.5, "target": f"item-{index}", "action": "reveal"},
+                {"time": index * 3.5 + .84, "target": f"item-{index}", "action": "highlight"},
+            ])
+        apply_objects(scene, section["narration"])
+        for item in scene["items"]:
+            item.pop("role", None)
     audio = output / "silent-clock.wav"
     with wave.open(str(audio), "wb") as stream:
         stream.setnchannels(1); stream.setsampwidth(2); stream.setframerate(48000)

@@ -14,6 +14,7 @@
   const planLook = looks.has(plan.visual_direction?.look) ? plan.visual_direction.look : "legacy";
   const planRhythm = rhythms.has(plan.visual_direction?.rhythm) ? plan.visual_direction.rhythm : "measured";
   root.dataset.look = planLook;
+  for (const [key, value] of Object.entries(plan.palette_colors || {})) root.style.setProperty(`--film-world-${key}`, value);
   root.classList.toggle("portrait", portrait);
   canvas.style.width = `${designWidth}px`;
   canvas.style.height = `${designHeight}px`;
@@ -430,8 +431,12 @@
     const fullMedia = candidate => candidate.template === "footage" || (candidate.template === "text" && candidate.image) ? "full" : "none";
     // Bounded, zero-time theme changes share the same seekable clock as scenes.
     // fromTo also restores the previous scene's theme when seeking backwards.
-    timeline.fromTo(root, {attr: {"data-look": previousLook, "data-media": fullMedia(previous)}},
-      {attr: {"data-look": context.look, "data-media": fullMedia(scene)}, duration: 0, immediateRender: false}, start);
+    timeline.fromTo(root, {attr: {"data-look": previousLook, "data-media": fullMedia(previous), "data-world": previous.graphics_version === 2 ? "2" : "0"}},
+      {attr: {"data-look": context.look, "data-media": fullMedia(scene), "data-world": context.worlds ? "2" : "0"}, duration: 0, immediateRender: false}, start);
+    if (plan.palette_colors) {
+      const colors = source => Object.fromEntries(Object.entries(source.palette_colors || plan.palette_colors).map(([key, value]) => [`--film-world-${key}`, value]));
+      timeline.fromTo(root, colors(previous), {...colors(scene), duration: 0, immediateRender: false}, start);
+    }
     gsap.set(node, {opacity: 0});
     timeline.fromTo(node, {opacity: 0}, {opacity: 1, duration: context.objects ? 0 : .00001, immediateRender: false}, start);
     timeline.fromTo(node, {opacity: 1}, {opacity: 0, duration: .00001, immediateRender: false}, end - .00001);
@@ -503,8 +508,10 @@
     const look = looks.has(scene.look) ? scene.look : planLook;
     const rhythm = rhythms.has(scene.rhythm) ? scene.rhythm : planRhythm;
     const composition = compositions.has(scene.composition) ? scene.composition : "default";
-    const objects = scene.graphics_version === 1 && !scene.image && !["footage", "chart"].includes(scene.template);
+    const worlds = scene.graphics_version === 2 && !scene.image && !["footage", "chart"].includes(scene.template);
+    const objects = [1, 2].includes(scene.graphics_version) && !scene.image && !["footage", "chart"].includes(scene.template);
     node.classList.toggle("object-scene", objects);
+    node.classList.toggle("world-scene", worlds);
     node.classList.add(`composition-${composition}`);
     node.classList.toggle("dense-items", scene.items.length > 4);
     node.id = `scene-${index}`;
@@ -520,7 +527,7 @@
     const stage = element("div", "scene-visual");
     node.append(header, element("div", "scene-number", `${String(index + 1).padStart(2, "0")} / ${String(plan.scenes.length).padStart(2, "0")}`), stage);
     mount.append(node);
-    return {scene, index, node, header, title, stage, look, rhythm, composition, objects, items: [], links: [], draws: [], width: visualWidth, height: portrait ? 970 : 400};
+    return {scene, index, node, header, title, stage, look, rhythm, composition, objects, worlds, items: [], links: [], draws: [], width: visualWidth, height: portrait ? 970 : 400};
   }
 
   function buildCaptions() {
@@ -634,14 +641,15 @@
         }
       }
       if (context.objects || !["text", "footage"].includes(context.scene.template)) {
-        const top = Math.max(context.objects ? (portrait ? 410 : 300) : (portrait ? 560 : 390), context.header.offsetTop + context.header.offsetHeight + (context.objects ? 22 : 38));
-        const bottom = context.objects ? (portrait ? 1490 : 835) : (portrait ? 1530 : 800);
+        const top = Math.max(context.worlds ? (portrait ? 350 : 255) : context.objects ? (portrait ? 410 : 300) : (portrait ? 560 : 390), context.header.offsetTop + context.header.offsetHeight + (context.worlds ? 10 : context.objects ? 22 : 38));
+        const bottom = context.worlds ? (portrait ? 1510 : 855) : context.objects ? (portrait ? 1490 : 835) : (portrait ? 1530 : 800);
         context.stage.style.top = `${top}px`;
         context.height = Math.max(portrait ? 500 : 220, bottom - top);
         context.stage.style.height = `${context.height}px`;
       }
       if (context.scene.image && !["chart", "footage"].includes(context.scene.template)) picture(context);
-      if (context.objects) window.YAASObjects.build(context, {portrait, timeline, beatTime});
+      if (context.worlds) window.YAASWorlds.build(context, {portrait, timeline, beatTime, palette: context.scene.palette_colors || plan.palette_colors});
+      else if (context.objects) window.YAASObjects.build(context, {portrait, timeline, beatTime});
       else { builders[context.scene.template](context); fitArrangedContent(context); }
       animate(context);
     }
@@ -651,6 +659,7 @@
     timeline.to({time: 0}, {time: plan.duration, duration: plan.duration, ease: "none"}, 0);
     document.getElementById("chapter-count").textContent = `${String(plan.scenes.length).padStart(2, "0")} SCENES`;
     root.dataset.look = scenes[0].look;
+    root.dataset.world = scenes[0].worlds ? "2" : "0";
     root.dataset.media = scenes[0].scene.template === "footage" || (scenes[0].scene.template === "text" && scenes[0].scene.image) ? "full" : "none";
     timeline.pause(0);
     window.__timelines = window.__timelines || {};

@@ -106,8 +106,43 @@ function showScene(id, { preserveEditor = false } = {}) {
     button.setAttribute("aria-pressed", String(selected));
   });
   const look = scene.look || storyboardData?.plan?.visual_direction?.look;
-  const styleTags = [scene.template || "motion", look, scene.composition && scene.composition !== "default" ? scene.composition : null].filter(Boolean);
+  const styleTags = [scene.template || "motion", look, scene.staging?.camera,
+    scene.composition && scene.composition !== "default" ? scene.composition : null].filter(Boolean);
   $("#scene-details").innerHTML = `${styleTags.map(tag => `<span class="tag">${esc(String(tag).replaceAll("_", " "))}</span>`).join(" ")}<h3>${esc(scene.title || "Scene")}</h3><p>${esc(scene.goal || scene.visual_goal || "Explain this part of the narration.")}</p>`;
+  if (scene.staging && !scene.footage && !scene.image) {
+    const actions = { rise: "Rising water", adapt: "Adapting to rising water", float: "Homes rising with water", record: "Recording people", gap: "Revealing a recording gap",
+      extract: "Extracting material", transfer: "Moving material", reveal: "Revealing the subject", assemble: "Assembling the parts",
+      connect: "Connecting the parts", compare: "Comparing the subjects" };
+    const cast = (Array.isArray(scene.items) ? scene.items : []).filter(item => item.role === "subject" || item.role === "support")
+      .map(item => item.label).filter(label => typeof label === "string").slice(0, 4);
+    const note = document.createElement("p");
+    note.className = "hint";
+    note.textContent = [actions[scene.staging.action] || "Animated scene", cast.join(" · ")].filter(Boolean).join(" — ");
+    $("#scene-details").append(note);
+  }
+  if (scene.footage) {
+    try {
+      const source = new URL(scene.footage.source_url);
+      if (source.protocol === "https:" && !source.username && !source.password && ["pixabay.com", "www.pixabay.com", "pexels.com", "www.pexels.com"].includes(source.hostname)) {
+        const note = document.createElement("p"), link = document.createElement("a");
+        note.className = "hint";
+        link.className = "link"; link.href = source.href; link.target = "_blank"; link.rel = "noopener noreferrer";
+        link.textContent = scene.footage.credit || "View footage source";
+        note.append(link);
+        const subjects = scene.footage.selection?.matched_subjects;
+        if (Array.isArray(subjects) && subjects.length) note.append(document.createTextNode(` · Matching source tags: ${subjects.slice(0, 6).join(", ")}`));
+        $("#scene-details").append(note);
+      }
+    } catch (_) { /* Older projects can omit a source link. */ }
+  }
+  const directionRows = storyboardData?.plan?.direction_report?.scenes;
+  const directed = Array.isArray(directionRows) ? directionRows.find(row => row?.scene_id === scene.id) : null;
+  if (directed) {
+    const note = document.createElement("p"); note.className = "hint";
+    const issues = Array.isArray(directed.issues) ? directed.issues.filter(issue => typeof issue === "string").slice(0, 3) : [];
+    note.textContent = [(directed.source === "ai" ? "AI scene direction." : "Local scene direction."), ...issues].join(" ");
+    $("#scene-details").append(note);
+  }
   if (!preserveEditor) {
     $("#scene-instructions").value = "";
     $("#replace-scene-image").checked = false;
@@ -127,6 +162,12 @@ async function loadStoryboard(st = status, { data = null, preserveEditor = false
   const scenes = Array.isArray(data.plan?.scenes) ? data.plan.scenes.filter(scene => scene && typeof scene === "object") : [], visible = scenes.length > 0;
   if (st.has_storyboard && !visible) throw new Error("The saved storyboard has no reviewable scenes. Try loading the project again.");
   storyboardData = data;
+  const brief = data.plan?.creative_brief;
+  $("#film-direction").hidden = !brief;
+  $("#film-direction").textContent = brief ? [brief.theme, brief.premise, brief.palette ? `Palette: ${brief.palette}.` : ""].filter(item => typeof item === "string").join(" · ") : "";
+  const directionReport = data.plan?.direction_report;
+  $("#direction-check-note").hidden = !directionReport?.summary;
+  $("#direction-check-note").textContent = directionReport?.summary ? `${directionReport.summary} These are source and staging checks; inspect the preview for visual quality.` : "";
   $("#rv-storyboard").hidden = !visible;
   $("#storyboard-nav").hidden = !visible;
   if (!visible) { $("#motion-preview").removeAttribute("src"); return true; }
@@ -147,6 +188,24 @@ async function loadStoryboard(st = status, { data = null, preserveEditor = false
   $("#timing-source-note").textContent = [timingLabel, ...timingWarnings].filter(Boolean).join(" ");
   $("#image-reuse-note").hidden = !st.image_reuse_note;
   $("#image-reuse-note").textContent = typeof st.image_reuse_note === "string" ? st.image_reuse_note : "";
+  const stock = data.plan?.stock_status;
+  $("#footage-selection-note").hidden = data.plan?.mode === "motion" || !stock;
+  const stockReasons = { missing_key: "Save a Pixabay or Pexels key in Settings to include video footage.",
+    no_eligible_scenes: "No filmed subject was selected for these scenes.",
+    subject_mismatch: "No footage matched the scene subject; the existing scene design was kept.",
+    no_matching_footage: "No clip met this scene's subject, framing and duration requirements; the existing scene design was kept.",
+    excessive_crop: "The available clips would crop away too much of the picture; the existing scene design was kept.",
+    clip_too_short: "The available clips were shorter than the scene; the existing scene design was kept.",
+    rate_limited: "The footage provider reached its request limit. You can rebuild Visuals later.",
+    access_denied: "The footage provider did not accept the saved key. Check its key and account access in Settings.",
+    provider_unavailable: "The footage provider was unavailable; the existing scene design was kept.",
+    download_failed: "The selected footage could not be downloaded; the existing scene design was kept.",
+    media_probe_failed: "The downloaded clip did not pass the video checks; the existing scene design was kept.",
+    media_validation_failed: "The downloaded clip did not pass the video checks; the existing scene design was kept.",
+    ffprobe_unavailable: "FFprobe is needed to check downloaded footage. Run the local setup check.",
+    ffmpeg_unavailable: "FFmpeg is needed to check downloaded footage. Run the local setup check.",
+    downloaded: "The selected clips are included in the storyboard." };
+  $("#footage-selection-note").textContent = stock ? `${Number(stock.clips) || 0} footage scenes. ${stockReasons[stock.reason] || "Footage is selected only when a clip matches the scene and fits its framing and duration."}` : "";
   const qa = data.qa;
   const issues = qa && (qa.issues || qa.warnings || []);
   const notes = Array.isArray(issues) ? issues.map(issue => typeof issue === "string" ? issue : issue.message || issue.description || "").filter(Boolean).slice(0, 8) : [];

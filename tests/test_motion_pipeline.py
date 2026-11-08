@@ -92,6 +92,42 @@ def test_render_only_rejects_mode_changed_or_missing_plan(job, monkeypatch):
     assert not state["running"]
 
 
+def test_graphics_rebuild_migrates_old_stock_credits_without_changing_user_prose(job, monkeypatch):
+    from studio.description import _credit_lines
+    from studio.footage_assets import credits_for_plan
+    from video.renderers import html
+    path, _, _ = job
+    runner.run_pipeline_thread(["visuals"], visual_mode="motion")
+    assert state["error"] is None
+    old = copy.deepcopy(state["visual_plan"])
+    old["mode"], old["use_project_photos"] = "hybrid", True
+    old["scenes"][0]["template"] = "footage"
+    old["scenes"][0].pop("graphics_version", None)
+    old["scenes"][0].pop("staging", None)
+    old["scenes"][0]["items"] = [{"label": "Prior scene subject"}, {"label": "Prior scene detail"}]
+    old["scenes"][0]["beats"] = [{"time": 0, "target": "title", "action": "reveal"}]
+    old["scenes"][0]["footage"] = {
+        "path": str(path / "prior.mp4"), "source_url": "https://pixabay.com/videos/prior-clip-7/",
+        "credit": "Video by Prior Camera Artist on Pixabay", "in_point": 0,
+    }
+    state["visual_plan"] = old
+    (path / "scene_plan.json").write_text(json.dumps(old))
+    prose = "My custom opening.\n\nMy carefully edited final paragraph."
+    state["description"] = prose + "\n\n" + "\n".join(_credit_lines(credits_for_plan(old)))
+    voice = (path / "narration.wav").read_bytes()
+    def render(script, audio, output, plan, **kwargs):
+        assert not any(scene.get("footage") or scene.get("image") for scene in plan["scenes"])
+        video = path / "motion_preview.mp4"
+        video.write_bytes(b"new graphics-only draft")
+        return str(video)
+    monkeypatch.setattr(html, "render_motion_video", render)
+    runner.run_pipeline_thread(["visuals", "video"], visual_mode="motion", preview_only=True,
+                               use_project_photos=False)
+    assert state["error"] is None
+    assert state["description"] == prose
+    assert (path / "narration.wav").read_bytes() == voice
+
+
 def test_changed_script_cannot_reuse_old_audio(job):
     state["script"]["sections"][0]["narration"] = "Changed words."
     runner.run_pipeline_thread(["visuals"], visual_mode="motion")

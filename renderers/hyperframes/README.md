@@ -88,6 +88,14 @@ by the director in the section's narration. Actors, progressive paths and labels
 use the same paused timeline, including arbitrary reverse seeks. Missing versions
 retain legacy card layouts; charts and footage keep their existing semantics.
 
+New `graphics_version: 2` scenes use `worlds.js` and `worlds.css`. Their validated
+`staging` data selects a supported world/action/camera; one to four actor items
+have a single subject and optional support/context roles. The film's validated
+creative brief supplies palette tokens, with optional per-scene overrides.
+All actor poses and camera movement use the same seekable GSAP clock. The normal
+planner fixture is `directed_demo.py`; `objects_demo.py` explicitly preserves
+version-1 regression coverage. [Current capability map](../../docs/SCENE_DIRECTION_UPDATE.md).
+
 For the separate 14-second illustrated example, run `objects_demo.py` in both
 orientations, then `objects_sound_demo.py --input <output-directory>` to add real
 licensed recordings. The example has authored phrase cues and no narration; its

@@ -1,6 +1,46 @@
 # Renderer verification samples
 
-## Illustrated animation with licensed sound
+## Current directed scenes with licensed sound
+
+| File | Dimensions | Duration | Frame rate | Decoded video frames | Streams |
+| --- | --- | --- | --- | --- | --- |
+| [directed-motion-landscape.mp4](directed-motion-landscape.mp4) | 640 × 360 | 14 seconds | 12 fps | 168 | H.264 + AAC |
+| [directed-motion-portrait.mp4](directed-motion-portrait.mp4) | 360 × 640 | 14 seconds | 12 fps | 168 | H.264 + AAC |
+
+The actual local planner produces three connected ideas: floodwater reaches
+coastal homes, a floating home rises with water, and solar panels feed a battery
+and home. It selects the actors, their roles, the action, camera and a shared
+palette. The fixture does not manually substitute an ideal storyboard after
+planning. The subject is a qualitative hypothetical illustration, not a forecast,
+geographical map or engineering specification.
+
+**No remote AI, live footage search or speech service is used by this fixture.**
+Phrase cues and the 14-second clock are authored. The soundtrack contains Chris
+Zabriskie's *Cylinder One* and a short licensed whoosh at the two scene changes
+(4 and 10 seconds). The listening balance is authored for this music-only example;
+production sound design measures the user's voice. The examples do not establish
+narration quality, word-level alignment or successful live Pixabay access.
+
+[Audio credits](directed-motion-audio-credits.txt) ·
+[Encoded-media verification](directed-motion-verification.json) ·
+[Landscape frame](../screenshots/directed-motion-landscape.png) ·
+[Portrait frame](../screenshots/directed-motion-portrait.png) ·
+[Capability and pipeline map](../SCENE_DIRECTION_UPDATE.md).
+
+Reproduce with the installed dependencies and browser described below:
+
+```bash
+python renderers/hyperframes/directed_demo.py
+python renderers/hyperframes/directed_demo.py --portrait
+python renderers/hyperframes/objects_sound_demo.py --directed --input renderers/hyperframes/.smoke/directed-landscape
+python renderers/hyperframes/objects_sound_demo.py --directed --input renderers/hyperframes/.smoke/directed-portrait
+```
+
+The final files are `directed-motion.mp4` within those output directories. The
+original silent-clock render and applied sound report remain alongside them.
+The audio helper stream-copies video, preserving its decoded frames.
+
+## Previous version-1 illustrated animation
 
 | File | Dimensions | Duration | Frame rate | Video frames | Streams |
 | --- | --- | --- | --- | --- | --- |

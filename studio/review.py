@@ -11,7 +11,7 @@ import time
 from flask import Blueprint, abort, jsonify, request
 
 import config
-from studio.description import audio_credit_text, build_description, ensure_audio_credits, load_audio_credits, load_credits, load_sound_report, research_sources
+from studio.description import audio_credit_text, build_description, ensure_media_credits, load_audio_credits, load_credits, load_sound_report, research_sources
 from studio.files import send
 from studio.library import sync_library
 from studio.state import is_shorts, job_lock, state
@@ -54,7 +54,8 @@ def get_output():
     try:
         if not isinstance(description, str):
             description = build_description(s, r, state.get("video_type", "normal"), timeline=state.get("timeline")) if s else ""
-        description = ensure_audio_credits(description, state.get("timeline"))
+        description = ensure_media_credits(description, state.get("timeline"), plan=state.get("visual_plan"),
+                                           previous_credits=load_credits())
     except ValueError as exc:
         description = description if isinstance(description, str) else ""
         description_warning = str(exc)
@@ -116,6 +117,12 @@ def save_output():
         return jsonify({"ok": False, "error": "Title and description must be text."}), 400
     if "tags" in body and (not isinstance(body["tags"], list) or not all(isinstance(tag, str) for tag in body["tags"])):
         return jsonify({"ok": False, "error": "Tags must be a list of text values."}), 400
+    if "description" in body:
+        try:
+            body["description"] = ensure_media_credits(body["description"], state.get("timeline"),
+                plan=state.get("visual_plan"), previous_credits=load_credits())
+        except ValueError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
     if state["script"]:
         os.makedirs(config.OUTPUT_DIR, exist_ok=True)
         if "title"       in body: state["script"]["title"]       = body["title"]

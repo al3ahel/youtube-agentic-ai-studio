@@ -183,6 +183,65 @@ def test_drafts_and_dirty_storyboards_are_not_archived(project):
     assert library.archive_project() is None
 
 
+def _bind_test_footage(script, plan):
+    """Acquisition is tested separately with decoded MP4s; this fixture tests portability."""
+    footage = plan["scenes"][1]["footage"]
+    data = Path(footage["path"]).read_bytes()
+    footage["selection"] = {
+        "version": 1, "provider": "pexels", "provider_id": "1", "profile_id": state.get("profile_id") or "default",
+        "script_signature": script_signature(script), "scene_id": plan["scenes"][1]["id"],
+        "request_sha256": "a" * 64, "sha256": hashlib.sha256(data).hexdigest(), "bytes": len(data),
+        "width": 640, "height": 360, "duration": 30, "query": "network", "subject_terms": ["network"],
+        "matched_subjects": ["network"], "exclude_terms": [], "theme": "networks", "palette": [],
+        "palette_score": None, "crop_fraction": 1, "author": "Example", "license": "Pexels License",
+        "license_url": "https://www.pexels.com/license/", "validation": "metadata_and_decoded_frames",
+    }
+
+
+def test_new_footage_receipt_survives_portable_archive_and_rejects_changed_bytes(project):
+    output, client = project
+    script, plan = _motion_project(output)
+    _bind_test_footage(script, plan)
+    receipt = deepcopy(plan["scenes"][1]["footage"]["selection"])
+    # A rejected search result should not become part of this saved video.
+    (output / "video_credits.json").write_text(json.dumps([{"provider": "pexels", "path": "/missing/unrelated.mp4"}]))
+    pid = library.archive_project()
+    archive = Path(library.lib_path(pid))
+    archived_plan = json.loads((archive / "scene_plan.json").read_text())
+    assert archived_plan["scenes"][1]["footage"]["selection"] == receipt
+    assert len(json.loads((archive / "video_credits.json").read_text())) == 1
+    assert client.post(f"/api/library/{pid}/load", json={}).json == {"ok": True}
+    assert state["visual_plan"]["scenes"][1]["footage"]["selection"] == receipt
+    previous = deepcopy(state)
+    asset = archive / archived_plan["scenes"][1]["footage"]["path"]
+    asset.write_bytes(b"x" * receipt["bytes"])
+    response = client.post(f"/api/library/{pid}/load", json={}).json
+    assert not response["ok"] and "footage changed" in response["error"]
+    assert state == previous
+
+
+def test_classic_archive_does_not_adopt_a_previous_hybrid_plan_from_disk(project):
+    output, _ = project
+    _, plan = _motion_project(output)
+    (output / "scene_plan.json").write_text(json.dumps(plan))
+    state.update(visual_plan=None, visual_mode="classic")
+    pid = library.archive_project()
+    archive = Path(library.lib_path(pid))
+    assert json.loads((archive / "video_credits.json").read_text()) == []
+    assert not (archive / "scene_plan.json").exists()
+    assert not (archive / "assets" / "media").exists()
+
+
+@pytest.mark.parametrize("field,value", [("profile_id", "f" * 32), ("script_signature", "f" * 64), ("scene_id", "other-scene")])
+def test_archive_rejects_footage_from_another_project_or_scene(project, field, value):
+    output, _ = project
+    script, plan = _motion_project(output)
+    _bind_test_footage(script, plan)
+    plan["scenes"][1]["footage"]["selection"][field] = value
+    with pytest.raises(ValueError, match="another script, channel or scene"):
+        library.archive_project()
+
+
 def test_archive_preserves_the_selected_soundtrack_after_setting_changes(project, monkeypatch):
     output, client = project
     _motion_project(output)

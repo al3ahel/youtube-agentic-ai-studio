@@ -1,0 +1,85 @@
+/* V2 composed worlds. Legacy object and card plans retain their own CSS. */
+.world-scene { background: var(--film-world-background, var(--background)); }
+#composition .world-scene .scene-title { color: var(--film-world-ink, var(--ink)); }
+#composition .world-scene .eyebrow { color: var(--film-world-accent, var(--accent)); }
+#composition[data-world="2"] .film-header, #composition[data-world="2"] .film-footer { color: var(--film-world-ink, var(--ink)); }
+#composition[data-world="2"] .header-rule { background: var(--film-world-secondary, var(--line)); opacity: .3; }
+#composition[data-world="2"] .brand-symbol i, #composition[data-world="2"] #film-progress-fill { background: var(--film-world-accent, var(--accent)); }
+#composition .world-scene .scene-header { top: 135px; left: 100px; right: 170px; }
+#composition .world-scene .scene-title { display: block; font-size: 56px; line-height: 1.1; max-width: 1560px; }
+#composition .world-scene .eyebrow { font-size: 14px; margin-bottom: 13px; }
+#composition .world-scene .scene-number { top: 141px; }
+#composition.portrait .world-scene .scene-header { top: 180px; left: 72px; right: 120px; }
+#composition.portrait .world-scene .scene-title { font-size: 61px; line-height: 1.11; }
+#composition.portrait .world-scene .eyebrow { font-size: 17px; margin-bottom: 16px; }
+#composition.portrait .world-scene .scene-number { top: 185px; }
+.world-stage {
+  --world-background: var(--background); --world-surface: var(--surface);
+  --world-ink: var(--ink); --world-accent: var(--accent); --world-secondary: var(--purple);
+  overflow: hidden; isolation: isolate;
+}
+.world-art { position: absolute; inset: 0; width: 100%; height: 100%; overflow: hidden; }
+.world-camera { transform-origin: 0 0; }
+.world-actor { color: var(--world-ink); }
+.world-line, .world-fine-line, .world-limb, .world-gantry, .world-drill, .world-stem,
+.world-network-line, .world-orbit, .world-panel-grid, .world-channel, .world-engineering-line,
+.world-conflict-a, .world-conflict-b, .world-water-glint {
+  fill: none; stroke: var(--world-ink); stroke-width: 4; stroke-linecap: round; stroke-linejoin: round;
+}
+.world-fine-line { stroke-width: 2.5; opacity: .7; }
+.world-limb { stroke-width: 9; }
+.world-gantry { stroke-width: 6; }
+.world-drill { stroke-width: 7; stroke: var(--world-accent); }
+.world-solid { fill: var(--world-accent); stroke: var(--world-ink); stroke-width: 2; }
+.world-ink-fill { fill: var(--world-ink); }
+.world-body, .world-paper { fill: var(--world-surface); stroke: var(--world-ink); stroke-width: 4; stroke-linejoin: round; }
+.world-side { fill: var(--world-secondary); stroke: var(--world-ink); stroke-width: 3; opacity: .7; }
+.world-roof { fill: var(--world-secondary); stroke: var(--world-ink); stroke-width: 4; }
+.world-window { fill: var(--world-accent); opacity: .8; }
+.world-dark, .world-cutout { fill: var(--world-background); }
+.world-energy { fill: var(--world-accent); }
+.world-panel { fill: var(--world-surface); stroke: var(--world-ink); stroke-width: 4; stroke-linejoin: round; }
+.world-panel-grid { stroke: var(--world-secondary); stroke-width: 2.3; opacity: .7; }
+.world-leaf, .world-leaf-secondary { fill: var(--world-accent); stroke: var(--world-ink); stroke-width: 3; }
+.world-leaf-secondary { fill: var(--world-secondary); }
+.world-stem { stroke-width: 8; }
+.world-earth-fill, .world-land { fill: var(--world-surface); stroke: var(--world-ink); stroke-opacity: .55; stroke-width: 2; }
+.world-land { opacity: .9; }
+.world-stratum-fill { fill: var(--world-secondary); opacity: .16; }
+.world-deep-fill { fill: var(--world-accent); opacity: .08; }
+.world-stratum-line { fill: none; stroke: var(--world-secondary); opacity: .22; stroke-width: 2; }
+.world-grid { fill: none; stroke: var(--world-secondary); stroke-width: 1; opacity: .11; }
+.world-baseline { fill: none; stroke: var(--world-secondary); stroke-width: 2; opacity: .25; }
+.world-network-line { stroke: var(--world-secondary); stroke-width: 4; }
+.world-orbit { stroke-width: 3; stroke: var(--world-secondary); }
+.world-channel-under { fill: none; stroke: var(--world-secondary); opacity: .2; stroke-width: 7; }
+.world-channel { stroke: var(--world-accent); stroke-width: 5; }
+.world-engineering-line { stroke: var(--world-secondary); stroke-width: 3; stroke-dasharray: 11 10; }
+.world-conflict-a { stroke: var(--world-accent); stroke-width: 16; }
+.world-conflict-b { stroke: var(--world-secondary); stroke-width: 16; }
+.world-water-fill { fill: var(--world-accent); stroke: var(--world-ink); stroke-width: 3; }
+.world-water-glint { stroke: var(--world-background); stroke-width: 6; }
+.world-water-mass { fill: var(--world-accent); fill-opacity: .28; stroke: var(--world-accent); stroke-width: 4; }
+.world-water-contour { fill: none; stroke: var(--world-accent); stroke-width: 2.5; opacity: .5; }
+.world-floating-base { fill: var(--world-secondary); stroke: var(--world-ink); stroke-width: 3; }
+.world-missing { opacity: .35; stroke-dasharray: 8 8; }
+.world-unrecorded-route { fill: none; stroke: var(--world-secondary); stroke-width: 4; }
+.world-comparison-rule { fill: none; stroke: var(--world-secondary); stroke-width: 3; opacity: .5; }
+.world-shaft { fill: none; stroke: var(--world-background); stroke-width: 20; }
+.world-ore-seam { fill: none; stroke: var(--world-accent); stroke-width: 14; stroke-linejoin: round; stroke-linecap: round; }
+.world-conveyor-line { fill: none; stroke: var(--world-ink); stroke-width: 8; }
+.world-ore-piece { fill: var(--world-accent); stroke: var(--world-ink); stroke-width: 2; }
+.world-role-context { opacity: .72; }
+.world-label-box { overflow: visible; }
+.world-label {
+  font-family: "Inter Variable", Inter, sans-serif; font-size: 29px; font-weight: 530;
+  line-height: 1.2; letter-spacing: -.025em; text-align: center; color: var(--world-ink);
+  overflow-wrap: anywhere; text-wrap: balance; padding: 8px 6px;
+}
+.world-label-subject { font-weight: 650; font-size: 35px; }
+.world-label-context { opacity: .74; font-size: 25px; }
+.portrait .world-label { font-size: 33px; }
+.portrait .world-label-subject { font-size: 40px; }
+.portrait .world-label-context { font-size: 29px; }
+.world-note { position: absolute; left: 0; right: 0; bottom: 0; padding: 3px 0; color: var(--world-ink); opacity: .45; font-size: 13px; text-align: right; letter-spacing: .12em; }
+.portrait .world-note { font-size: 15px; }

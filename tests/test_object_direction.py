@@ -45,13 +45,13 @@ def test_new_plan_persists_grounded_graphics_and_leaves_source_timing_unchanged(
     before = deepcopy((script, timeline))
     plan = visual_director.plan_scenes(script, timeline, use_ai=False)
     assert (script, timeline) == before
-    assert all(scene["graphics_version"] == 1 for scene in plan["scenes"])
+    assert all(scene["graphics_version"] == 2 for scene in plan["scenes"])
     assert plan["scenes"][0]["items"][0]["symbol"] == "census"
     assert plan["scenes"][1]["items"][0]["symbol"] == "mining"
     assert not any("image" in scene or "footage" in scene for scene in plan["scenes"])
     clean = _validate_plan(plan)
     assert [scene["items"] for scene in clean["scenes"]] == [scene["items"] for scene in plan["scenes"]]
-    assert all(scene["graphics_version"] == 1 for scene in clean["scenes"])
+    assert all(scene["graphics_version"] == 2 for scene in clean["scenes"])
     assert clean["captions"] == plan["captions"]
 
 
@@ -61,20 +61,24 @@ def test_old_plan_stays_old_until_explicit_object_rebuild(monkeypatch):
     old = visual_director.plan_scenes(script, timeline, use_ai=False)
     for scene in old["scenes"]:
         scene.pop("graphics_version")
+        scene.pop("staging")
         for item in scene["items"]:
             item.pop("symbol")
+            item.pop("role")
+        if len(scene["items"]) == 1:
+            scene["items"].append({"label": scene["title"]})
     before = deepcopy(old)
     assert not any("graphics_version" in scene for scene in _validate_plan(old)["scenes"])
     updated = visual_director.regenerate_scene(old, old["scenes"][0]["id"], script, "Use animated objects")
     assert old == before
-    assert updated["scenes"][0]["graphics_version"] == 1
+    assert updated["scenes"][0]["graphics_version"] == 2
     assert updated["scenes"][1] == old["scenes"][1]
     assert updated["sections"] == old["sections"]
     assert updated["captions"] == old["captions"]
     assert any("animated objects" in item for item in updated["last_edit"]["changes"])
 
 
-@pytest.mark.parametrize("field,value", [("graphics_version", True), ("graphics_version", 2), ("symbol", "<script>"), ("symbol", "made-up-country-map")])
+@pytest.mark.parametrize("field,value", [("graphics_version", True), ("graphics_version", 3), ("symbol", "<script>"), ("symbol", "made-up-country-map")])
 def test_object_schema_rejects_executable_or_unbounded_fields(field, value):
     script, timeline = source()
     plan = visual_director.plan_scenes(script, timeline, use_ai=False)

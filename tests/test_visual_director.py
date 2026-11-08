@@ -172,6 +172,7 @@ def test_regeneration_preserves_timeline_captions_other_scenes_and_attribution(t
                "credit": "Video by Author on Pexels", "in_point": 0.5}
     original.pop("use_project_photos")  # Existing pre-policy storyboards remain editable.
     original["scenes"][0].update(template="footage", footage=footage)
+    director._as_media_scene(original["scenes"][0])
     original["scenes"][0]["items"][0]["label"] = "Sunlight reaches the panel and becomes electricity"
     regenerated = director.regenerate_scene(original, "scene-001", script, shortening)
     assert regenerated["scenes"][0]["footage"] == footage
@@ -352,7 +353,9 @@ def test_explicit_scene_layout_and_short_labels_override_ai(tmp_path, monkeypatc
     edited = director.regenerate_scene(plan, scene["id"], script, "Use a comparison with shorter labels")
     replacement = edited["scenes"][0]
     assert replacement["template"] == "comparison" and "footage" not in replacement
-    assert replacement["items"][0]["label"] == "Sunlight reaches the panel and"
+    assert replacement["items"][0]["label"] == ("Sunlight" if use_footage else "Sunlight reaches the panel and")
+    if use_footage:
+        assert replacement["graphics_version"] == 2
     if not use_footage:
         assert replacement["image"] == scene["image"]
     assert edited["scenes"][1:] == plan["scenes"][1:]
@@ -387,6 +390,7 @@ def test_scene_regeneration_reports_no_visible_change_without_mutating_plan(tmp_
             "path": str(tmp_path / "clip.mp4"), "source_url": "https://www.pexels.com/video/123/",
             "credit": "Video by Author on Pexels", "in_point": .5,
         })
+        director._as_media_scene(plan["scenes"][0])
     original = copy.deepcopy(plan)
     with pytest.raises(ValueError, match="visible design is unchanged"):
         director.regenerate_scene(plan, "scene-001", script, instructions)
@@ -494,6 +498,7 @@ def test_explicit_graphics_policy_rejects_inherited_media_but_keeps_legacy_plans
             "path": str(tmp_path / "clip.mp4"), "source_url": "https://www.pexels.com/video/123/",
             "credit": "Video by Author on Pexels", "in_point": 0,
         })
+    director._as_media_scene(scene)  # A legacy media scene, not a v2 composed world.
     with pytest.raises(ValueError, match="disabled|cannot contain footage"):
         director.validate_plan(plan)
     plan.pop("use_project_photos")
@@ -507,6 +512,7 @@ def test_photo_disabled_hybrid_can_still_use_licensed_footage(tmp_path):
         "path": str(tmp_path / "clip.mp4"), "source_url": "https://www.pexels.com/video/123/",
         "credit": "Video by Author on Pexels", "in_point": 0,
     })
+    director._as_media_scene(plan["scenes"][0])
     assert director.validate_plan(plan) is plan
     assert director.plan_uses_project_photos(plan) is False
 

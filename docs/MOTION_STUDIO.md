@@ -15,8 +15,8 @@ change and render the saved composition again.
 
 | Mode | Visuals | Requirements |
 | --- | --- | --- |
-| Motion | Illustrated subjects with moving parts, flow diagrams, comparisons, timelines and supplied-data charts; no automatic photos or footage | Node 22+, FFmpeg/ffprobe, installed renderer/browser |
-| Hybrid | Animated explanations with pipeline pictures and optional downloaded Pexels video clips with source credits | Same as Motion; optional Pexels key |
+| Motion | Directed illustrated scenes with grounded actors, supported actions and camera framing, plus diagrams and supplied-data charts; no automatic photos or footage | Node 22+, FFmpeg/ffprobe, installed renderer/browser |
+| Hybrid | Animated explanations with pipeline pictures and subject-matched Pixabay/Pexels video clips with source credits | Same as Motion; optional Pixabay or Pexels key |
 | Classic | The original MoviePy photo renderer, captions and transitions | Original MoviePy/NumPy dependencies |
 
 Motion skips photo fetching and does not attach cached photos to new scenes.
@@ -35,7 +35,7 @@ or footage project without changing the script or recording, choose **Rebuild as
 Motion graphics** in Review. The project is replanned as graphics and a new draft
 MP4 is rendered. **Animate these photos** explicitly keeps the project's pictures.
 
-Older Motion plans built from text cards also expose **Update this draft's
+Older Motion/Hybrid plans built from text cards or version-1 illustrations expose **Update this draft's
 animation → Rebuild animation + sound**. This replans the graphics and applies the
 selected channel's current sound design, then renders a draft. Script, voice,
 measured section timing and publishing prose remain intact; existing scene designs
@@ -245,7 +245,12 @@ footage and synthetic test-tone audio. They verify rendering and audio presence;
 they do not demonstrate voice quality or synchronization to speech. The separate
 optional NASA photo demonstration remains available through `demo.py`.
 
-The separate `illustrated-motion-*` samples use the new census/mining animations
+The current `directed-motion-*` samples exercise the normal local planner's
+flood rise, floating-home response and solar/battery/home connection. Each contains
+168 frames with licensed music and transition effects. See the
+[scene-direction update](SCENE_DIRECTION_UPDATE.md) for capabilities and limits.
+
+The older `illustrated-motion-*` samples preserve the version-1 census/mining animations
 and real licensed music/effects, with no test-tone narration. Their phrase cue
 times are authored for the example, not measured speech alignment. See the sample
 README for exact reproduction and attribution.
@@ -257,10 +262,11 @@ The seven supported templates are `flow`, `comparison`, `timeline`, `chart`,
 an ID, section ID, start, duration, title, visual goal, short items, local-time
 motion beats and optional local picture/footage metadata.
 
-`graphics_version: 1` opts a scene into the illustrated renderer. Each supported
-item carries an allowlisted `symbol` grounded in its source narration. Charts keep
-their supplied numeric values and footage keeps its media semantics. Missing
-graphics versions preserve the previous renderer for existing saved plans.
+New `graphics_version: 2` scenes include grounded actor symbols and roles plus
+a supported setting, action and camera. The film brief supplies the palette;
+a scene palette override can make an explicit local edit. Version-1 illustrations
+and missing graphics versions retain their existing renderer for saved plans.
+Charts keep their supplied numeric values and footage keeps its media semantics.
 
 New plans record `use_project_photos`: it defaults to `false` for Motion and
 `true` for Hybrid. The explicit photo-animation action sets it to `true` while

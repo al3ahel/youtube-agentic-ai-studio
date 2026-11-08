@@ -71,6 +71,53 @@ def test_repeated_script_reuses_audio_and_real_timing_without_synthesis(tmp_path
     assert len(list((Path(config.DATA_DIR) / "voice-cache").glob("*.zip"))) == 2
 
 
+def test_cached_middle_section_is_reported_and_assembled_with_all_audio_and_timing(tmp_path, recordings, capsys):
+    calls, counts = recordings
+    full_script = script()
+    full_script["sections"].append({"id": "closing", "title": "Third", "narration": "Third sentence."})
+    narrator.generate_narration({"sections": [full_script["sections"][1]]}, tmp_path / "prewarmed")
+    calls.clear()
+    capsys.readouterr()
+
+    destination = tmp_path / "three-sections"
+    narrator.generate_narration(full_script, destination)
+
+    assert [call[0] for call in calls] == ["First sentence.", "Third sentence."]
+    report = capsys.readouterr().out
+    first = report.index("Recording section 1/3: First")
+    middle = report.index("Reusing section 2/3: Second (validated voice cache and speech timing).")
+    third = report.index("Recording section 3/3: Third")
+    assert first < middle < third
+    assert "Recording section 2/3" not in report
+
+    sample_counts = [counts.get(section["narration"], 48000) for section in full_script["sections"]]
+    total_samples = sum(sample_counts)
+    with wave.open(str(destination / "narration.wav"), "rb") as assembled:
+        assert assembled.getnframes() == total_samples
+        expected_pcm = b"".join(
+            (200 + sum(ord(char) for char in section["narration"]) % 1000).to_bytes(
+                2, "little", signed=True) * sample_count
+            for section, sample_count in zip(full_script["sections"], sample_counts)
+        )
+        assert assembled.readframes(total_samples) == expected_pcm
+
+    timed = manifest(destination)
+    assert timed["voice_cache"] == {"enabled": True, "reused_sections": 1}
+    assert timed["duration"] == total_samples / 48000
+    assert [section["id"] for section in timed["sections"]] == ["intro", "body", "closing"]
+    assert [word["section_id"] for word in timed["words"]] == ["intro", "body", "closing"]
+    captions = read_srt(str(destination / "narration.srt"))
+    assert [cue["text"] for cue in captions] == [section["narration"] for section in full_script["sections"]]
+    for index, sample_count in enumerate(sample_counts):
+        start = sum(sample_counts[:index]) / 48000
+        assert timed["sections"][index]["start"] == start
+        assert timed["sections"][index]["duration"] == sample_count / 48000
+        assert timed["words"][index]["start"] == pytest.approx(start + .075)
+        assert captions[index]["start"] == pytest.approx(start + .075, abs=.0005)
+    assert (f"Narration assembled: 3/3 sections, {total_samples / 48000:.2f}s measured audio "
+            "(1 reused, 2 recorded).") in report
+
+
 def test_only_changed_text_records_again_and_reordered_sections_get_new_offsets(tmp_path, recordings):
     calls, counts = recordings
     original, edited, reordered = (tmp_path / name for name in ("original", "edited", "reordered"))

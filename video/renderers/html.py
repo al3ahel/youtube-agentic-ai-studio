@@ -747,7 +747,7 @@ def render_motion_video(script, audio_path: str, output_dir: str, scene_plan: di
         if result_duration > plan["duration"] + max(.35, 2 / plan["fps"]):
             raise MotionRenderError("Rendered video is longer than its storyboard.")
         temporary.replace(final)
-        _emit(progress, "Motion video rendered and verified.")
+        _emit(progress, "Motion video encoded; dimensions, frame rate, duration and audio stream verified. Review the animation and sound before publishing.")
         return str(final)
     finally:
         temporary.unlink(missing_ok=True)

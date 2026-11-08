@@ -378,6 +378,11 @@ Reinstall `requirements.txt` in the project environment and run `pip check`, the
 run `npm ci --prefix renderers/hyperframes` again. The supported Python range
 remains 3.10–3.12.
 
+The provider timeout/retry update requires `google-genai>=2.33.0`. Reinstalling
+requirements upgrades an older SDK; `git pull` alone cannot do that. Version
+2.33.0 is the tested compatible floor that still supports Python 3.10. Newer
+compatible releases can be selected by pip on Python 3.11/3.12.
+
 For an existing Windows checkout using `.venv-yaas312` and port 8765, stop YAAS
 with **Ctrl+C**, then run the following in the same PowerShell window. Keep the
 existing environment and local project data; an untracked `.venv-yaas312/`

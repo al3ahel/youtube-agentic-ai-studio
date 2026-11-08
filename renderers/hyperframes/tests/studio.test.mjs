@@ -19,7 +19,7 @@ const serverCode = String.raw`
 import sys
 import time
 from pathlib import Path
-from flask import g, jsonify, send_file
+from flask import g, jsonify, request, send_file
 from werkzeug.serving import make_server
 import config
 scratch = Path(sys.argv[1])
@@ -66,6 +66,42 @@ def fixture_local_catalogue():
 @app.get("/_fixture/local-requests")
 def fixture_local_requests():
     return jsonify(local_requests)
+event_fixture_previous = None
+@app.post("/_fixture/run-events")
+def fixture_run_events():
+    from copy import deepcopy
+    from datetime import datetime, timezone
+    from unittest.mock import patch
+    from uuid import uuid4
+    from studio.channels import get_profile
+    from studio.state import event_context, fresh_project_state, log_queue, state
+    global event_fixture_previous
+    body = request.get_json()
+    if body["action"] == "restore":
+        if event_fixture_previous is not None:
+            state.clear()
+            state.update(event_fixture_previous)
+            event_fixture_previous = None
+        return jsonify(ok=True)
+    if body["action"] == "start":
+        event_fixture_previous = deepcopy(state)
+        profile = get_profile(g.profile_id)
+        state.clear()
+        state.update(fresh_project_state())
+        state.update(running=True, run_id=uuid4().hex, profile_id=profile["id"], profile_name=profile["name"],
+                     job_profile_id=profile["id"], job_profile_name=profile["name"], started_at=time.time())
+    class EventClock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 1, 2, 3, 4, 5, tzinfo=timezone.utc)
+    with patch("studio.state.datetime", EventClock), event_context(
+            run_id=state["run_id"], profile_id=state["job_profile_id"], profile_name=state["job_profile_name"],
+            build=app.extensions["yaas_build"].running):
+        for item in body.get("events", []):
+            log_queue.put((item["kind"], item.get("msg", "")))
+    rows, _ = log_queue.read_after(0, timeout=0)
+    return jsonify(ok=True, run_id=state["run_id"], profile_id=state["job_profile_id"],
+                   events=[row for row in rows if row["run_id"] == state["run_id"]])
 server = make_server("127.0.0.1", 0, app, threaded=True)
 print("YAAS_UI_ORIGIN=http://127.0.0.1:" + str(server.server_port), flush=True)
 server.serve_forever()
@@ -696,6 +732,51 @@ test("studio: real audio imports, previews and selections stay with their channe
   await page.screenshot({path: path.join(screenshots, "studio-audio-library-mobile.png")});
   assert.deepEqual(errors, []);
   await page.close();
+});
+
+test("studio: two tabs receive every real run event and resume with emitted timestamps", {skip: skipped}, async () => {
+  const a = await openStudio(), b = await openStudio();
+  const streamRequests = [];
+  a.page.on("request", request => {
+    const url = new URL(request.url());
+    if (url.pathname === "/api/stream") streamRequests.push(url);
+  });
+  const emit = async (action, rows = []) => {
+    const response = await fetch(`${origin}/_fixture/run-events`, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({action, events: rows})});
+    assert.equal(response.status, 200);
+    return response.json();
+  };
+  try {
+    const started = await emit("start", [{kind: "log", msg: "Recording section 1/3"}]);
+    await Promise.all([a.page.evaluate(() => pollOnce()), b.page.evaluate(() => pollOnce())]);
+    for (const page of [a.page, b.page]) {
+      await page.waitForFunction(() => document.querySelector("#console").textContent.includes("Recording section 1/3"));
+      const stamp = await page.evaluate(value => new Date(value).toTimeString().slice(0, 8), started.events[0].timestamp);
+      assert.equal(await page.$eval("#console .t", node => node.textContent), stamp, "Log clock must use the server's original emission time");
+    }
+    await a.page.evaluate(() => { es.close(); es = null; });
+    await emit("append", [{kind: "log", msg: "Recording section 2/3"}, {kind: "log", msg: "Recording section 3/3"}]);
+    await a.page.evaluate(() => startSSE(status));
+    for (const page of [a.page, b.page]) {
+      await page.waitForFunction(() => document.querySelector("#console").textContent.includes("Recording section 3/3"));
+      const lines = await page.$$eval("#console > div", nodes => nodes.map(node => node.lastElementChild.textContent));
+      assert.deepEqual(lines, ["Recording section 1/3", "Recording section 2/3", "Recording section 3/3"]);
+    }
+    assert.ok(streamRequests.some(url => url.searchParams.get("after") === started.events[0].id), "Reconnect carries the last received event ID");
+    assert.ok(streamRequests.every(url => url.searchParams.get("run_id") === started.run_id && url.searchParams.get("profile_id") === started.profile_id));
+    await emit("append", [{kind: "stopped"}]);
+    for (const page of [a.page, b.page]) {
+      await page.waitForFunction(() => es === null && streamEndedScope === eventScopeKey(status));
+      await page.evaluate(() => pollOnce());
+      assert.equal(await page.evaluate(() => es === null), true, "A terminal event must not reopen while the worker finishes its checkpoint");
+    }
+    assert.deepEqual(a.errors, []);
+    assert.deepEqual(b.errors, []);
+  } finally {
+    await emit("restore");
+    await a.page.close();
+    await b.page.close();
+  }
 });
 
 test("studio: a finished scheduled run does not announce the restored editor as its result", {skip: skipped}, async () => {

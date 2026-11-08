@@ -136,8 +136,8 @@ function renderEditorialChecks(report) {
 }
 function sourcesHTML(sources) {
   sources = Array.isArray(sources) ? sources.filter(source => source && typeof source === "object") : [];
-  if (!sources.length) return `<div class="hint">No fact-check sources for this video.</div>`;
-  return `<div class="label" style="margin-bottom:8px">Fact-checked against ${sources.length} sources <small>also listed in the description</small></div><div class="sources">${sources.map(s =>
+  if (!sources.length) return `<div class="hint">No retrieved sources are attached to this video.</div>`;
+  return `<div class="label" style="margin-bottom:8px">${sources.length} retrieved sources <small>review these references; also listed in the description</small></div><div class="sources">${sources.map(s =>
     `<div class="source"><span class="tag ${s.source === "arXiv" ? "green" : ""}">${esc(s.source)}</span><a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.title)}</a></div>`).join("")}</div>`;
 }
 function fillMeta(m) {

@@ -390,7 +390,7 @@ def run_pipeline_thread(steps: list, topic_override: str = "", video_type: str =
                         focus_angle: str = "", use_trends: bool = False,
                         visual_mode=None, preview_only=False, profile_id=None,
                         profile_values=None, schedule_id=None, release_job=True,
-                        use_project_photos=None):
+                        use_project_photos=None, run_id=None, build_identity=None):
     """Capture a channel for the whole job, independent of the Home selection."""
     values = profile_values
     if profile_id and values is None:
@@ -398,9 +398,27 @@ def run_pipeline_thread(steps: list, topic_override: str = "", video_type: str =
         values = capture_profile_settings(profile_id)
     state["job_profile_values"] = deepcopy(values)
     with (config.profile_context(values) if values is not None else nullcontext()):
-        return _run_pipeline(steps, topic_override, video_type, focus_angle, use_trends,
-                             visual_mode, preview_only, profile_id, schedule_id, release_job,
-                             use_project_photos)
+        from apis.llm import generation_session
+        from studio.state import event_context
+        owner = profile_id or state.get("job_profile_id") or state.get("profile_id") or "default"
+        name = state.get("job_profile_name") if state.get("job_profile_id") == owner else None
+        if not name and state.get("profile_id") == owner:
+            name = state.get("profile_name")
+        name = name or config.CHANNEL_NAME
+        with generation_session(stop_event=stop_event), event_context(
+                run_id=run_id or uuid.uuid4().hex, profile_id=owner,
+                profile_name=name, build=build_identity) as identity:
+            state["run_id"] = identity["run_id"]
+            build = identity.get("build") or {}
+            version = build.get("short_commit") or "unavailable"
+            if build.get("runtime_modified"):
+                version += " + local code changes"
+            log(f"Job {identity['run_id'][:12]} · channel {identity.get('profile_name') or owner} · build {version}.")
+            selected = ", ".join(step for step in ("research", "script", "images", "narration", "music", "visuals", "video") if step in steps)
+            log(f"Requested stages: {selected}. Mode: {visual_mode or config.VISUAL_MODE}; {'draft' if preview_only else 'final'}.")
+            return _run_pipeline(steps, topic_override, video_type, focus_angle, use_trends,
+                                 visual_mode, preview_only, profile_id, schedule_id, release_job,
+                                 use_project_photos)
 
 
 def _run_pipeline(steps, topic_override, video_type, focus_angle, use_trends,
@@ -416,6 +434,21 @@ def _run_pipeline(steps, topic_override, video_type, focus_angle, use_trends,
     # /api/run clears the event before starting this worker. Clearing it here
     # would lose a Stop click arriving immediately after Start.
 
+    phase_starts = {}
+    phase_labels = {"preparation": "Local setup", "research": "Research", "script": "Script and writing review",
+                    "images": "Project pictures", "narration": "Narration and timing", "music": "Sound design",
+                    "visuals": "Visual planning and preview", "video": "Video encoding"}
+
+    def mark_stage(name, status):
+        stage(name, status)
+        label = phase_labels.get(name, name)
+        if status == "running":
+            phase_starts[name] = time.monotonic()
+            log(f"Starting {label.lower()}…")
+        elif status == "done":
+            elapsed = time.monotonic() - phase_starts.get(name, time.monotonic())
+            log(f"{label} complete ({max(0, elapsed):.1f}s).")
+
     def check_stop(after_stage):
         if stop_event.is_set():
             raise InterruptedError(f"Stopped after {after_stage}")
@@ -425,7 +458,7 @@ def _run_pipeline(steps, topic_override, video_type, focus_angle, use_trends,
         log_queue.put(("done", ""))
 
     try:
-        stage("preparation", "running")
+        mark_stage("preparation", "running")
         from studio.preflight import check_environment, validate_topic_steps
         validate_topic_steps(steps, topic_override)
         if use_project_photos is not None and not isinstance(use_project_photos, bool):
@@ -443,11 +476,11 @@ def _run_pipeline(steps, topic_override, video_type, focus_angle, use_trends,
             raise RuntimeError("Preparation failed: " + " | ".join(failures))
         output.mkdir(parents=True, exist_ok=True)
         Path(config.IMAGES_DIR).mkdir(parents=True, exist_ok=True)
-        stage("preparation", "done")
+        mark_stage("preparation", "done")
         check_stop("preparation")
 
         if "research" in steps:
-            stage("research", "running")
+            mark_stage("research", "running")
             from agents.researcher import research_topic
             trend_context = None
             if use_trends and not topic_override:
@@ -470,7 +503,7 @@ def _run_pipeline(steps, topic_override, video_type, focus_angle, use_trends,
             _save_json(output / "research.json", research)
             write_project_identity(output, state.get("profile_id") or "default",
                                    state.get("profile_name") or config.CHANNEL_NAME)
-            stage("research", "done")
+            mark_stage("research", "done")
             log_queue.put(("research", ""))
             log(f"Topic: {research.get('video_title', topic_override)}")
         elif not state.get("research"):
@@ -480,7 +513,7 @@ def _run_pipeline(steps, topic_override, video_type, focus_angle, use_trends,
             return
 
         if "script" in steps:
-            stage("script", "running")
+            mark_stage("script", "running")
             if not state.get("research"):
                 raise ValueError("No research data. Run the Research step first.")
             from agents.scriptwriter import write_script
@@ -497,7 +530,7 @@ def _run_pipeline(steps, topic_override, video_type, focus_angle, use_trends,
             _save_json(output / "script.json", script)
             write_project_identity(output, state.get("profile_id") or profile_id or "default",
                                    state.get("profile_name") or config.CHANNEL_NAME)
-            stage("script", "done")
+            mark_stage("script", "done")
             log(f"Script: {len(script.get('sections', []))} sections")
         elif not state.get("script"):
             state["script"] = _load_json(output / "script.json")
@@ -514,14 +547,15 @@ def _run_pipeline(steps, topic_override, video_type, focus_angle, use_trends,
             state.update(visual_plan=None, visual_qa=None, preview_path=None)
         if not images_enabled:
             stage("images", "skipped")
+            log("Project pictures skipped: this run does not fetch or reuse photos.")
         elif "images" in steps:
-            stage("images", "running")
+            mark_stage("images", "running")
             from video.stock import download_images
             state["image_map"] = download_images(script, str(output))
             _save_image_map(output, state["image_map"])
             state["image_reuse_note"] = None
             _invalidate(output)
-            stage("images", "done")
+            mark_stage("images", "done")
         elif not set(steps) & {"research", "script"}:
             from studio.visual_assets import validate_binding
             if state.get("image_map"):
@@ -550,7 +584,7 @@ def _run_pipeline(steps, topic_override, video_type, focus_angle, use_trends,
             return
 
         if "narration" in steps:
-            stage("narration", "running")
+            mark_stage("narration", "running")
             from video.narrator import generate_narration
             audio_path = generate_narration(script, str(output), stop_event=stop_event)
             _invalidate(output, visuals=True)
@@ -563,15 +597,17 @@ def _run_pipeline(steps, topic_override, video_type, focus_angle, use_trends,
             (output / "render_audio.json").unlink(missing_ok=True)
             state["render_audio_path"] = None
             state["audio_path"] = audio_path
-            stage("narration", "done")
         else:
+            mark_stage("narration", "running")
             state["audio_path"] = _audio_path(output)
+            if state["audio_path"]:
+                log("Reusing the saved recording; Narration was not requested.")
         check_stop("narration")
         if not state.get("audio_path"):
             raise FileNotFoundError("Narration is missing. Run the Narration step first.")
 
         from video.timeline import build_timeline, import_legacy_timeline
-        stage("narration", "running")
+        log("Building the visual and sound clock from the recorded audio…")
         if (output / "narration.timings.json").is_file():
             state["timeline"] = build_timeline(script, state["audio_path"], str(output), video_type)
         else:
@@ -579,11 +615,15 @@ def _run_pipeline(steps, topic_override, video_type, focus_angle, use_trends,
             log("Reusing existing narration; timing source: " + state["timeline"]["timing_source"])
             for warning in state["timeline"].get("warnings", []):
                 log(warning, "warn")
-        stage("narration", "done")
+        timeline = state["timeline"]
+        clock_duration = timeline.get("audio_duration", timeline.get("duration", 0))
+        log(f"Narration clock: {len(timeline.get('sections', []))} sections, {clock_duration:.2f}s; "
+            f"timing source: {timeline.get('timing_source', 'measured audio manifest')}.")
+        mark_stage("narration", "done")
 
         final_audio = state["audio_path"]
         if "music" in steps:
-            stage("music", "running")
+            mark_stage("music", "running")
             final_audio = _mix_project_audio(
                 state["audio_path"], state["timeline"], output,
                 profile_id or state.get("profile_id") or "default")
@@ -620,7 +660,10 @@ def _run_pipeline(steps, topic_override, video_type, focus_angle, use_trends,
         state["render_audio_path"] = final_audio
         if "music" in steps:
             _invalidate(output)
-            stage("music", "done")
+            mark_stage("music", "done")
+        else:
+            log("Reusing the saved soundtrack." if Path(final_audio).resolve() != Path(state["audio_path"]).resolve()
+                else "Using the recorded narration without added sound; Sound design was not requested.")
         if state.get("timeline"):
             current = _load_json(output / "render_audio.json") or {}
             relative = Path(final_audio).resolve().relative_to(output.resolve()).as_posix()
@@ -633,7 +676,7 @@ def _run_pipeline(steps, topic_override, video_type, focus_angle, use_trends,
         plan = None
         if mode in {"motion", "hybrid"} and (set(steps) & {"visuals", "video"}
                 or ("music" in steps and state.get("visual_plan"))):
-            stage("visuals", "running")
+            mark_stage("visuals", "running")
             from agents.visual_director import plan_scenes, plan_uses_project_photos, validate_plan
             from video.renderers.html import prepare_motion_project
             saved = state.get("visual_plan") or _load_json(output / "scene_plan.json")
@@ -650,6 +693,7 @@ def _run_pipeline(steps, topic_override, video_type, focus_angle, use_trends,
                     raise ValueError("The saved storyboard's photos changed or no longer match this project. Rebuild Visuals or choose Rebuild as Motion graphics before rendering.")
             if "visuals" in steps:
                 _invalidate(output)
+                log(f"Planning {mode.title()} scenes from the current script and narration clock…")
                 plan = plan_scenes(script, state["timeline"], mode=mode, output_dir=str(output),
                                    use_ai=getattr(config, "VISUAL_AI_ENABLED", True),
                                    image_map=state["image_map"] if photos else None,
@@ -668,17 +712,28 @@ def _run_pipeline(steps, topic_override, video_type, focus_angle, use_trends,
             else:
                 raise ValueError("No matching storyboard. Run the Visuals step after choosing the mode and generating narration.")
             state["visual_plan"] = plan
+            scenes = plan.get("scenes", [])
+            illustrated = sum(scene.get("graphics_version") == 1 and not scene.get("image")
+                              and scene.get("template") not in {"chart", "footage"} for scene in scenes)
+            pictures = sum(bool(scene.get("image")) for scene in scenes)
+            clips = sum(scene.get("template") == "footage" for scene in scenes)
+            direction = plan.get("ai_status")
+            direction = direction if isinstance(direction, dict) else {}
+            planner = " · ".join(" ".join(direction[key].split())[:160] for key in ("status", "provider", "model")
+                                 if isinstance(direction.get(key), str) and direction[key])
+            log(f"Storyboard ready: {len(scenes)} scenes, {illustrated} illustrated scenes, "
+                f"{pictures} picture scenes, {clips} footage scenes" + (f"; planner {planner}." if planner else "."))
             for warning in plan.get("warnings", []):
                 log(warning, "warn")
             prepare_motion_project(plan, final_audio, str(output))
-            stage("visuals", "done")
+            mark_stage("visuals", "done")
         elif mode == "classic":
             state.update(visual_plan=None, visual_qa=None, preview_path=None)
             stage("visuals", "skipped")
         check_stop("visual planning")
 
         if "video" in steps:
-            stage("video", "running")
+            mark_stage("video", "running")
             state.update(video_path=None, library_id=None, yt_url=None, visual_qa=None)
             if mode in {"motion", "hybrid"}:
                 from video.renderers.html import render_motion_video
@@ -701,7 +756,7 @@ def _run_pipeline(steps, topic_override, video_type, focus_angle, use_trends,
                                                     video_type=video_type, timeline=state.get("timeline"))
                 checkpoint_workspace(output, rendered_kind="final")
             check_stop("video rendering")
-            stage("video", "done")
+            mark_stage("video", "done")
             try:
                 thumb = state.get("thumb_path")
                 if not preserve_packaging or not thumb or not Path(thumb).is_file():

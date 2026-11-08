@@ -10,6 +10,7 @@ const STEPS = [
   ["video",     "Rendering the video",     "The slow part, usually 2–10 minutes"],
 ];
 let status = {}, es = null, heroMode = "form", runSteps = [], videoType = "normal", lastRunError = "", lastRequest = null, statusRequestSerial = 0;
+let streamScope = null, streamCursor = "", streamEndedScope = null;
 let restoredWorkspaceShown = false;
 const homeVisualChoices = new Map();
 let pendingHomeVisualChoice = null;
@@ -78,7 +79,7 @@ function renderRun(d) {
     if (s === "done") doneCount++;
     if (s === "running") current = title;
     const ic = { done: "✓", error: "!", skipped: "–" }[s] || "";
-    const label = { done: "done", running: "working…", error: "failed", skipped: "reused" }[s] || "";
+    const label = { done: "done", running: "working…", error: "failed", skipped: "skipped" }[s] || "";
     return `<div class="step" data-s="${s}"><span class="ic">${ic}</span><div><b>${title}</b><small>${sub}</small></div><em>${label}</em></div>`;
   }).join("");
   total = total || STEPS.length;
@@ -115,7 +116,8 @@ function applyStatus(d) {
       if ((d.stages || {}).research === "done") showTopic();
     }
     renderRun(d);
-    if (!es) startSSE();
+    const scope = eventScopeKey(d);
+    if (streamEndedScope !== scope && (!es || streamScope !== scope)) startSSE(d);
   }
   if (completedSchedule) {
     // The scheduler restores the previously open project. Its final/error
@@ -188,7 +190,7 @@ async function onFinished(d) {
   $("#run-done").innerHTML = `<div class="done-box">
       <div class="thumb-frame">${d.has_thumb ? `<img src="/thumbnail/${Date.now()}" alt="">` : ""}</div>
       <div><div style="font-size:20px;line-height:1.25">${esc(out.title || "")}</div>
-        <p class="hint" style="margin:8px 0 16px">${out.sources && out.sources.length ? `Fact-checked against ${out.sources.length} sources. ` : ""}Next: watch it, polish the title and thumbnail, then publish.</p>
+        <p class="hint" style="margin:8px 0 16px">${out.sources && out.sources.length ? `${out.sources.length} retrieved sources are attached for review. ` : ""}Next: watch it, polish the title and thumbnail, then publish.</p>
         <div style="display:flex;gap:8px;flex-wrap:wrap"><a class="btn btn-white btn-lg" href="#review">Review &amp; publish →</a><button class="btn btn-ghost btn-lg" id="make-another-video" type="button" onclick="showNewVideoForm()">Make another video</button></div></div>
     </div>`;
   setHero("done");
@@ -197,26 +199,53 @@ async function onFinished(d) {
   if (!reviewed && location.hash === "#review") loadReview();
 }
 
-function startSSE() {
+function eventScope(context = status) {
+  return {run_id: context.run_id || null,
+    profile_id: context.profile_id || (typeof activeChannelProfile === "function" ? activeChannelProfile()?.id : null) || null};
+}
+function eventScopeKey(context = status) { return JSON.stringify(eventScope(context)); }
+function startSSE(context = status) {
   if (es) es.close();
-  es = new EventSource("/api/stream");
-  es.onmessage = ev => {
+  const scope = eventScope(context), key = JSON.stringify(scope);
+  if (streamScope !== key) { streamScope = key; streamCursor = ""; streamEndedScope = null; }
+  const query = new URLSearchParams();
+  if (scope.run_id) query.set("run_id", scope.run_id);
+  if (scope.profile_id) query.set("profile_id", scope.profile_id);
+  if (streamCursor) query.set("after", streamCursor);
+  const source = new EventSource(`/api/stream${query.size ? `?${query}` : ""}`);
+  es = source;
+  source.onmessage = ev => {
+    if (es !== source) return;
     const d = JSON.parse(ev.data);
-    if (d.kind === "log") log(d.msg);
+    if (scope.run_id && d.run_id && d.run_id !== scope.run_id) return;
+    if (scope.profile_id && d.profile_id && d.profile_id !== scope.profile_id) return;
+    const id = ev.lastEventId || d.id;
+    if (id) {
+      const [epoch, sequence] = id.split(":"), [oldEpoch, oldSequence] = streamCursor.split(":");
+      if (epoch === oldEpoch && Number(sequence) <= Number(oldSequence)) return;
+      streamCursor = id;
+    }
+    if (d.kind === "log") log(d.msg, d.timestamp);
+    else if (d.kind === "gap") log(`[WARN] ${d.msg}`, d.timestamp);
     else if (d.kind === "stage") pollOnce();
     else if (d.kind === "research") showTopic();
     else if (["done", "error", "stopped"].includes(d.kind)) {
       if (d.kind === "error") lastRunError = d.msg;
-      es.close(); es = null; pollOnce();
+      streamEndedScope = key;
+      source.close(); es = null; pollOnce();
     }
   };
-  es.onerror = () => { es && es.close(); es = null; };
+  // EventSource reconnects with Last-Event-ID after a transient disconnect.
+  // Keep that native cursor instead of closing and losing the missing lines.
+  source.onerror = () => {
+    if (es === source && source.readyState === EventSource.CLOSED) es = null;
+  };
 }
 async function showTopic() {
   const r = await api("/api/research").catch(() => null);
   if (r && r.title) $("#run-topic").innerHTML = `“${esc(r.title)}”${r.sources.length ? ` <span class="tag green" style="margin-left:6px">${r.sources.length} sources found</span>` : ""}`;
 }
-function log(msg) {
+function log(msg, timestamp) {
   const c = $("#console");
   if (c.firstElementChild && c.firstElementChild.classList.contains("l-dim")) c.innerHTML = "";
   let cls = "";
@@ -224,7 +253,9 @@ function log(msg) {
   else if (/⚠|\[WARN\]/.test(msg)) cls = "l-warn";
   else if (/✅|complete|saved|Uploaded|Saved to Library/i.test(msg)) cls = "l-ok";
   const line = document.createElement("div");
-  line.innerHTML = `<span class="t">${new Date().toTimeString().slice(0, 8)}</span><span class="${cls}">${esc(msg)}</span>`;
+  let when = timestamp ? new Date(timestamp) : new Date();
+  if (Number.isNaN(when.getTime())) when = new Date();
+  line.innerHTML = `<span class="t">${when.toTimeString().slice(0, 8)}</span><span class="${cls}">${esc(msg)}</span>`;
   c.appendChild(line);
   while (c.children.length > 600) c.firstChild.remove();
   c.scrollTop = c.scrollHeight;
@@ -247,6 +278,8 @@ async function startRun(topic, surprise, options = {}) {
   lastRequest = [topic, surprise, steps, mode, preview, profileId, format, options.expected_plan_revision, useProjectPhotos];
   runSteps = ["preparation", ...steps];
   lastRunError = "";
+  if (es) { es.close(); es = null; }
+  streamScope = null; streamCursor = ""; streamEndedScope = null;
   $("#console").innerHTML = "";
   $("#log-details").open = false;
   $("#run-title").textContent = preview ? "Making your draft…" : "Making your video…";
@@ -265,8 +298,8 @@ async function startRun(topic, surprise, options = {}) {
     if (options.throwOnError) throw new Error(r.error || "Could not start the video render.");
     return toast(r.error, "err");
   }
-  status.running = true;
-  startSSE(); pollOnce();
+  status = {...status, running: true, run_id: r.run_id || null, profile_id: r.profile_id || profileId || null};
+  startSSE(status); pollOnce();
   if (options.scroll !== false) window.scrollTo({ top: 0, behavior: "smooth" });
   return true;
 }

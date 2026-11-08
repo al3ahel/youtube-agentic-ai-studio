@@ -88,13 +88,16 @@ def test_partial_run_after_restart_checks_saved_owner_before_starting_worker(wor
     # on the other profile. Capture the dispatch without executing any provider.
     response = client.post("/api/run", json={**body, "profile_id": owner["id"]})
     assert response.status_code == 200
-    assert response.json == {"ok": True}
+    assert response.json["ok"] is True
+    assert response.json["profile_id"] == owner["id"]
+    assert len(response.json["run_id"]) == 32
     thread_factory.assert_called_once()
     worker.start.assert_called_once_with()
     options = thread_factory.call_args.kwargs
     assert options["target"] is pipeline.run_pipeline_thread
     assert options["args"][0] == ["visuals", "video"]
     assert options["kwargs"]["profile_id"] == owner["id"]
+    assert options["kwargs"]["run_id"] == response.json["run_id"] == state["run_id"]
     assert options["kwargs"]["profile_values"]["VOICE_RATE"] == "+0%"
     assert options["kwargs"]["preview_only"] is True
     assert state["job_profile_id"] == owner["id"] and state["running"] is True

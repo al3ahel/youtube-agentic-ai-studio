@@ -1,8 +1,9 @@
 """Pipeline blueprint: the page itself, starting/stopping runs, live progress, status."""
 import json
 import os
-import queue
 import threading
+import uuid
+from datetime import datetime, timezone
 
 from flask import Blueprint, Response, current_app, jsonify, request
 
@@ -10,7 +11,7 @@ import config
 from studio.files import send, slug
 from studio.revisions import file_revision, plan_revision, validate_expected_revision
 from studio.runner import run_pipeline_thread
-from studio.state import job_lock, log, log_queue, state, stop_event
+from studio.state import event_context, job_lock, log, log_queue, state, stop_event
 
 bp = Blueprint("pipeline", __name__)
 ALLOWED_STEPS = {"research", "script", "images", "narration", "music", "visuals", "video"}
@@ -39,18 +40,54 @@ def index():
 
 @bp.route("/api/stream")
 def stream():
+    # Capture the scope before the generator starts. The scheduler may restore
+    # another editor while this connection is sending its final job events.
+    run_id = request.args.get("run_id") or state.get("run_id")
+    profile_id = request.args.get("profile_id") or (
+        state.get("job_profile_id") if state.get("running") else state.get("profile_id"))
+    if any(value is not None and (not isinstance(value, str) or len(value) > 128) for value in (run_id, profile_id)):
+        return jsonify({"ok": False, "error": "Invalid event stream scope."}), 400
+    try:
+        cursor = log_queue.cursor(request.headers.get("Last-Event-ID") or request.args.get("after"))
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    heartbeat = max(.01, min(30, float(current_app.config.get("STUDIO_STREAM_HEARTBEAT_SECONDS", 15))))
+    cancelled = threading.Event()
+
+    def matches(event):
+        # Legacy unscoped producers can still be consumed in an unscoped
+        # stream, but cannot leak into a named channel's running job.
+        return event.get("run_id") == run_id and (not profile_id or event.get("profile_id") == profile_id
+                                                  or (not run_id and event.get("profile_id") is None))
+
+    def frame(event):
+        return f"id: {event['id']}\ndata: {json.dumps(event)}\n\n"
+
     def gen():
-        while True:
-            try:
-                kind, msg = log_queue.get(timeout=30)
-                data = json.dumps({"kind": kind, "msg": msg})
-                yield f"data: {data}\n\n"
-                if kind in ("done", "error", "stopped"):
-                    break
-            except queue.Empty:
-                yield "data: {\"kind\":\"ping\"}\n\n"
+        sequence = cursor
+        try:
+            while not cancelled.is_set():
+                events, gap = log_queue.read_after(sequence, timeout=heartbeat, cancel_event=cancelled)
+                if not events:
+                    yield "data: " + json.dumps({"kind": "ping", "msg": "", "run_id": run_id, "profile_id": profile_id,
+                                                 "timestamp": datetime.now(timezone.utc).isoformat(timespec="milliseconds")}) + "\n\n"
+                    continue
+                if gap:
+                    yield frame({"id": log_queue.event_id(events[0]["sequence"] - 1), "kind": "gap",
+                                 "msg": "Earlier log messages have expired; showing the retained history.",
+                                 "run_id": run_id, "profile_id": profile_id,
+                                 "timestamp": datetime.now(timezone.utc).isoformat(timespec="milliseconds")})
+                for event in events:
+                    sequence = event["sequence"]
+                    if not matches(event):
+                        continue
+                    yield frame(event)
+                    if event["kind"] in ("done", "error", "stopped"):
+                        return
+        finally:
+            cancelled.set()
     return Response(gen(), mimetype="text/event-stream",
-                    headers={"Cache-Control":"no-cache","X-Accel-Buffering":"no"})
+                    headers={"Cache-Control":"no-store","X-Accel-Buffering":"no"})
 
 @bp.route("/api/run", methods=["POST"])
 def start_run():
@@ -112,12 +149,16 @@ def start_run():
             state["stages"][name] = "pending" if name in steps or name == "preparation" else "skipped"
         state.update(running=True, video_type=video_type, visual_mode=visual_mode,
                      preview_only=preview_only, stop_requested=False, error=None, preflight=None,
-                     job_profile_id=profile["id"], job_profile_name=profile["name"], job_profile_values=profile_values)
+                     job_profile_id=profile["id"], job_profile_name=profile["name"], job_profile_values=profile_values,
+                     run_id=uuid.uuid4().hex)
         if not state.get("profile_id") and (not state.get("script") or profile["id"] == "default"):
             state.update(profile_id=profile["id"], profile_name=profile["name"])
         stop_event.clear()
         options = {"visual_mode": visual_mode, "preview_only": preview_only,
-                   "profile_id": profile["id"], "profile_values": profile_values}
+                   "profile_id": profile["id"], "profile_values": profile_values, "run_id": state["run_id"],
+                   "build_identity": dict(current_app.extensions["yaas_build"].running)
+                   if "yaas_build" in current_app.extensions else None}
+        run_id = state["run_id"]
         if use_project_photos is not None:
             options["use_project_photos"] = use_project_photos
         thread = threading.Thread(target=run_pipeline_thread,
@@ -128,7 +169,7 @@ def start_run():
         except Exception:
             state["running"] = False
             raise
-    return jsonify({"ok": True})
+    return jsonify({"ok": True, "run_id": run_id, "profile_id": profile["id"]})
 
 
 @bp.route("/api/preflight", methods=["GET", "POST"])
@@ -150,9 +191,13 @@ def preflight_route():
 @bp.route("/api/stop", methods=["POST"])
 def stop_pipeline():
     """Request the pipeline to stop after the current stage finishes."""
-    stop_event.set()
-    state["stop_requested"] = True
-    log("⏹ Stop requested — will halt after current step completes…", "warn")
+    with job_lock:
+        stop_event.set()
+        state["stop_requested"] = True
+        identity = {"run_id": state.get("run_id"), "profile_id": state.get("job_profile_id"),
+                    "profile_name": state.get("job_profile_name")}
+    with event_context(**identity):
+        log("⏹ Stop requested — will halt after current step completes…", "warn")
     return jsonify({"ok": True})
 
 @bp.route("/api/status")
@@ -171,6 +216,7 @@ def status_route():
     has_html_preview = has_storyboard and available(os.path.join(config.OUTPUT_DIR, "motion", "index.html"))
     return jsonify({
         "running":        state["running"],
+        "run_id":         state.get("run_id"),
         "stop_requested": state.get("stop_requested", False),
         "stages":         state["stages"],
         "has_video":      has_video,

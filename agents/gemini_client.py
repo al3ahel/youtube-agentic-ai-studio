@@ -10,6 +10,8 @@ LLM Client — shared across all agents.
 """
 import time
 import config
+from apis.llm_session import (BudgetExceeded, Failure, check_stop, classify_failure,
+                              effective_stop_event, request_scope, session_scope)
 
 # Full list of supported models in preference order.
 # The actual runtime order is determined by build_chain() below,
@@ -40,6 +42,28 @@ def build_chain(starting_model: str | None = None) -> list:
 
 _client = None
 _client_key = None
+_SDK_UPGRADE_MESSAGE = (
+    "Gemini needs google-genai 2.33.0 or newer with request timeout and retry controls. "
+    "Activate this project's virtual environment, run python -m pip install -r requirements.txt, "
+    "then restart the studio."
+)
+
+
+class GeminiSDKCompatibilityError(RuntimeError):
+    """An old/missing SDK is an environment issue, not a key or quota failure."""
+
+
+def _sdk_types():
+    try:
+        from google.genai import types
+        supported = (hasattr(types, "HttpRetryOptions")
+                     and "retry_options" in getattr(getattr(types, "HttpOptions", None), "model_fields", {})
+                     and "http_options" in getattr(getattr(types, "GenerateContentConfig", None), "model_fields", {}))
+    except ImportError:
+        raise GeminiSDKCompatibilityError(_SDK_UPGRADE_MESSAGE) from None
+    if not supported:
+        raise GeminiSDKCompatibilityError(_SDK_UPGRADE_MESSAGE)
+    return types
 
 
 def gemini_configured() -> bool:
@@ -51,91 +75,94 @@ def _get_client():
     """Rebuild the client if the key changed in Settings."""
     global _client, _client_key
     if _client is None or _client_key != config.GEMINI_API_KEY:
+        types = _sdk_types()
         from google import genai
-        from google.genai import types
-        _client = genai.Client(api_key=config.GEMINI_API_KEY, http_options=types.HttpOptions(timeout=60000))
+        _client = genai.Client(api_key=config.GEMINI_API_KEY,
+                               http_options=types.HttpOptions(timeout=60000, retry_options=types.HttpRetryOptions(attempts=1)))
         _client_key = config.GEMINI_API_KEY
     return _client
 
 
 def _is_gone(err: Exception) -> bool:
     """Model retired or unknown — retrying it is pointless."""
-    msg = str(err)
-    return any(k in msg for k in ["404", "NOT_FOUND", "not found", "is not supported"])
+    return classify_failure(err).code == "model"
 
 
 def _should_switch_model(err: Exception) -> bool:
     """Return True for any error code that means we should try the next model."""
-    msg = str(err)
-    return _is_gone(err) or any(k in msg for k in [
-        "429", "RESOURCE_EXHAUSTED", "quota", "rate limit",  # 429 – quota
-        "503", "UNAVAILABLE", "overloaded", "high demand",   # 503 – overloaded
-        "500", "INTERNAL",                                    # 500 – transient
-        # dropped / flaky connections — worth a retry, not a failed run
-        "10053", "10054", "Connection aborted", "Connection reset", "ConnectError",
-        "RemoteDisconnected", "timed out", "Timeout", "Temporary failure", "NameResolution",
-    ])
+    return classify_failure(err).code in {"model", "quota", "transient", "timeout", "connection"}
 
 
-def _generate_gemini(prompt: str, starting_model: str | None, stop_event=None, *, provider_info=None) -> str:
+def _generate_gemini(prompt: str, starting_model: str | None, stop_event=None, *, provider_info=None,
+                     has_fallback=False) -> str:
     global last_provider
-    from google.genai import types
+    types = _sdk_types()
     client = _get_client()
-    chain  = build_chain(starting_model or getattr(config, "GEMINI_MODEL", None))
-
-    for model in chain:
-        for attempt in range(2):
+    chain = build_chain(starting_model or getattr(config, "GEMINI_MODEL", None))
+    key = config.GEMINI_API_KEY
+    stop_event = effective_stop_event(stop_event)
+    from apis.openrouter import _redact
+    with session_scope(stop_event) as session, request_scope() as budget:
+        last_failure = Failure("request", "no configured Gemini model answered")
+        for model in chain:
+            check_stop(stop_event)
+            previous = session.failure("gemini", key, model)
+            if previous:
+                print(f"   → Skipping Gemini {_redact(model)} for this generation: {previous.message} earlier.")
+                last_failure = previous
+                continue
             try:
-                if stop_event is not None and stop_event.is_set():
-                    raise InterruptedError("Stopped before AI generation")
-                print(f"   → Using {model}…")
+                timeout = budget.timeout("gemini", alternatives=has_fallback)
+                started = time.monotonic()
+                print(f"   → Trying Gemini {_redact(model)} (up to {timeout:.0f}s)…")
                 response = client.models.generate_content(
                     model=model,
                     contents=prompt,
-                    config=types.GenerateContentConfig(temperature=0.9),
+                    config=types.GenerateContentConfig(temperature=0.9,
+                        http_options=types.HttpOptions(timeout=max(1, round(timeout * 1000)),
+                                                       retry_options=types.HttpRetryOptions(attempts=1))),
                 )
-                if stop_event is not None and stop_event.is_set():
-                    raise InterruptedError("Stopped after AI generation")
+                check_stop(stop_event)
                 if not isinstance(response.text, str) or not response.text.strip():
                     raise ValueError("The model returned no text.")
-                from apis.openrouter import _redact
                 last_provider = model
+                session.succeeded("gemini", model)
                 if provider_info is not None:
                     provider_info.update(provider="gemini", model=model)
+                print(f"   ✓ Gemini {_redact(model)} answered in {time.monotonic() - started:.1f}s.")
                 return _redact(response.text).strip()
-
             except InterruptedError:
                 raise
+            except BudgetExceeded as exc:
+                if exc.provider:
+                    session.failed("gemini", Failure("budget", "its retry time budget was reached"), key)
+                raise
             except Exception as e:
-                if _is_gone(e):
-                    print(f"   ⚠ {model} unavailable — trying next model…")
-                    break
-                if _should_switch_model(e):
-                    if any(code in str(e) for code in ("429", "RESOURCE_EXHAUSTED", "quota", "rate limit")):
-                        print(f"   ⚠ {model} free quota unavailable — trying the next free option…")
-                        break
-                    if attempt == 0:
-                        print(f"   ⚠ {model} temporarily unavailable — retrying once…")
-                        if stop_event is not None:
-                            if stop_event.wait(.5):
-                                raise InterruptedError("Stopped before retrying AI generation")
-                        else:
-                            time.sleep(.5)
-                    else:
-                        print(f"   ⚠ {model} unavailable — trying the next free option…")
-                else:
-                    raise   # auth error or bug — surface immediately
-
-    raise RuntimeError(
-        "All Gemini models failed. 503/500 = temporary, retry in a few minutes; "
-        "429 = quota, resets at midnight Pacific (https://aistudio.google.com/apikey)."
-    )
+                check_stop(stop_event)
+                last_failure = classify_failure(e)
+                print(f"   ⚠ Gemini {_redact(model)}: {last_failure.message}.")
+                if last_failure.code in {"model", "quota", "transient"}:
+                    session.failed("gemini", last_failure, key, model)
+                    continue
+                # A connection/timeout or account failure cannot be repaired by
+                # immediately repeating the request against every model name.
+                session.failed("gemini", last_failure, key)
+                raise RuntimeError(f"Gemini {last_failure.message}.") from None
+        session.failed("gemini", last_failure, key)
+        raise RuntimeError(f"No configured Gemini model answered: {last_failure.message}.")
 
 
 def generate(prompt: str, starting_model: str | None = None, *, stop_event=None,
              exclude_providers=(), provider_info=None) -> str:
+    with session_scope(stop_event), request_scope():
+        return _generate(prompt, starting_model, stop_event=effective_stop_event(stop_event),
+                         exclude_providers=exclude_providers, provider_info=provider_info)
+
+
+def _generate(prompt, starting_model=None, *, stop_event=None, exclude_providers=(), provider_info=None):
     global last_provider
     from apis import llm
+    check_stop(stop_event)
 
     if provider_info is not None:
         provider_info.clear()
@@ -144,32 +171,66 @@ def generate(prompt: str, starting_model: str | None = None, *, stop_event=None,
     from apis.openrouter import _redact
     prompt = _redact(prompt)
     route = getattr(config, "LLM_ROUTE", "auto")
-    if route == "local" or getattr(config, "OLLAMA_MODEL", ""):
+    local_model = getattr(config, "OLLAMA_MODEL", "")
+    local_endpoint = getattr(config, "OLLAMA_BASE_URL", "")
+    with session_scope(stop_event) as session:
+        previous_local = session.failure("ollama", local_endpoint, local_model)
+    if route == "local" or local_model and not previous_local:
         from apis import local_llm
         try:
+            print(f"   → Trying local Ollama {_redact(local_model)}…")
             text = local_llm.generate(prompt, stop_event=stop_event)
+            check_stop(stop_event)
             last_provider = "Ollama · " + config.OLLAMA_MODEL
             if provider_info is not None:
                 provider_info.update(provider="ollama", model=config.OLLAMA_MODEL)
+            with session_scope(stop_event) as session:
+                session.succeeded("ollama", config.OLLAMA_MODEL)
+            print(f"   ✓ Local Ollama {_redact(config.OLLAMA_MODEL)} answered.")
             return text
         except InterruptedError:
             raise
-        except local_llm.LocalLLMError:
+        except local_llm.LocalLLMError as exc:
+            check_stop(stop_event)
             if route == "local":
                 raise
+            with session_scope(stop_event) as session:
+                session.failed("ollama", Failure(exc.code, "the selected local model was unavailable"),
+                               local_endpoint, local_model)
             print("   ⚠ Local model unavailable — trying configured free cloud providers…")
+    elif local_model and previous_local:
+        print("   → Skipping the unavailable local model for this generation; using configured free cloud fallback.")
 
     gemini_err = None
-    if gemini_configured() and "gemini" not in exclude_providers:
+    with session_scope(stop_event) as session:
+        previous = session.failure("gemini", config.GEMINI_API_KEY)
+    if gemini_configured() and "gemini" not in exclude_providers and not previous:
         try:
-            return _generate_gemini(prompt, starting_model, stop_event, provider_info=provider_info)
+            alternatives = any(provider[0] not in exclude_providers for provider in llm.providers())
+            return _generate_gemini(prompt, starting_model, stop_event, provider_info=provider_info,
+                                    has_fallback=alternatives)
         except InterruptedError:
             raise
         except Exception as e:
+            check_stop(stop_event)
             gemini_err = e
+            sdk_incompatible = isinstance(e, GeminiSDKCompatibilityError)
+            with session_scope(stop_event) as session:
+                if not session.failure("gemini", config.GEMINI_API_KEY):
+                    failure = (Failure("sdk_upgrade", "an incompatible google-genai SDK was detected")
+                               if sdk_incompatible else classify_failure(e))
+                    session.failed("gemini", failure, config.GEMINI_API_KEY)
+            if sdk_incompatible:
+                print("   ⚠ " + _SDK_UPGRADE_MESSAGE)
             if not any(provider[0] not in exclude_providers for provider in llm.providers()):
+                if sdk_incompatible:
+                    raise RuntimeError(_SDK_UPGRADE_MESSAGE) from None
                 raise RuntimeError("The configured free Gemini models are unavailable. Check the key and free quota, or select an installed local Ollama model.") from None
             print("   ⚠ Gemini unavailable — trying the configured free fallback providers…")
+    elif gemini_configured() and previous and "gemini" not in exclude_providers:
+        gemini_err = (GeminiSDKCompatibilityError(_SDK_UPGRADE_MESSAGE) if previous.code == "sdk_upgrade"
+                      else RuntimeError("Gemini " + previous.message))
+        print(f"   → Skipping Gemini for this generation: {previous.message} earlier; using configured free fallback.")
     else:
         print("   → Using configured free fallback LLMs")
 
@@ -186,6 +247,8 @@ def generate(prompt: str, starting_model: str | None = None, *, stop_event=None,
     except InterruptedError:
         raise
     except Exception as e:
+        if isinstance(gemini_err, GeminiSDKCompatibilityError):
+            raise RuntimeError(f"{_SDK_UPGRADE_MESSAGE} Configured free fallback: {_redact(str(e))}") from None
         if gemini_err:
             raise RuntimeError(f"Gemini is unavailable. {_redact(str(e))}") from None
         raise RuntimeError(

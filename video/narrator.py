@@ -531,7 +531,8 @@ def _generate_segmented(script: dict, output_dir: str, stop_event=None, *, use_c
                 reused = _restore_voice_section(cache_root, key, wav, srt, timing, stop_event)
                 if reused:
                     cache_hits += 1
-                    print(f"   → Reusing section {index + 1}/{len(sections)} with matching voice and speech timing.")
+                    print(f"   → Reusing section {index + 1}/{len(sections)}: {section.get('title', '')} "
+                          "(validated voice cache and speech timing).")
                 else:
                     print(f"   → Recording section {index + 1}/{len(sections)}: {section.get('title', '')}")
                     try:
@@ -587,7 +588,9 @@ def _generate_segmented(script: dict, output_dir: str, stop_event=None, *, use_c
         # Keep old successful files intact until every section has completed.
         for name in ("narration.wav", "narration.srt", "narration.timings.json"):
             os.replace(work / name, destination / name)
-    print(f"   → Narration: {manifest['duration']:.2f}s, {len(measured)} measured sections")
+    print(f"   → Narration assembled: {len(measured)}/{len(sections)} sections, "
+          f"{manifest['duration']:.2f}s measured audio "
+          f"({cache_hits} reused, {len(measured) - cache_hits} recorded).")
     return str(destination / "narration.wav")
 
 

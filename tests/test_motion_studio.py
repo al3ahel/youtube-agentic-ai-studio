@@ -102,7 +102,10 @@ def test_pipeline_reserves_job_before_starting_thread(client, monkeypatch):
             assert state["running"]
     monkeypatch.setattr(pipeline.threading, "Thread", Thread)
     response = client.post("/api/run", json={"steps": ["video"], "visual_mode": "motion", "preview_only": True})
-    assert response.json == {"ok": True}
+    assert response.json["ok"] is True
+    assert len(response.json["run_id"]) == 32
+    assert response.json["run_id"] == state["run_id"] == threads[0]["kwargs"]["run_id"]
+    assert response.json["profile_id"] == "default"
     assert threads[0]["kwargs"]["visual_mode"] == "motion"
     assert threads[0]["kwargs"]["preview_only"] is True
     assert threads[0]["kwargs"]["profile_id"] == "default"

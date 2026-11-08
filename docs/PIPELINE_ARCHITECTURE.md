@@ -123,9 +123,31 @@ Writing, editorial review, sound direction and text visual planning can use an i
 
 The old unauthenticated Pollinations generation assumption is removed. No new paid provider is silently substituted. Missing free inference is an explicit failure for writing and an explicit local fallback for supported visual/audio decisions.
 
+Each worker owns an ephemeral provider-health session. Failed shared text-agent
+providers are skipped by later stages of that same video, with a fresh health
+record for the next job. Failures are scoped to provider/credential/model and do
+not change saved settings. Per-request cloud retry budgets and transport timeouts
+bound fallback work; local-only routing and its longer cancellable timeout are
+preserved. Direct OpenRouter visual JSON/frame adapters retain their separate
+free-only validation and quota controls.
+
 The pinned Hyperframes package already contains relevant motion, explainer, media and review skills. Consult [Agent capabilities](AGENT_CAPABILITIES.md) for exact paths and the extension contract. Installing another skill cannot make an unsupported schema field render. A new capability needs instructions, validation, actual renderer behavior, edit semantics and representative frame checks.
 
 ## 7. Verification boundaries
+
+The live event stream records server emission time, run/channel identity, stage
+and the captured running build where available. Every browser has its own cursor
+over the bounded 1,000-event journal; reconnecting can replay retained messages
+without consuming another tab's log. Events from a different run/channel do not
+complete the current stream. A history gap is reported explicitly. Scheduled
+events keep their original identity after the interactive editor is restored.
+
+The narration log names every recorded/reused section and reports the assembled
+section count and measured duration. The worker reports timing and visual-planning
+boundaries, including actual illustrated/picture/footage scene counts. An AI
+attempt is distinguished from a successful response. These diagnostics describe
+the executed flow; they do not turn retrieved sources or successful encoding into
+a claim of factual or creative approval.
 
 Tests use controlled provider responses to verify ownership, timing, failure paths and free routing. Real FFmpeg tests exercise mixing, cue placement, duration and loudness. Browser checks exercise actual Flask routes, revision changes, isolation, seeks and layout. Real MP4 tests verify the media handoff separately from mocked provider behavior.
 

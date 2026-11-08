@@ -280,30 +280,41 @@ def test_unavailable_selected_openrouter_planner_uses_working_gemini(project, mo
 @pytest.mark.parametrize("groq_succeeds", [True, False])
 def test_alternate_groq_chain_never_retries_failed_openrouter(project, monkeypatch, groq_succeeds):
     from apis import llm
+    from requests import HTTPError, Response
     script, timeline = project
     old = visual_director.plan_scenes(script, timeline, use_ai=False)
     design = _full_design(old)
     monkeypatch.setattr(config, "OPENROUTER_API_KEY", "configured-free-openrouter-key")
     monkeypatch.setattr(config, "GROQ_API_KEY", "configured-free-groq-key")
     monkeypatch.setattr(config, "GROQ_MODEL", "openai/gpt-oss-120b")
-    preferred, requests = [], []
+    preferred, attempts = [], []
 
     def unavailable(*args, **kwargs):
         preferred.append(True)
         raise visual_director.openrouter.OpenRouterError("rate_limited", "Selected free planner unavailable")
 
     def response(url, body, **kwargs):
-        requests.append(url)
+        attempts.append((url, body["model"], kwargs["timeout"]))
         if not groq_succeeds:
-            raise RuntimeError("Unavailable configured provider")
+            failed = Response()
+            failed.status_code = 503
+            raise HTTPError("Temporarily unavailable", response=failed)
         return {"choices": [{"message": {"content": json.dumps(design)}}]}
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("The fallback chain must not re-enter the failed primary OpenRouter provider")
 
     monkeypatch.setattr(visual_director.openrouter, "plan_json", unavailable)
     monkeypatch.setattr(llm, "post_json", response)
+    monkeypatch.setattr(llm.openrouter, "_select_model", forbidden)
+    monkeypatch.setattr(llm.openrouter, "_claim_request", forbidden)
     updated = visual_director.plan_scenes(script, timeline)
 
     assert preferred == [True]
-    assert requests == ["https://api.groq.com/openai/v1/chat/completions"]
+    # A real transient Groq HTTP failure may retry once, but never causes a
+    # second primary-provider request or a change to another model/free route.
+    assert [url for url, _, _ in attempts] == ["https://api.groq.com/openai/v1/chat/completions"] * (1 if groq_succeeds else 2)
+    assert all(model == "openai/gpt-oss-120b" and 0 < timeout <= 60 for _, model, timeout in attempts)
     if groq_succeeds:
         assert updated["ai_status"]["provider"] == "groq"
         assert updated["ai_status"]["model"] == "openai/gpt-oss-120b"

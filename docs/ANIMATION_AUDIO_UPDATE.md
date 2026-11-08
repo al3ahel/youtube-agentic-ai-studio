@@ -20,9 +20,13 @@ extra paid model or personal agent-skill installation is required.
 
 ## Using the update
 
-1. Stop the running YAAS server, update this fork's `main`, and restart the same
-   Python environment. On Windows the application entrypoint is `gui.py`; keep
-   `--port 8765` if that is the port you use.
+1. Stop the running YAAS server, update this fork's `main`, reinstall
+   `requirements.txt` in the same Python environment, then restart. The provider
+   timeout/retry controls require the tested `google-genai>=2.33.0` dependency;
+   pulling Git alone does not upgrade an already installed SDK. The complete
+   [Windows update commands](../SETUP.md#upgrading-from-an-earlier-checkout) also
+   verify the renderer and FFmpeg. The application entrypoint is `gui.py`; set
+   `$env:STUDIO_PORT = "8765"` in PowerShell before starting it on that port.
 2. Open **Settings → Sound design**, or `/#settings/audio`. Set **Sound direction**
    to **Automatic — let the agent choose** and save if automatic choices are wanted.
    Existing explicit Manual/Off preferences are retained on upgrade.
@@ -81,7 +85,7 @@ onset, current-project credits, scene boundaries and existing pipeline workflows
 The [pipeline map](PIPELINE_ARCHITECTURE.md) and
 [agent capability contract](AGENT_CAPABILITIES.md) document the preserved boundaries.
 
-Final local verification on 2026-11-08:
+Audiovisual release verification on 2026-11-08:
 
 | Check | Result |
 | --- | --- |
@@ -98,3 +102,63 @@ delayed responses, exact saved render policies and both old/new draft behavior.
 The source collection is intentionally small. A requested instrument, environment
 or style outside it still needs a compatible live result; the agent must not
 relabel unrelated audio simply to make every request appear successful.
+
+## Follow-up: interpreting incomplete generation logs
+
+The reported earlier log showed repeated minute-long Gemini waits, narration
+section 1 followed by section 3, sound acquisition warnings, and frame encoding.
+The high-level order is expected: record and measure speech, prepare sound,
+plan visual scenes on the same clock, then encode. The log did not show every
+stage, and it did not establish whether every spoken claim was correct.
+
+The follow-up corrects three independent observability/routing problems:
+
+- Stream subscribers previously consumed a single shared queue. Two browser tabs
+  could take messages from one another. Each connection now has its own event
+  cursor, with bounded replay and run/channel identity.
+- A new AI stage could retry a provider that had already failed during the same
+  video. A generation-scoped provider session now remembers those failures and
+  bounds retry work. A later job starts fresh; one channel cannot blacklist a
+  provider for another concurrent context. Attempt and success logs are distinct.
+- New visual planning had no useful start/completion summary in the text log.
+  The worker now reports stage boundaries, the measured narration clock, reuse,
+  planned scene/media counts and the requested job/build identity when available.
+
+A cached narration section was already appended to the final audio; the jump in
+the supplied log alone cannot establish a missing recording or a cache hit.
+The clarified log includes a reused section's title and ends with an explicit
+assembled N/N, measured duration, and reused/recorded counts. A regression warms
+only the middle of three sections and checks every PCM sample and timing entry.
+
+The completion message specifies media-structure checks—dimensions, frame rate,
+duration and audio stream. Source counts on Home and Review are labeled retrieved
+references. Neither is presented as a factual-accuracy or audiovisual-quality
+approval.
+
+The shared text-agent route uses a 120-second cloud retry budget per request,
+with a 30-second HTTP attempt and 45-second provider budget when an alternative
+is available. A sole remaining provider may use up to 60 seconds. These are
+request/retry controls, not a separate hard wall-clock watchdog. An installed
+local model keeps its own longer cancellable timeout. Stop requests propagate to
+agent calls that do not supply an explicit stop event. Model-specific failures
+can still try another configured Gemini model; a timed-out or inaccessible
+provider is not retried by every later text stage in that video.
+
+The SDK floor was exercised against `google-genai` 2.33.0 and 3.0.0. Version
+2.33.0 declares Python 3.10 support; the local executable checks used Python
+3.12. This dependency update does not require a paid model or a change to saved
+provider keys.
+
+Final follow-up verification on 2026-11-08:
+
+| Check | Result |
+| --- | --- |
+| Complete Python suite with the real browser configured | **1,193 passed**, no skips |
+| Complete renderer/Studio browser suite | **42 passed**, no skips |
+| Focused routing, local/free and app/audio checks against SDK 2.33.0 and 3.0.0 | **89 passed with each SDK** |
+| Actual Flask/JavaScript two-tab stream | Both tabs receive every section once; reconnect resumes, server timestamps display correctly, terminal events stay scoped |
+| Mixed cached/new narration | All three sections, PCM audio, captions and timing entries remain in order; reuse and assembly are explicit in the log |
+
+Provider failures are controlled fixtures in these routing tests; they do not
+establish current availability of the user's provider accounts. The licensed
+sample videos and real mixing evidence above remain unchanged by the log fix.

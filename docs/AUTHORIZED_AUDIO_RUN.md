@@ -5,9 +5,10 @@ The six-of-ten review and "no repair" finding below describe the preceding
 encoded attempts. The requested new edits and new review are tracked separately,
 while their complete fresh narration is retained.
 
-**Status on 10 November 2026: review-branch publication and fresh narration are
-complete. The fresh film is encoded and technically verified, but strict
-semantic review remains incomplete and the film is not approved.**
+**Historical encoded-run status, before the additional repairs:** review-branch
+publication and fresh narration completed. That film was encoded and technically
+verified, but its strict semantic review remained incomplete and it was not
+approved. The current result is in the follow-up linked above.
 
 The user explicitly approved publishing the prepared review branch and
 regenerating narration with Microsoft/Bing Edge TTS on 9 November 2026.

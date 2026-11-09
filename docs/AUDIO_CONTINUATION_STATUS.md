@@ -4,7 +4,8 @@ The [current repair follow-up](ARMOUR_APPLIED_REPAIRS.md) tracks the requested
 scene corrections, contact-priority fix and new Studio continuation. The fresh
 recording documented here is complete and is reused for that continuation.
 
-**Status on 10 November 2026: fresh narration and a first automatic mix/encode are complete; semantic approval remains incomplete.**
+**Historical first fresh-audio run, before the additional repairs:** narration and
+a first automatic mix/encode completed; semantic approval remained incomplete.
 The user approved both publishing the review branch and regenerating narration
 with Edge TTS. All five sections were recorded, all 84 returned word events match
 the script, and the complete recordings are preserved in a verified checkpoint.
@@ -12,9 +13,10 @@ The first fresh film passed encoded-format checks but did not receive complete
 semantic review. A precision bug in sound/storyboard binding has been corrected
 and tested. The corrected normal continuation reused the preserved narration and
 visual model captures, completed its mix/encode/review, and confirmed the fix.
-Its strict semantic review still covers only six of ten shots, so the film
-remains unapproved. See [the authorized
-audio run report](AUTHORIZED_AUDIO_RUN.md) for current evidence and execution history.
+That preceding run obtained valid responses for six of ten shots and remained
+unapproved. See [the authorized audio run report](AUTHORIZED_AUDIO_RUN.md) for
+that execution history, and [the applied repairs report](ARMOUR_APPLIED_REPAIRS.md)
+for the latest film, soundtrack and review result.
 The audit below describes the preceding preserved-audio continuation.
 
 The visual continuation retains the complete original narration, music and effect.

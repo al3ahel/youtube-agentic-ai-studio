@@ -178,10 +178,11 @@ This continuation does not retry that rejected update.
 - [Photographic framing and opening headings](../renderers/hyperframes/templates/shots.js)
 - [Encoded review evidence](../agents/render_review.py)
 
-The authorized complete audio run uses the existing comparison harness and has
-verified fresh narration coverage plus a new automatic mix and encode. The
-subsequent sound-binding correction was verified in another normal continuation;
-semantic review and the proof-impact selection remain incomplete. Those results
-and the fresh film's observed visual limitations are recorded in
-[the authorized audio run report](AUTHORIZED_AUDIO_RUN.md); the
-visual improvements do not preapprove the new run.
+The subsequent authorized audio run used the existing comparison harness and
+verified complete fresh narration plus a new automatic mix and encode. Its
+sound-binding correction was verified in another normal continuation. At that
+stage, semantic review and proof-impact selection remained incomplete; those
+historical results are recorded in [the authorized audio run report](AUTHORIZED_AUDIO_RUN.md).
+The [current applied-repairs report](ARMOUR_APPLIED_REPAIRS.md) tracks the later
+contact-selection fix, five additional scene edits, revised mix and actual new
+review result. Earlier visual improvements do not preapprove that result.

@@ -1,9 +1,13 @@
 # Armour demo: narration and sound continuation
 
-**Status on 9 November 2026: speech submission explicitly authorized; the fresh run has begun.**
+**Status on 9 November 2026: fresh narration complete and verified.**
 The user approved both publishing the review branch and regenerating narration
-with Edge TTS. The new run's outcome will be recorded separately; the audit below
-describes the preceding preserved-audio continuation.
+with Edge TTS. All five sections were recorded, all 84 returned word events match
+the script, and the complete recordings are preserved in a verified checkpoint.
+The automatic mix/render continuation is running from that checkpoint after
+two interrupted planning attempts and a wait for shared model memory. See [the authorized audio run
+report](AUTHORIZED_AUDIO_RUN.md) for current evidence and execution history.
+The audit below describes the preceding preserved-audio continuation.
 
 The visual continuation retains the complete original narration, music and effect.
 No new speech request, model sound-selection request, remix or listening assessment
@@ -38,7 +42,7 @@ The endpoint and WordBoundary request behavior are implemented by the installed
 Edge TTS package and [narrator.py](../video/narrator.py). This service uses a network
 connection; the local Ollama model does not synthesize the narration.
 
-## Ready-to-run command after approval
+## Authorized normal continuation command
 
 Run from the repository root with its installed Python, FFmpeg, browser and local
 `qwen3.5:4b` dependencies available. The output directory must be new:
@@ -50,10 +54,13 @@ python renderers/hyperframes/comparable_demo.py --render --local-model qwen3.5:4
 The [normal comparison harness](../renderers/hyperframes/comparable_demo.py) records
 speech, builds its measured timeline, plans visuals, selects and mixes automatic
 sound, encodes the film and runs the strict review. The command was prepared and
-its flags verified; **it has not been executed in this continuation**. It does not
-upload the result to YouTube. It may also acquire the comparison's declared
-museum assets if they are absent. Model responses, available services and review
-outcomes can differ between runs.
+its flags verified during the earlier audit, then executed after explicit
+authorization using a new output directory. The fresh recording and subsequent
+checkpoint continuations are documented in [the authorized audio run
+report](AUTHORIZED_AUDIO_RUN.md). The harness does not upload the result to
+YouTube. It may also acquire the comparison's declared museum assets if they are
+absent. Model responses, available services and review outcomes can differ
+between runs.
 
 The [reference target](../renderers/hyperframes/fixtures/armor-reference.json) is
 29.49 seconds, 1080 × 1920 at 30 fps. The nearest whole-frame delivery is 885
@@ -71,9 +78,9 @@ The checkpoint destination must also be new. Export makes no speech, sound-model
 or rendering request. See [Shot pipeline repair](SHOT_PIPELINE_REPAIR.md) for
 verification and restore behavior.
 
-## What is available now
+## What was available during the preceding audit
 
-The latest interrupted fresh attempt contains an empty, zero-byte raw WAV and no
+The then-latest interrupted fresh attempt contained an empty, zero-byte raw WAV and no
 complete word-timing/SRT package. A targeted inspection of this workspace and the
 preceding project workspace found no matching complete raw armour recording or
 verified voice-cache bundle. No usable installed offline TTS runtime/model was
@@ -84,7 +91,7 @@ The complete original soundtrack is available in the
 [published film](samples/comparable-armour/video.mp4). It contains narration plus
 music and the old accent in one AAC track. Treating that mixed track as clean
 narration would duplicate the music/effect during remixing and would misstate its
-provenance. The current visual continuation therefore stream-copies the original
+provenance. The preceding visual-only continuation therefore stream-copies the original
 AAC track.
 
 A fresh local check decoded both the published film and the completed selected
@@ -112,7 +119,7 @@ a proof-impact accent. That inherited cue remains in the preserved soundtrack.
 A read-only call to the current production timing resolver rejects that old
 construction contact proposal with `source_contact_not_unique`: the construction
 narration does not establish one positively stated metal impact to synchronize.
-The current source and storyboard instead expose one eligible illustrative metal
+The preserved source and visual-only storyboard instead expose one eligible illustrative metal
 contact, **scene-007 at 17.134458 seconds**, aligned to the returned word **“hit.”**
 Eligibility does not force the sound model to select an effect, and this audit
 did not insert or move one. These timings describe recorded metadata and planned
@@ -121,13 +128,16 @@ visual contact, not a listening judgment about a prominent audible transient.
 All five existing bundled recordings matched their catalog hashes in the local
 audit: *Cylinder One*, *Cylinder Five*, book page turn, small whoosh and metal
 surface impact. Their retained catalog entries include CC BY 4.0 attribution and
-source provenance; see [the catalog](../assets/audio/bundled/catalog.json). A new
-automatic mix can use those local recordings after clean, verified narration is
-available. The ordinary mixer already accepts the current visual plan and
+source provenance; see [the catalog](../assets/audio/bundled/catalog.json). Fresh,
+verified narration is now available for a new automatic mix using those local
+recordings; the fresh run has not yet reached sound selection. The ordinary mixer
+already accepts the current visual plan and
 enforces its contact checks; no alternate mixer or archive-audio workaround is
 needed.
 
-**Remaining evidence required:** a successful authorized complete speech run,
-measured word coverage, a fresh automatic sound selection and mix, encoded audio
-checks, and a separate listening review. None is implied by preservation of the
-old soundtrack or by the successful local timing audit.
+**Subsequent evidence:** the authorized complete speech run and measured word
+coverage are now recorded in [the authorized audio run
+report](AUTHORIZED_AUDIO_RUN.md). Fresh automatic sound selection and mixing,
+encoded audio checks, and a separate listening review remain to be established.
+None is implied by preservation of the old soundtrack or by the successful local
+timing audit.

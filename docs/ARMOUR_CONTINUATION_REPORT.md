@@ -5,9 +5,11 @@ opening and ending have been revised through the normal scene editor and
 renderer. The complete recorded narration and soundtrack are retained in that
 visual continuation. On 9 November 2026 the user subsequently explicitly
 authorized publishing the review branch and regenerating narration with
-Microsoft/Bing Edge TTS. A separate complete narration, automatic mix and render
-run has begun; its outcome will be recorded separately from the visual-only
-evidence below.
+Microsoft/Bing Edge TTS. Fresh narration is now complete, with all 84 returned
+word events matching the script. The recording, interrupted planning attempts
+and subsequent automatic mix/render continuation are documented in
+[the authorized audio run report](AUTHORIZED_AUDIO_RUN.md), separately from the
+visual-only evidence below.
 
 The earlier automatic review finished on **9 November 2026 at 22:46 Dubai time**.
 It did not approve the film. Its raw replies and failed status remain preserved;
@@ -23,7 +25,7 @@ this continuation does not replace those findings with a retrospective pass.
 | A model failure contradicted its own affirmative explanation. | Failures and repair requests now need a category-specific defect, an expected criterion and an exact quote from a cited observation. Explicit contradictions are rejected. | Consistent text is not proof that the model interpreted the pixels correctly. |
 | An error label could upgrade an uncertain assessment into repair authority. | Severity no longer converts uncertainty into a reliable failure. Captured responses are validated on copies. | Incomplete or uncertain review remains unapproved. |
 | Pair recovery could borrow two nouns from another clause. | A final code review added conservative clause and predicate checks, including semicolons and while/whereas boundaries. Automatic source redirection now uses the same identity context as the ordinary editor. | These two safeguards were added after the encoded run's source snapshot and are covered by separate regression tests. They are not represented as another rendered or model-reviewed attempt. |
-| Fresh narration and synchronized sound were pending. | Verified the exact remaining speech payload, existing run command, available licensed audio and current contact resolver. | No speech call or fresh mix was made. See [audio continuation status](AUDIO_CONTINUATION_STATUS.md). |
+| Fresh narration and synchronized sound were pending during the visual-only continuation. | Verified the exact remaining speech payload, existing run command, available licensed audio and current contact resolver. | That audit made no speech call or fresh mix. The subsequently authorized recording is documented in [the authorized audio run report](AUTHORIZED_AUDIO_RUN.md). |
 
 These are reusable changes in the production planner, editor, renderer and
 reviewer. The film's specific edits are still inspection-directed editorial
@@ -121,7 +123,7 @@ previously pinned 29.49-second source timeline, delivered as the nearest complet
 movie is only the previously documented short silent excerpt; it cannot support
 a full-length audiovisual parity claim.
 
-## Sound remains an explicit limitation
+## Sound retained in the visual-only film
 
 The retained film contains the original music bed and generic metal accent at
 4.600 seconds. The current production resolver rejects that construction-section
@@ -149,7 +151,9 @@ inspection and complete terminal review result. It is an evidence package, not a
 verified raw-narration checkpoint. The old published comparison is preserved at
 [comparable-armour](samples/comparable-armour/README.md).
 
-The follow-up targets `review/armour-continuation-20261109`. The initial GitHub
+The follow-up is published on `review/armour-continuation-20261109` at
+[`7bbd33d999c79faa205092ff884da51259730a73`](https://github.com/al3ahel/youtube-agentic-ai-studio/commit/7bbd33d999c79faa205092ff884da51259730a73).
+The initial GitHub
 tree upload was rejected by automatic approval review because explicit
 authorization to publish the source changes had not been confirmed. The user
 subsequently explicitly approved publishing this review branch and regenerating
@@ -169,6 +173,6 @@ This continuation does not retry that rejected update.
 - [Photographic framing and opening headings](../renderers/hyperframes/templates/shots.js)
 - [Encoded review evidence](../agents/render_review.py)
 
-The authorized complete audio run uses the existing comparison harness. It must
-earn fresh narration coverage, sound-selection and encoded-review evidence;
-the visual improvements do not preapprove it.
+The authorized complete audio run uses the existing comparison harness and has
+verified fresh narration coverage. Automatic sound-selection and encoded-review
+evidence remain pending; the visual improvements do not preapprove the new run.

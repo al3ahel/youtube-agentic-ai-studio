@@ -423,3 +423,103 @@ def test_unsupported_construction_accent_cannot_consume_budget_before_supported_
     assert plan["omitted_events"][0]["section_id"] == "construction"
     assert plan["omitted_events"][0]["reason"] == "source_contact_not_unique"
     assert "4.6" not in json.dumps(plan["events"])
+
+
+@pytest.fixture
+def competing_effects(tmp_path, monkeypatch):
+    """Two actual bundled proposals and a current, independently timed scene."""
+    event, timeline, script, visual = saved_visual_source()
+    timeline["sections"][0]["duration"] = 4.6
+    overview = {"id": "overview", "start": 4.6, "duration": timeline["sections"][1]["start"] - 4.6,
+                "narration": "Examine the structure of steel armour.", "caption_timing": "estimated"}
+    timeline["sections"].insert(1, overview)
+    script["sections"] = [{"id": row["id"], "narration": row["narration"]} for row in timeline["sections"]]
+    timeline["script_signature"] = script_signature(script)
+    visual["sections"] = deepcopy(timeline["sections"])
+    visual["script_signature"] = timeline["script_signature"]
+    visual["scenes"][0]["duration"] = 4.6
+    transition_scene = deepcopy(visual["scenes"][0])
+    transition_scene.update(id="overview-shot", section_id="overview", start=overview["start"], duration=overview["duration"])
+    visual["scenes"].insert(1, transition_scene)
+    monkeypatch.setattr(config, "SETTINGS_PATH", str(tmp_path / "settings.json"))
+    profile = channels.create_profile("Sparse contact selection", "general", defaults={"sound_intensity": "low"})
+    visual["profile_id"] = profile["id"]
+    visual_director.validate_plan(visual)
+    assert audio_director._bound_visual_plan(visual, timeline, script, profile["id"]) is visual
+    proposed = {"music": {"use": False}, "ambience": {"use": False}, "events": [
+        {"section_id": "overview", "query": "paper turn", "label": "Overview transition", "reason": "Mark the overview."},
+        event]}
+    monkeypatch.setattr(audio_director.gemini_client, "generate", lambda *a, **k: json.dumps(proposed))
+    monkeypatch.setattr(audio_sources, "_response", lambda *a, **k: pytest.fail("Existing recordings need no network search."))
+    return profile, script, timeline, visual, proposed
+
+
+@pytest.mark.skipif(not shutil.which("ffprobe"), reason="Real recording acquisition requires ffprobe")
+def test_later_valid_visual_contact_displaces_an_earlier_page_turn_in_the_normal_director(competing_effects):
+    profile, script, timeline, visual, proposed = competing_effects
+    before = deepcopy((script, timeline, visual, proposed))
+    plan, resolved = audio_director.direct_audio(script, timeline, profile["id"], visual_plan=visual)
+    assert len(plan["events"]) == len(resolved["events"]) == 1
+    cue = plan["events"][0]
+    assert cue["section_id"] == "proof" and cue["timing_source"] == "visual_contact"
+    assert cue["start"] == resolved["events"][0]["start"] == pytest.approx(17.133333, abs=.000001)
+    assert cue["volume"] == resolved["events"][0]["volume"] == .22
+    assert cue["duration"] == resolved["events"][0]["duration"] == pytest.approx(1.132583)
+    assert cue["asset"]["license"] == "CC BY 4.0" and cue["asset"]["provider"] == "bundled"
+    assert hashlib.sha256(Path(resolved["events"][0]["path"]).read_bytes()).hexdigest() == cue["timing_provenance"]["recording_sha256"]
+    assert [(row["section_id"], row["start"], row["reason"]) for row in plan["omitted_events"]] == [
+        ("overview", 4.6, "effect_budget_exhausted")]
+    assert plan["omitted_events"][0]["query"] == "paper turn"
+    assert (script, timeline, visual, proposed) == before
+
+
+@pytest.mark.parametrize("failure", ["noncontact_visual", "stale_visual", "noncontact_recording"])
+@pytest.mark.skipif(not shutil.which("ffprobe"), reason="Real recording acquisition requires ffprobe")
+def test_ineligible_or_unbound_contact_never_displaces_a_valid_transition(competing_effects, failure):
+    profile, script, timeline, visual, proposed = competing_effects
+    if failure == "noncontact_visual":
+        next(row for row in visual["scenes"] if row.get("mechanism"))["mechanism"]["action"] = "reveal"
+    elif failure == "stale_visual":
+        visual["timeline_signature"] = "stale"
+    else:
+        proposed["events"][1].update(query="paper turn", label="Alleged metal impact")
+    plan, resolved = audio_director.direct_audio(script, timeline, profile["id"], visual_plan=visual)
+    assert [row["section_id"] for row in plan["events"]] == ["overview"]
+    assert resolved["events"][0]["start"] == 4.6
+    omitted = next(row for row in plan["omitted_events"] if row["section_id"] == "proof")
+    assert omitted["reason"] == ("unique_aligned_visual_contact_unavailable" if failure == "noncontact_visual"
+                                  else "effect_budget_exhausted")
+
+
+@pytest.mark.skipif(not shutil.which("ffprobe"), reason="Real recording acquisition requires ffprobe")
+def test_too_short_contact_tail_does_not_consume_the_effect_budget(competing_effects, monkeypatch):
+    profile, script, timeline, visual, proposed = competing_effects
+    original = audio_director._event_timing
+
+    def resolve(event, *args, **kwargs):
+        timing = original(event, *args, **kwargs)
+        # Exercise allocation with a resolver result too close to the audio end;
+        # all source/recording eligibility checks above still run normally.
+        if event["section_id"] == "proof" and timing.get("timing_source") == "visual_contact":
+            timing["start"] = timeline["duration"] - .01
+        return timing
+
+    monkeypatch.setattr(audio_director, "_event_timing", resolve)
+    plan, _ = audio_director.direct_audio(script, timeline, profile["id"], visual_plan=visual)
+    assert [row["section_id"] for row in plan["events"]] == ["overview"]
+    assert [(row["section_id"], row["reason"]) for row in plan["omitted_events"]] == [
+        ("proof", "effect_duration_too_short")]
+
+
+@pytest.mark.parametrize("unavailable", [False, True])
+def test_contact_priority_never_inserts_an_unproposed_or_fallback_effect(competing_effects, monkeypatch, unavailable):
+    profile, script, timeline, visual, proposed = competing_effects
+    proposed["events"] = []
+    if unavailable:
+        def no_model(*args, **kwargs):
+            raise RuntimeError("No local model response")
+        monkeypatch.setattr(audio_director.gemini_client, "generate", no_model)
+        monkeypatch.setattr(audio_sources, "acquire_audio", lambda *a, **k: None)
+    plan, resolved = audio_director.direct_audio(script, timeline, profile["id"], visual_plan=visual)
+    assert plan["events"] == resolved["events"] == plan["omitted_events"] == []
+    assert plan["planner"]["status"] == ("local" if unavailable else "ai")

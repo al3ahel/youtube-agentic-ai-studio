@@ -264,6 +264,91 @@ def symbol_supported(symbol, narration, *, label=None):
     return bool(expression and re.search(expression, source, re.I))
 
 
+_GENERAL_ACTOR_NAMES = {
+    "armour": "armour armor", "firearm": "firearm gun", "battery": "battery",
+    "solar": "solar panel", "circuit": "circuit", "network": "network",
+    "plant": "plant", "water": "water", "building": "building",
+    "people": "people human", "document": "document record", "mining": "mining mine",
+    "census": "census", "census-gap": "census", "trade": "trade cargo",
+    "orbit": "orbit", "conflict": "conflict",
+}
+# Literal features contradicted by the bounded catalogue drawings. Source
+# support cannot turn a solid torso plate into mail, or a stocked long gun
+# into a handgun/projectile. Material mechanisms have a separate geometry path.
+_ACTOR_DEPICTION_CONFLICTS = {
+    "armour": r"\b(?:mail|chainmail|rings?|helmets?|shields?|gauntlets?)\b",
+    "firearm": r"\b(?:pistols?|handguns?|revolvers?|bullets?|projectiles?|cartridges?|ammunition)\b",
+    "solar": r"\b(?:windmills?|turbines?)\b",
+}
+_LABEL_GRAMMAR = {"a", "an", "the", "of", "and", "or", "for", "to", "in", "on", "with",
+                  "this", "that", "these", "those", "schematic", "illustrative"}
+
+
+def _label_word_forms(text):
+    """Small lexical equivalences, not a claim that paraphrases are facts."""
+    forms = set()
+    for word in re.findall(r"[^\W\d_]+", str(text).casefold()):
+        if word in _LABEL_GRAMMAR:
+            continue
+        word = word.replace("armor", "armour")
+        forms.add(word)
+        if word in {"breastplate", "breastplates"}:
+            forms.add("plate")
+        if word.endswith("ies") and len(word) > 4:
+            forms.add(word[:-3] + "y")
+        for suffix in ("ing", "ed", "es", "s"):
+            if word.endswith(suffix) and len(word) > len(suffix) + 2:
+                stem = word[:-len(suffix)]
+                forms.update((stem, stem + "e"))
+        for stem in ("reinforc", "harden", "thicken"):
+            if word.startswith(stem):
+                forms.add(stem)
+    return forms
+
+
+def label_grounding_issues(scene, narration, *, context="", visible_labels=None):
+    """Check generated text that the chosen renderer actually displays.
+
+    Ordinary actors need both literal depiction and source-supported names;
+    a supported broad symbol does not license arbitrary subtypes/adjectives.
+    A caller may instead supply visible material-part labels, whose dormant
+    actor symbols are not drawn. Media identities stay with the trusted asset
+    adapter, and abstract concepts retain the existing source policy.
+    """
+    if scene.get("image") or scene.get("footage") or scene.get("template") in {"chart", "footage"}:
+        return []
+    source = _source_text(narration) + " " + " ".join(
+        item["label"] for item in paired_subjects(narration, context))
+    material = scene.get("mechanism") or {}
+    if material and visible_labels is None:
+        return []
+    available = _label_word_forms(source)
+    items = scene.get("items", []) if visible_labels is None else [{"label": value} for value in visible_labels]
+    issues = []
+    for item in items:
+        label, symbol = str(item.get("label", "")), item.get("symbol")
+        if visible_labels is None:
+            if symbol in {None, "concept"}:
+                continue
+            direct = _subject(label)
+            own_name = dict(_RULES).get(symbol, r"(?!)")
+            family = {"census", "census-gap"} if symbol in {"census", "census-gap"} else {symbol}
+            if ((direct != "concept" and direct not in family and not re.search(own_name, label, re.I))
+                    or re.search(_ACTOR_DEPICTION_CONFLICTS.get(symbol, r"(?!)"), label, re.I)):
+                issues.append("The actor label does not match the literal catalogue depiction.")
+            allowed = available | _label_word_forms(_GENERAL_ACTOR_NAMES.get(symbol, ""))
+        else:
+            # These words describe positions/parts in an explanatory view, not
+            # physical performance. In particular, an exploded view adds no
+            # source evidence for a real gap, cavity, insulation or damage.
+            allowed = available | _label_word_forms(
+                material.get("material", "") + " inner outer front back upper lower exposed section surface layer part")
+        if any(not (_label_word_forms(word) & allowed)
+               for word in re.findall(r"[^\W\d_]+", label) if word.casefold() not in _LABEL_GRAMMAR):
+            issues.append("The displayed label adds a name or qualifier not supported by this shot's source.")
+    return list(dict.fromkeys(issues))
+
+
 def grounding_issues(scene, narration, *, context=""):
     """Check depicted actors/actions against this scene, never the whole film.
 

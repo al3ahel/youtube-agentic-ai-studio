@@ -1,13 +1,19 @@
 # Armour demo: narration and sound continuation
 
+The [current repair follow-up](ARMOUR_APPLIED_REPAIRS.md) tracks the requested
+scene corrections, contact-priority fix and new Studio continuation. The fresh
+recording documented here is complete and is reused for that continuation.
+
 **Status on 10 November 2026: fresh narration and a first automatic mix/encode are complete; semantic approval remains incomplete.**
 The user approved both publishing the review branch and regenerating narration
 with Edge TTS. All five sections were recorded, all 84 returned word events match
 the script, and the complete recordings are preserved in a verified checkpoint.
 The first fresh film passed encoded-format checks but did not receive complete
 semantic review. A precision bug in sound/storyboard binding has been corrected
-and tested; a normal continuation using the preserved narration and visual model
-captures is running to establish its actual mix and review outcome. See [the authorized
+and tested. The corrected normal continuation reused the preserved narration and
+visual model captures, completed its mix/encode/review, and confirmed the fix.
+Its strict semantic review still covers only six of ten shots, so the film
+remains unapproved. See [the authorized
 audio run report](AUTHORIZED_AUDIO_RUN.md) for current evidence and execution history.
 The audit below describes the preceding preserved-audio continuation.
 
@@ -141,6 +147,7 @@ needed.
 **Subsequent evidence:** the authorized complete speech run, measured word
 coverage, first automatic mix and encoded-format checks are recorded in
 [the authorized audio run report](AUTHORIZED_AUDIO_RUN.md). The corrected
-sound-binding continuation has its own outcome, and a separate listening review
-remains outstanding. None of these is implied by preservation of the old
+sound-binding continuation is complete: storyboard recognition is fixed, but the
+actual mix still retains the earlier page turn and lacks a proof-impact accent.
+A separate listening review remains outstanding. None of these is implied by preservation of the old
 soundtrack or by the preceding local timing audit.

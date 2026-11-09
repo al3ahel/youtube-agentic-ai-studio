@@ -1,5 +1,10 @@
 # Armour continuation: opening, ending and review evidence
 
+**Current follow-up:** [Armour repairs, actual model and Hybrid scope](ARMOUR_APPLIED_REPAIRS.md)
+records the additional repairs requested on 10 November. Fresh narration and
+automatic mixing are complete. This page preserves the preceding visual-only
+run and its limitations; its review result is not the new repaired film's result.
+
 This continues the limitations reported after the selected armour film. The
 opening and ending have been revised through the normal scene editor and
 renderer. The complete recorded narration and soundtrack are retained in that
@@ -59,7 +64,7 @@ performs one review pass with no additional automated repair: the concrete
 editorial repairs were made before encoding. The production bounded repair loop
 remains available with the stricter evidence checks described above.
 
-## Validation and current result
+## Validation of the earlier visual-only result
 
 The fresh automated review finished on **9 November 2026 at 19:11 UTC
 (23:11 Dubai time)** and **remains unapproved**.
@@ -174,7 +179,9 @@ This continuation does not retry that rejected update.
 - [Encoded review evidence](../agents/render_review.py)
 
 The authorized complete audio run uses the existing comparison harness and has
-verified fresh narration coverage plus a first automatic mix and encode. Its
-incomplete semantic review and the subsequently corrected sound-binding bug are
-recorded in [the authorized audio run report](AUTHORIZED_AUDIO_RUN.md); the
+verified fresh narration coverage plus a new automatic mix and encode. The
+subsequent sound-binding correction was verified in another normal continuation;
+semantic review and the proof-impact selection remain incomplete. Those results
+and the fresh film's observed visual limitations are recorded in
+[the authorized audio run report](AUTHORIZED_AUDIO_RUN.md); the
 visual improvements do not preapprove the new run.

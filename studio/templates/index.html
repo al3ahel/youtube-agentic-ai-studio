@@ -279,6 +279,15 @@
   <article class="card s24 review-part" id="rv-storyboard" hidden>
     <div class="card-label">Storyboard <span class="tag" id="storyboard-status">Draft</span></div>
     <p class="card-intro">Review the explanation scene by scene. Changing one scene keeps your script and narration, then updates the preview and renders a replacement draft video.</p>
+    <div class="planner-status" aria-label="Saved storyboard planning" role="status">
+      <p id="planner-status"></p>
+      <p class="hint" id="planner-detail"></p>
+      <p class="hint" id="planner-next-step"></p>
+      <div class="draft-actions">
+        <button class="btn btn-ghost btn-sm" type="button" id="review-planner-settings">Model settings &amp; discovery</button>
+        <button class="btn btn-ghost btn-sm" type="button" id="planner-rebuild-options" hidden>Show rebuild options</button>
+      </div>
+    </div>
     <p class="hint" id="film-direction" hidden></p>
     <p class="hint" id="direction-check-note" hidden></p>
     <div class="storyboard-layout">

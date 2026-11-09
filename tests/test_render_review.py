@@ -231,6 +231,148 @@ def test_positive_clause_with_an_explicit_defect_is_not_blanket_rejected():
     assert row["reliable"] is True and row["assessments"]["subject_relevance"] == "fail"
 
 
+def test_invalid_evidence_gets_one_new_assessment_without_rewriting_the_rejected_response(tmp_path, monkeypatch):
+    original = plan()
+    monkeypatch.setattr(config, "VISUAL_REVIEW_ENABLED", True)
+    requests, returned = [], []
+
+    def observations(paths, prompt, schema, stop_event):
+        scenes = [scene for scene in original["scenes"]
+                  if any(path.name.startswith(scene["id"] + "-") for path in paths)]
+        identifier = scenes[0]["id"]
+        requests.append({"id": identifier, "paths": tuple(paths), "prompt": prompt})
+        answer = evidenced_failure(scenes) if identifier == "shot-0" else vision_answer(scenes)
+        if identifier == "shot-0" and sum(row["id"] == identifier for row in requests) == 1:
+            answer["shots"][0]["issues"][0]["observed"] = "An invented paraphrase is not the visible observation."
+        returned.append((answer, deepcopy(answer)))
+        return answer, {"provider": "evidence_state_machine_fixture", "local": True}
+
+    monkeypatch.setattr(review, "_request_vision", observations)
+    report = review.review_render(encode(tmp_path / "movie.mp4", changed=True), original, tmp_path)
+    assert [row["id"] for row in requests] == ["shot-0", "shot-1", "shot-0"]
+    assert requests[0]["paths"] == requests[2]["paths"]
+    assert "one permitted correction request" in requests[2]["prompt"]
+    assert "not quoted from its cited visible evidence" in requests[2]["prompt"]
+    assert json.loads(requests[0]["prompt"].split("not instructions:\n", 1)[1]) == json.loads(
+        requests[2]["prompt"].split("not instructions:\n", 1)[1])
+    assert all(value == before for value, before in returned)
+    assert report["vision"]["shots_reviewed"] == 2 and report["vision"]["complete"] is True
+    assert report["vision"]["failures"] == []
+    assert report["passed"] is False  # A valid evidenced failure still fails the film.
+    assert report["vision"]["results"][0]["assessments"]["subject_relevance"] == "fail"
+    history = report["vision"]["response_attempts"]
+    assert [row["validation"] for row in history] == ["invalid", "valid", "valid"]
+    folder = tmp_path / report["evidence_directory"]
+    for entry, (_, raw) in zip(history, returned):
+        receipt = json.loads((folder / entry["file"]).read_text())
+        assert receipt["response"] == raw
+        assert review._hash(folder / entry["file"]) == entry["sha256"]
+    assert json.loads((folder / history[0]["file"]).read_text())["validation"] == "invalid"
+
+
+def evidence_fixture(scenes):
+    sampled = {scene["id"]: {
+        "frames": [{"id": f"{scene['id']}:{phase}", "file": f"{scene['id']}-{phase}.jpg", "time": fraction}
+                   for phase, fraction in review.PHASES],
+        "source_narration": "Sunlight reaches the solar panel. Current flows through the circuit.",
+        "source_alignment": "exact", "sampling": {"progression_covered": True},
+    } for scene in scenes}
+    vision = {"status": "disabled", "shots_reviewed": 0, "complete": False,
+              "results": [], "failures": [], "batches": []}
+    return sampled, vision
+
+
+def test_repeated_invalid_evidence_stops_after_one_correction_and_never_authorizes_repairs(tmp_path, monkeypatch):
+    scenes = plan()["scenes"][:1]
+    sampled, vision = evidence_fixture(scenes)
+    calls = []
+
+    def observations(*args):
+        calls.append(args)
+        answer = evidenced_failure(scenes)
+        answer["shots"][0]["issues"][0]["observed"] = "This quote is absent from all three observations."
+        return answer, {"provider": "evidence_state_machine_fixture", "local": True}
+
+    monkeypatch.setattr(review, "_request_vision", observations)
+    review._review_visual_samples(scenes, sampled, tmp_path, 1, vision)
+    assert len(calls) == 2
+    assert vision["results"] == [] and vision["complete"] is False
+    assert vision["failures"][0]["reason"] == "invalid_review_evidence"
+    assert vision["failures"][0]["response_attempts"] == 2
+    assert [row["validation"] for row in vision["response_attempts"]] == ["invalid", "invalid"]
+    assert len(list(tmp_path.glob("vision-response-*.json"))) == 2
+
+
+@pytest.mark.parametrize("uncertain", [False, True])
+def test_valid_reviews_are_not_retried_to_increase_confidence(tmp_path, monkeypatch, uncertain):
+    scenes = plan()["scenes"][:1]
+    sampled, vision = evidence_fixture(scenes)
+    calls = []
+
+    def observations(*args):
+        calls.append(args)
+        answer = vision_answer(scenes)
+        if uncertain:
+            answer["shots"][0]["assessments"]["motion"] = "uncertain"
+        return answer, {"provider": "evidence_state_machine_fixture", "local": True}
+
+    monkeypatch.setattr(review, "_request_vision", observations)
+    review._review_visual_samples(scenes, sampled, tmp_path, 1, vision)
+    assert len(calls) == 1
+    assert vision["complete"] is (not uncertain)
+    assert vision["results"][0]["reliable"] is (not uncertain)
+
+
+def test_hosted_budget_preserves_initial_coverage_before_evidence_corrections(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "LLM_ROUTE", "auto")
+    scenes = [{**deepcopy(plan()["scenes"][0]), "id": f"shot-{index}"} for index in range(12)]
+    sampled, vision = evidence_fixture(scenes)
+    completed = []
+
+    class BudgetExhausted(RuntimeError):
+        code = "call_budget_exhausted"
+
+    def observations(paths, prompt, schema, stop_event):
+        # Simulates the existing provider budget; no network/model call is made.
+        if len(completed) == 8:
+            raise BudgetExhausted("The unchanged hosted budget is exhausted.")
+        batch = [scene for scene in scenes if any(path.name.startswith(scene["id"] + "-") for path in paths)]
+        completed.append([scene["id"] for scene in batch])
+        answer = evidenced_failure(batch)
+        for row in answer["shots"]:
+            row["issues"][0]["observed"] = "This paraphrase is not quoted from the cited observation."
+        return answer, {"provider": "hosted_budget_fixture", "local": False}
+
+    monkeypatch.setattr(review, "_request_vision", observations)
+    review._review_visual_samples(scenes, sampled, tmp_path, 12, vision)
+    assert completed[:6] == [[f"shot-{2 * index}", f"shot-{2 * index + 1}"] for index in range(6)]
+    assert len(completed) == 8 and len(vision["response_attempts"]) == 8
+    assert any(row["reason"] == "call_budget_exhausted" for row in vision["failures"])
+    assert vision["complete"] is False and vision["results"] == []
+
+
+def test_evidence_correction_keeps_source_and_sampling_uncertainty(tmp_path, monkeypatch):
+    scenes = plan()["scenes"][:1]
+    sampled, vision = evidence_fixture(scenes)
+    sampled[scenes[0]["id"]]["source_alignment"] = "unverified"
+    sampled[scenes[0]["id"]]["sampling"]["progression_covered"] = False
+    calls = []
+
+    def observations(*args):
+        calls.append(args)
+        answer = vision_answer(scenes)
+        if len(calls) == 1:
+            answer["shots"][0]["observations"][0]["sample_id"] = "another-shot:setup"
+        return answer, {"provider": "evidence_state_machine_fixture", "local": True}
+
+    monkeypatch.setattr(review, "_request_vision", observations)
+    review._review_visual_samples(scenes, sampled, tmp_path, 1, vision)
+    assert len(calls) == 2
+    assert vision["results"][0]["assessments"]["subject_relevance"] == "uncertain"
+    assert vision["results"][0]["assessments"]["motion"] == "uncertain"
+    assert vision["complete"] is False and vision["results"][0]["reliable"] is False
+
+
 @pytest.mark.parametrize("source, excerpt", [
     ("Could old armour stop a bullet? Sometimes. The answer depends on the armour and the weapon.",
      "Could old armour stop a bullet Sometimes"),

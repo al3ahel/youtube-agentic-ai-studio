@@ -1,12 +1,14 @@
 # Armour demo: narration and sound continuation
 
-**Status on 9 November 2026: fresh narration complete and verified.**
+**Status on 10 November 2026: fresh narration and a first automatic mix/encode are complete; semantic approval remains incomplete.**
 The user approved both publishing the review branch and regenerating narration
 with Edge TTS. All five sections were recorded, all 84 returned word events match
 the script, and the complete recordings are preserved in a verified checkpoint.
-The automatic mix/render continuation is running from that checkpoint after
-two interrupted planning attempts and a wait for shared model memory. See [the authorized audio run
-report](AUTHORIZED_AUDIO_RUN.md) for current evidence and execution history.
+The first fresh film passed encoded-format checks but did not receive complete
+semantic review. A precision bug in sound/storyboard binding has been corrected
+and tested; a normal continuation using the preserved narration and visual model
+captures is running to establish its actual mix and review outcome. See [the authorized
+audio run report](AUTHORIZED_AUDIO_RUN.md) for current evidence and execution history.
 The audit below describes the preceding preserved-audio continuation.
 
 The visual continuation retains the complete original narration, music and effect.
@@ -130,14 +132,15 @@ audit: *Cylinder One*, *Cylinder Five*, book page turn, small whoosh and metal
 surface impact. Their retained catalog entries include CC BY 4.0 attribution and
 source provenance; see [the catalog](../assets/audio/bundled/catalog.json). Fresh,
 verified narration is now available for a new automatic mix using those local
-recordings; the fresh run has not yet reached sound selection. The ordinary mixer
-already accepts the current visual plan and
+recordings. The first fresh automatic mix has completed; its timing-binding
+limitation and the subsequent correction are recorded separately. The ordinary
+mixer accepts a properly bound visual plan and
 enforces its contact checks; no alternate mixer or archive-audio workaround is
 needed.
 
-**Subsequent evidence:** the authorized complete speech run and measured word
-coverage are now recorded in [the authorized audio run
-report](AUTHORIZED_AUDIO_RUN.md). Fresh automatic sound selection and mixing,
-encoded audio checks, and a separate listening review remain to be established.
-None is implied by preservation of the old soundtrack or by the successful local
-timing audit.
+**Subsequent evidence:** the authorized complete speech run, measured word
+coverage, first automatic mix and encoded-format checks are recorded in
+[the authorized audio run report](AUTHORIZED_AUDIO_RUN.md). The corrected
+sound-binding continuation has its own outcome, and a separate listening review
+remains outstanding. None of these is implied by preservation of the old
+soundtrack or by the preceding local timing audit.

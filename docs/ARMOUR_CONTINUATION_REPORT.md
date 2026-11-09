@@ -174,5 +174,7 @@ This continuation does not retry that rejected update.
 - [Encoded review evidence](../agents/render_review.py)
 
 The authorized complete audio run uses the existing comparison harness and has
-verified fresh narration coverage. Automatic sound-selection and encoded-review
-evidence remain pending; the visual improvements do not preapprove the new run.
+verified fresh narration coverage plus a first automatic mix and encode. Its
+incomplete semantic review and the subsequently corrected sound-binding bug are
+recorded in [the authorized audio run report](AUTHORIZED_AUDIO_RUN.md); the
+visual improvements do not preapprove the new run.

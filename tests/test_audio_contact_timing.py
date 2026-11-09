@@ -212,6 +212,102 @@ def visual_source():
     return event, timeline, script, visual
 
 
+def saved_visual_source(change_clock=None):
+    """Keep the producer's six-decimal clock across an actual JSON round trip."""
+    event, timeline, script, visual = visual_source()
+    if change_clock:
+        change_clock(timeline)
+    normalized, _ = visual_director._normalise_timeline(script, timeline)
+    visual.update(normalized)
+    for scene, section in zip(visual["scenes"], visual["sections"]):
+        scene.update(start=section["start"], duration=section["duration"])
+    visual = json.loads(json.dumps(visual))
+    visual_director.validate_plan(visual)
+    return event, timeline, script, visual
+
+
+def test_saved_six_decimal_storyboard_retains_the_actual_visual_contact(contact_asset):
+    event, timeline, script, visual = saved_visual_source()
+    before = deepcopy((timeline, script, visual))
+    assert visual["sections"][1]["start"] == 15.733333
+    assert timeline["sections"][1]["start"] == 472 / 30
+    assert visual["sections"][1]["start"] != timeline["sections"][1]["start"]
+    assert audio_director._bound_visual_plan(visual, timeline, script, "default") is visual
+    timing = audio_director._event_timing(event, timeline, script, contact_asset, visual)
+    assert timing["timing_source"] == "visual_contact"
+    assert timing["timing_provenance"]["scene_id"] == "shot-1"
+    assert timing["start"] == visual["scenes"][1]["start"] + 1.4
+    assert (timeline, script, visual) == before
+
+
+def test_saved_storyboard_accepts_the_normalizers_final_section_rounding():
+    def final_partial_frame(timeline):
+        timeline["duration"] = 884 / 30
+        timeline["sections"][1]["duration"] = 174 / 30
+        timeline["sections"][2].update(start=646 / 30, duration=238 / 30)
+
+    _, timeline, script, visual = saved_visual_source(final_partial_frame)
+    # Rounding the start and then covering the final partial second can change
+    # the last duration by more than half, but less than one, microsecond.
+    difference = abs(visual["sections"][-1]["duration"] - timeline["sections"][-1]["duration"])
+    assert .0000005 < difference < .000001
+    assert audio_director._bound_visual_plan(visual, timeline, script, "default") is visual
+
+
+def test_saved_storyboard_timing_tolerance_does_not_grow_with_absolute_time():
+    def later_proof(timeline):
+        timeline["duration"] += 6000
+        timeline["sections"][0]["duration"] += 6000
+        for section in timeline["sections"][1:]:
+            section["start"] += 6000
+        for word in timeline["words"]:
+            word["start"] += 6000
+            word["end"] += 6000
+
+    _, timeline, script, visual = saved_visual_source(later_proof)
+    assert audio_director._bound_visual_plan(visual, timeline, script, "default") is visual
+    visual["sections"][1]["start"] += .000002
+    assert audio_director._bound_visual_plan(visual, timeline, script, "default") is None
+
+
+@pytest.mark.parametrize("field,delta", [
+    ("start", .000002), ("duration", -.000002),
+    ("start", 1 / 30), ("duration", -1 / 30),
+])
+def test_saved_storyboard_still_rejects_timing_drift(field, delta):
+    _, timeline, script, visual = saved_visual_source()
+    visual["sections"][1][field] += delta
+    # These remain structurally valid within the renderer's one-frame bounds;
+    # source binding must be substantially stricter than that layout tolerance.
+    visual_director.validate_plan(visual)
+    assert audio_director._bound_visual_plan(visual, timeline, script, "default") is None
+
+
+@pytest.mark.parametrize("field", ["start", "duration"])
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), -float("inf")])
+def test_storyboard_binding_rejects_nonfinite_section_clocks(field, value):
+    _, timeline, script, visual = saved_visual_source()
+    # Even matching invalid values cannot establish a clock binding.
+    visual["sections"][1][field] = timeline["sections"][1][field] = value
+    assert audio_director._bound_visual_plan(visual, timeline, script, "default") is None
+
+
+@pytest.mark.parametrize("change", [
+    lambda v, t, s: v.update(profile_id="0" * 32),
+    lambda v, t, s: t.update(audio_sha256="new-voice", timeline_signature="b" * 64),
+    lambda v, t, s: v.update(script_signature="b" * 64),
+    lambda v, t, s: s["sections"][1].update(narration="A different source sentence."),
+    lambda v, t, s: v["words"][0].update(start=v["words"][0]["start"] + .000002),
+    lambda v, t, s: t["sections"][1].update(id="another-section"),
+    lambda v, t, s: t["sections"].reverse(),
+    lambda v, t, s: t["sections"].pop(),
+])
+def test_saved_storyboard_keeps_source_owner_and_section_identity_guards(change):
+    _, timeline, script, visual = saved_visual_source()
+    change(visual, timeline, script)
+    assert audio_director._bound_visual_plan(visual, timeline, script, "default") is None
+
+
 def test_current_visual_contact_and_measured_word_share_the_actual_animation_beat(contact_asset):
     event, timeline, script, visual = visual_source()
     before = deepcopy(visual)

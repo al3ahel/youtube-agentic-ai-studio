@@ -124,13 +124,20 @@ def _bound_visual_plan(visual_plan, timeline, script, profile_id=None):
     from agents.visual_director import validate_plan
     from video.timeline import script_signature
     try:
+        # Visual direction stores section times to six decimals. Match only
+        # that rounding error (including the final section's rounded end),
+        # never a frame-sized or duration-dependent timing tolerance.
         if (profile_id is not None and visual_plan.get("profile_id") != profile_id
                 or any(not timeline.get(key) or visual_plan.get(key) != timeline[key]
                        for key in ("script_signature", "timeline_signature"))
                 or script_signature(script) != timeline["script_signature"]
                 or script_signature({"sections": visual_plan["sections"]}) != timeline["script_signature"]
-                or [(str(row["id"]), row["start"], row["duration"]) for row in visual_plan["sections"]]
-                   != [(str(row["id"]), row["start"], row["duration"]) for row in timeline["sections"]]
+                or len(visual_plan["sections"]) != len(timeline["sections"])
+                or any(str(planned["id"]) != str(measured["id"])
+                       or any(not math.isfinite(planned[key]) or not math.isfinite(measured[key])
+                              or not math.isclose(planned[key], measured[key], rel_tol=0, abs_tol=.000001)
+                              for key in ("start", "duration"))
+                       for planned, measured in zip(visual_plan["sections"], timeline["sections"]))
                 or visual_plan.get("words", []) != timeline.get("words", [])
                 or any(visual_plan.get(key) != timeline.get(key) for key in ("fps", "width", "height"))
                 or abs(visual_plan["duration"] - timeline["duration"]) > .00001):

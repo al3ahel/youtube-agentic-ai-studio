@@ -44,6 +44,69 @@ def test_archive_local_routing_disables_environment_hosted_and_stock_credentials
         archive._settings(args, tmp_path)
 
 
+def test_archived_credits_feed_normal_media_adapter_and_existing_plan_without_inference(tmp_path, monkeypatch):
+    import requests
+    from agents import gemini_client, visual_director
+    from video.renderers import html
+    source = archive.ROOT / "docs/samples/comparable-armour"
+    data, _ = archive._load_archive(source)
+    original = deepcopy(data)
+
+    def prohibited(*args, **kwargs):
+        pytest.fail("Restoring verified museum metadata must not call a network or model")
+
+    monkeypatch.setattr(requests.Session, "request", prohibited)
+    monkeypatch.setattr(gemini_client, "generate", prohibited)
+    image_map = archive._restore_museum_assets(source, data, tmp_path)
+    credits = archive.demo._read(tmp_path / "credits.json")
+    assert credits == data["credits.json"]["museum_images"]
+    assert data == original and data["credits.json"]["audio"]
+    mix = tmp_path / "archived_complete_mix.wav"
+    mix.write_bytes(b"identity only: this test does not decode or render audio")
+    timeline = archive._recover_clock(data["script.json"], data["scene-plan.json"], mix)
+    plan = visual_director.plan_scenes(data["script.json"], timeline, mode="hybrid", output_dir=str(tmp_path),
+                                      use_ai=False, image_map=image_map, use_project_photos=True)
+    media_scenes = [scene for scene in plan["scenes"] if scene.get("media_layers")]
+    assert len(media_scenes) == 2
+    expected = {row["file"]: row for row in credits}
+    for scene in media_scenes:
+        for asset in [scene["image"], *scene["media_layers"]]:
+            credit = expected[Path(asset["path"]).name]
+            assert asset == {"path": asset["path"], "source": credit["source"], "credit": credit["credit"],
+                             "source_url": credit["link"], "license": credit["license"]}
+    prepared = html._validate_plan(plan)
+    assert {asset["credit"].split(" · ")[0] for scene in prepared["scenes"] for asset in scene.get("media_layers", [])} == {
+        row["title"] for row in data["museum-assets.json"]}
+
+    # Reattaching the same verified image map repairs only missing attribution;
+    # the normal adapter keeps selected photos, shot choices and measured clocks.
+    missing = deepcopy(plan)
+    for scene in missing["scenes"]:
+        for asset in ([scene["image"]] if scene.get("image") else []) + scene.get("media_layers", []):
+            asset.update(source="", credit="", source_url="", license="")
+    visual_director._attach_images(missing, image_map, tmp_path)
+    visual_director.validate_plan(missing)
+    assert missing == plan
+
+
+@pytest.mark.parametrize("corruption", ["missing_credit", "wrong_object", "wrong_license", "wrong_image"])
+def test_archive_metadata_restoration_rejects_unbound_identity_before_writing(tmp_path, corruption):
+    source = archive.ROOT / "docs/samples/comparable-armour"
+    data, _ = archive._load_archive(source)
+    if corruption == "missing_credit":
+        data["credits.json"]["museum_images"].pop(0)
+    elif corruption == "wrong_object":
+        data["credits.json"]["museum_images"][0]["link"] = "https://www.metmuseum.org/art/collection/search/26849"
+    elif corruption == "wrong_license":
+        data["credits.json"]["museum_images"][0]["license"] = "Invented permission"
+    else:
+        data["museum-assets.json"][0]["sha256"] = "0" * 64
+    with pytest.raises(archive.demo.ComparisonBlocked, match="identity|binding"):
+        archive._restore_museum_assets(source, data, tmp_path)
+    assert not (tmp_path / "credits.json").exists()
+    assert not (tmp_path / "images").exists()
+
+
 @pytest.mark.skipif(not shutil.which("ffmpeg"), reason="FFmpeg is required for actual stream preservation.")
 def test_remux_preserves_complete_original_audio_but_uses_new_video(tmp_path):
     for name, size, frequency in (("original", "32x48", "220"), ("candidate", "64x96", "880")):

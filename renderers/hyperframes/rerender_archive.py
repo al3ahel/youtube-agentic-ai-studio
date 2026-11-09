@@ -88,6 +88,52 @@ def _recover_clock(script, plan, mix):
     return timeline
 
 
+def _restore_museum_assets(source, data, output):
+    """Restore verified pictures and the normal adapter's flat credit sidecar.
+
+    Published credits also contain audio attribution. Their exact original stays
+    in archive_source/credits.json; only the museum rows enter runtime credits.
+    """
+    source, output = demo._checkpoint_root(source), demo._checkpoint_root(output)
+    bundle = data["credits.json"]
+    credits = bundle.get("museum_images") if isinstance(bundle, dict) else bundle
+    if (not isinstance(credits, list) or not credits
+            or not all(isinstance(row, dict) and isinstance(row.get("file"), str) for row in credits)
+            or len({Path(row["file"]).name for row in credits}) != len(credits)):
+        raise demo.ComparisonBlocked("Archived museum credits are missing or ambiguous.")
+    by_file = {Path(row["file"]).name: row for row in credits}
+    records = {row["object_id"]: row for row in data["museum-assets.json"] if row.get("status") == "acquired"}
+    image_map, restored, copies = {}, [], []
+    for item in data["reference.json"]["museum_assets"]:
+        row = records[item["object_id"]]
+        image = demo._checkpoint_file(source, row["file"])
+        credit = by_file.get(image.name, {})
+        if (row["file"] != f"images/met-{item['object_id']}.jpg" or row.get("is_public_domain") is not True
+                or demo._sha(image) != row["sha256"] or row.get("object_url") != item["object_url"]
+                or credit.get("link") != row["object_url"] or credit.get("license") != row.get("license")
+                or not credit.get("source") or not row.get("title")
+                or not str(credit.get("credit", "")).startswith(row["title"] + " · ")):
+            raise demo.ComparisonBlocked("An archived museum image or its identity failed its acquisition binding.")
+        copied = output / row["file"]
+        demo._checkpoint_root(copied.parent)
+        if copied.exists() or copied.is_symlink():
+            if demo._sha(demo._checkpoint_file(output, row["file"])) != row["sha256"]:
+                raise demo.ComparisonBlocked("An existing museum image differs from the archive; it was not replaced.")
+        copies.append((image, copied))
+        restored.append(deepcopy(credit))
+        for section_id in item["section_ids"]:
+            image_map.setdefault(str(section_id), []).append(str(copied))
+    for image, copied in copies:
+        copied.parent.mkdir(exist_ok=True)
+        if not copied.exists():
+            shutil.copyfile(image, copied)
+    demo._write(output / "credits.json", restored)
+    demo._write(output / "museum_assets.json", data["museum-assets.json"])
+    demo._write(output / "image_map.json", {key: [Path(path).relative_to(output).as_posix() for path in paths]
+                                           for key, paths in image_map.items()})
+    return image_map
+
+
 def _settings(args, output):
     import config
     from apis.local_llm import validate_base_url
@@ -150,19 +196,10 @@ def run(args):
         timeline = _recover_clock(script, data["scene-plan.json"], mix)
         demo._write(output / "archived_timeline.json", timeline)
         demo._write(output / "script.json", script)
-        shutil.copyfile(source / "credits.json", output / "credits.json")
-        image_map, records = {}, {row["object_id"]: row for row in data["museum-assets.json"] if row.get("status") == "acquired"}
-        for item in data["reference.json"]["museum_assets"]:
-            row = records[item["object_id"]]
-            image = demo._checkpoint_file(source, row["file"])
-            if row.get("is_public_domain") is not True or demo._sha(image) != row["sha256"]:
-                raise demo.ComparisonBlocked("An archived museum image failed its acquisition binding.")
-            copied = output / row["file"]
-            copied.parent.mkdir(exist_ok=True)
-            shutil.copyfile(image, copied)
-            for section_id in item["section_ids"]:
-                image_map.setdefault(str(section_id), []).append(str(copied))
-        phase("archived_audio", {"pcm": original_pcm, "decoded_mix_sha256": demo._sha(mix), "mixing_performed": False})
+        image_map = _restore_museum_assets(source, data, output)
+        phase("archived_audio", {"pcm": original_pcm, "decoded_mix_sha256": demo._sha(mix), "mixing_performed": False,
+                                 "image_credits": {"file": "credits.json", "sha256": demo._sha(output / "credits.json"),
+                                                   "origin": "Verified museum_images rows from archive_source/credits.json"}})
         with config.profile_context(settings), demo._capture_local_responses(output, lambda: report["active_stage"]) as captures:
             report["local_response_capture"] = captures
             phase("local_runtime", demo._local_runtime_evidence())

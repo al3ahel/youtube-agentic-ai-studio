@@ -9,6 +9,9 @@ The changes apply to the normal planner, scene editor, renderer and encoded
 review worker. A sample's current acceptance status belongs in its saved review
 report; the presence of these features does not approve an individual film.
 
+The subsequent [opening, ending and review-evidence continuation](ARMOUR_CONTINUATION_REPORT.md)
+records the next editorial pass and the remaining narration/sound approval.
+
 ## What changes in the pictures
 
 | Previous failure | Updated behavior |

@@ -270,6 +270,32 @@ def grounding_issues(mechanism, narration, context=""):
     return issues
 
 
+def apply_paired_comparison(scene, narration, context="", *, heading=True):
+    """Stage an explicit two-subject relationship with the existing contract.
+
+    This is a qualitative side-by-side composition, not a predicted contest or
+    a physical simulation. Timings and beats remain owned by the caller.
+    """
+    from agents import object_direction
+    if (scene.get("template") in {"chart", "footage"} or scene.get("image") or scene.get("footage")
+            or scene.get("mechanism", {}).get("action") not in {None, "reveal"}
+            or scene.get("staging", {}).get("action") not in {None, "reveal", "compare"}):
+        return False
+    actors = object_direction.paired_subjects(narration, context)
+    if not actors or any(actor["symbol"] == "concept" for actor in actors):
+        return False
+    scene.update(template="comparison", composition="default", graphics_version=2, items=actors,
+                 staging={"version": 1, "world": "generic", "action": "compare", "camera": "locked"})
+    scene.pop("mechanism", None)
+    if heading:
+        title = actors[0]["label"] + " and " + actors[1]["label"].lower()
+        if len(title) <= 64:
+            scene["title"] = title
+    if scene.get("shot"):
+        scene["shot"].update(technique="stage2d", framing="medium", camera="locked", focus=scene["title"])
+    return True
+
+
 def direct_shot(scene, narration, section, index, count, *, global_index=0, final=False, calm=False):
     if final:
         role = "payoff"
@@ -296,6 +322,18 @@ def direct_shot(scene, narration, section, index, count, *, global_index=0, fina
     scene["shot"] = validate_shot(shot)
     if mechanism:
         scene["mechanism"] = mechanism
+    # An owned relationship cue can need both names even when a cut split the
+    # enclosing sentence. Preserve the hook, then make its explanation/payoff
+    # a different composition and heading instead of another lone subject.
+    if global_index > 0:
+        from agents import object_direction
+        names = object_direction.paired_subjects(narration, str(section.get("narration", "")))
+        if names:
+            title = names[0]["label"] + " and " + names[1]["label"].lower()
+            if len(title) <= 64:
+                scene["title"] = title
+                scene["shot"]["focus"] = title
+        apply_paired_comparison(scene, narration, str(section.get("narration", "")))
     return scene
 
 

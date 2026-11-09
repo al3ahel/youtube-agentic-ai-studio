@@ -225,6 +225,31 @@ for (const orientation of ["portrait", "landscape"]) {
     await page.close();
   });
 
+  test(`${orientation}: a close collage selects two larger details with readable source identities`, {skip}, async t => {
+    const page = await open(orientation, false, plan => {
+      for (const scene of plan.scenes) if (scene.shot.technique === "diagram3d") scene.shot.technique = "stage2d";
+      const scene = plan.scenes[6];
+      Object.assign(scene.shot, {framing: "close", camera: "locked"});
+      scene.media_layers.forEach((asset, i) => { asset.credit = ["Mail shirt", "Steel breastplate", "Unused third detail"][i] + " · Verified museum"; });
+      return plan;
+    });
+    t.after(() => page.close().catch(() => {}));
+    await page.evaluate(() => { window.__timelines["yaas-motion"].pause().seek(27.2, true); });
+    const state = await page.evaluate(() => {
+      const scene = document.getElementById("scene-6");
+      return {pictures: scene.querySelectorAll(".collage-layer img").length,
+        labels: [...scene.querySelectorAll(".collage-label")].map(label => {
+          const r = label.getBoundingClientRect();
+          return {text: label.textContent, visible: getComputedStyle(label).visibility === "visible",
+            fits: r.left >= 0 && r.top >= 0 && r.right <= innerWidth && r.bottom <= innerHeight};
+        })};
+    });
+    assert.equal(state.pictures, 2);
+    assert.deepEqual(state.labels.map(label => label.text), ["Mail shirt", "Steel breastplate"]);
+    assert.ok(state.labels.every(label => label.visible && label.fits), JSON.stringify(state));
+    await page.screenshot({path: path.join(root, "screenshots", `collage-details-${orientation}.png`)});
+  });
+
   test(`${orientation}: collage identity captions never leave occluded fragments and restore on reverse seeks`, {skip}, async t => {
     const identities = ["Archive object A", "Archive object B", "Public archive detail"];
     const page = await open(orientation, false, plan => {

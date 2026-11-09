@@ -210,6 +210,7 @@
     function generic() {
       quietGrid();
       const count = scene.items.length;
+      if (staging.action === "compare" && count === 2) return pairedComparison();
       const stacked = !portrait && context.composition === "stack";
       const mainSize = Math.min(W * (portrait ? .54 : .3), H * (portrait ? .36 : stacked ? .42 : .56));
       // One persistent workspace. Subject occupies the foreground; related
@@ -267,6 +268,44 @@
       // instead of adding unrelated actors just to fill an empty scene.
       if (count === 1 && !Object.keys(primary.parts).length) tween(primary.node, {opacity: .25, scale: .86, transformOrigin: "50% 50%"}, {opacity: 1, scale: 1}, actionStart, duration * .45);
       return {focus: {x: main.x, y: main.y}, destination: helpers.length ? actors[actors.length - 1] : primary};
+    }
+
+    function pairedComparison() {
+      // A two-object comparison gives both named objects a readable view.
+      // Fit their actual silhouettes: a long narrow object must not inherit
+      // the tiny support-actor scale used for a secondary contextual prop.
+      // This layout adds no causal arrow, physical event or historical stage.
+      stage.dataset.comparison = "paired";
+      const entries = scene.items.map((item, index) => ({...item, index}));
+      const positions = portrait ? [[.5, .235], [.5, .715]] : [[.265, .41], [.735, .41]];
+      const maxWidth = W * (portrait ? .77 : .38), maxHeight = H * (portrait ? .31 : .56);
+      entries.forEach((item, index) => {
+        const [u, v] = positions[index], x = W * u, y = H * v;
+        const figure = addActor(item, x, y, 200);
+        const bounds = figure.node.getBBox();
+        const scale = Math.min(maxWidth / Math.max(1, bounds.width), maxHeight / Math.max(1, bounds.height));
+        const midX = bounds.x + bounds.width / 2, midY = bounds.y + bounds.height / 2;
+        figure.placement.setAttribute("transform", `translate(${x - midX * scale} ${y - midY * scale}) scale(${scale})`);
+        figure.size = 200 * scale;
+        const bottom = y + bounds.height * scale / 2;
+        const label = caption(item, x, bottom + H * .018, W * (portrait ? .76 : .39));
+        label.classList.add("world-pair-label");
+        // Establish the pair early. Later measured words can emphasize a
+        // subject, but cannot leave the other half absent until the last beat.
+        const entrance = Math.min(duration * .12, index * .16);
+        tween(figure.node, {opacity: .22, y: 12 / scale}, {opacity: 1, y: 0}, entrance, Math.min(.48, duration * .22), "power2.out");
+        // Fade the HTML glyph layer itself. Animating foreignObject opacity
+        // changes Chromium's SVG text rasterization after a reverse seek.
+        reveal(label.firstElementChild, entrance, Math.min(.32, duration * .15));
+        const cue = clamp(beatTime(context, item.index), 0, duration - .00001);
+        const ruleY = Math.min(H * .93, bottom + H * .018 + label.getBBox().height + H * .014);
+        const underline = path(annotations, `M${x - W * .065} ${ruleY} H${x + W * .065}`, "world-pair-emphasis");
+        draw(underline, cue, Math.min(.45, duration * .2));
+      });
+      const divider = portrait ? `M${W * .15} ${H * .5} H${W * .85}` : `M${W * .5} ${H * .12} V${H * .88}`;
+      const rule = path(mechanisms, divider, "world-comparison-rule");
+      draw(rule, 0, Math.min(.7, duration * .24));
+      return {focus: {x: W / 2, y: H / 2}, destination: {x: W / 2, y: H / 2}};
     }
 
     function flood() {

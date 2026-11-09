@@ -110,6 +110,29 @@ def test_collage_reuses_distinct_real_section_pictures(tmp_path):
     assert all("media_layers" not in scene for scene in other["scenes"])
 
 
+@pytest.mark.parametrize("framing", ["close", "macro"])
+def test_detail_collage_edit_projection_ignores_only_unrendered_photo_identities(tmp_path, framing):
+    script, timeline = source()
+    images = []
+    for index, colour in enumerate(("red", "blue", "green")):
+        path = tmp_path / f"photo-{index}.png"
+        Image.new("RGB", (60, 60), colour).save(path)
+        images.append(str(path))
+    plan = visual_director.plan_scenes(script, timeline, mode="hybrid", image_map={"plate": images}, output_dir=tmp_path)
+    scene = plan["scenes"][0]
+    scene["shot"]["framing"] = framing
+    before = visual_director._visible_design(scene)
+    hidden_edit = copy.deepcopy(scene)
+    hidden_edit["media_layers"][2]["credit"] = "A different unused third photograph"
+    assert visual_director._visible_design(hidden_edit) == before
+    visible_edit = copy.deepcopy(scene)
+    visible_edit["media_layers"][1]["credit"] = "A different visible second photograph"
+    assert visual_director._visible_design(visible_edit) != before
+    scene["shot"]["framing"] = "wide"
+    hidden_edit["shot"]["framing"] = "wide"
+    assert visual_director._visible_design(hidden_edit) != visual_director._visible_design(scene)
+
+
 def test_graphics_only_never_adopts_media_or_remote_paths(tmp_path):
     script, timeline = source()
     plan = visual_director.plan_scenes(script, timeline, image_map={"plate": ["https://example.com/image.png"]}, output_dir=tmp_path)

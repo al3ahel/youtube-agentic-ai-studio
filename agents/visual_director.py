@@ -430,7 +430,8 @@ def _offline_scenes(script: dict, plan: dict) -> tuple[list[dict], dict[str, dic
                                          final=len(scenes) == sum(counts) - 1, calm=calm)
             scene["beats"], scene["beat_timing"] = _beats(scene, plan["words"], plan["fps"], plan["captions"],
                                                         narration=narration, context=original.get("narration", ""))
-            sources[scene["id"]] = {"section": original, "narration": narration}
+            sources[scene["id"]] = {"section": original, "narration": narration,
+                                    "preceding_title": scenes[-1]["title"] if scenes else ""}
             scenes.append(scene)
     return scenes, sources
 
@@ -568,6 +569,11 @@ def _request_design_impl(scenes: list[dict], sources: dict, instructions: str = 
             "current_composition": scene.get("composition", "default"),
             "provided_chart_data": _chart_data(source["section"]),
         })
+        subjects = object_direction.paired_subjects(source["narration"], source["section"].get("narration", ""))
+        if subjects:
+            source_scenes[-1]["source_subjects"] = subjects
+        if source.get("preceding_title"):
+            source_scenes[-1]["preceding_title"] = source["preceding_title"]
         if scene.get("shot"):
             if instructions:
                 # An edit needs the existing choices so unrelated decisions
@@ -594,6 +600,9 @@ def _request_design_impl(scenes: list[dict], sources: dict, instructions: str = 
         "Each graphics scene needs staging (version 1, world, action, camera) and 1-4 actors in items, "
         "each with a short 2-6 word object-name label, symbol and role: exactly one subject, others support or context only when the narration actually supports them. "
         "Full spoken sentences belong in captions, not actor labels. "
+        "source_subjects, when present, names two explicitly related subjects from the same original sentence; a narration cut may have separated their names. "
+        "These are identity evidence only: keep actions and outcomes grounded in the current narration excerpt. A qualitative comparison may show both subjects together. "
+        "Give a later shot a narrower source-supported heading instead of repeating preceding_title; a payoff should retain the two subjects of an explicit relationship. "
         "Symbol choices: " + ", ".join(object_direction.SYMBOLS) + ". "
         "Symbols name literal depicted subjects, not visual analogies: a circuit cannot stand for linked mail rings, "
         "a building cannot stand for a breastplate, and census-gap cannot stand for a limit. "
@@ -1094,7 +1103,7 @@ def _apply_design(plan: dict, design: dict, sources: dict, *, directed: set[str]
                 plan["warnings"].append(f"{scene['id']} kept local scene direction: " + " ".join(issues))
                 continue
         elif candidate.get("graphics_version") == 2 and not candidate.get("image") and not candidate.get("footage"):
-            issues = object_direction.grounding_issues(candidate, source["narration"])
+            issues = object_direction.grounding_issues(candidate, source["narration"], context=source["section"].get("narration", ""))
             if issues:
                 journal["reason"] = "unsupported_actors_or_action"
                 plan["warnings"].append(f"{scene['id']} kept local scene direction: " + " ".join(issues))
@@ -1144,7 +1153,8 @@ def _direction_report(plan, sources, directed=()):
                 issues.append("This shot repeats the preceding material, action and framing; review whether it explains a different idea.")
             previous = signature
         elif scene.get("graphics_version") == 2:
-            issues.extend(object_direction.grounding_issues(scene, source))
+            issues.extend(object_direction.grounding_issues(scene, source,
+                          context=sources.get(scene["id"], {}).get("section", {}).get("narration", "")))
             if all(item.get("symbol") == "concept" for item in scene["items"]):
                 issues.append("This scene remains abstract; its actors do not depict a concrete narrated subject.")
             signature = (scene["staging"]["world"], scene["staging"]["action"],
@@ -1393,6 +1403,13 @@ def _attach_images(plan: dict, image_map: dict | None, output_dir) -> None:
     for scene in plan["scenes"]:
         choices = images.get(scene["section_id"], [])
         if not choices or scene["template"] in {"chart", "footage"}:
+            continue
+        if (plan.get("mode") == "hybrid" and scene.get("shot", {}).get("role") in {"interaction", "payoff"}
+                and scene["template"] == "comparison" and scene.get("staging", {}).get("action") == "compare"
+                and len(scene["items"]) == 2 and all(item.get("symbol") not in {None, "concept"} for item in scene["items"])):
+            # A directed two-subject explanation should not be overwritten by
+            # the same section collage used to establish the topic. Explicit
+            # Animate these photos mode still keeps its picture-first contract.
             continue
         index = used.get(scene["section_id"], 0)
         scene["image"] = copy.deepcopy(choices[index % len(choices)])
@@ -1793,9 +1810,10 @@ def _visible_design(scene: dict, direction=None, brief=None, *, film_title="") -
                            "poster": "uppercase"}.get(style["look"], "sans")
         visible["rhythm"] = style["rhythm"]
         if collage_shot:
+            layer_limit = 2 if scene["shot"]["framing"] in {"close", "macro"} else 4
             visible["media_layers"] = [(layer.get("path"),
                 " ".join(((layer.get("credit") or "").strip() or (layer.get("source") or "").strip()).split()).split(" · ", 1)[0][:120])
-                for layer in scene.get("media_layers", [])]
+                for layer in scene.get("media_layers", [])[:layer_limit]]
         return ("collage-shot" if collage_shot else "material-shot", visible)
     graphics = (scene.get("graphics_version"), scene.get("staging"),
                 [(item.get("symbol"), item.get("role")) for item in scene["items"]]) if scene.get("graphics_version") and not media and scene["template"] != "chart" else None
@@ -1896,7 +1914,8 @@ def regenerate_scene(plan: dict, scene_id: str, script: dict, instructions: str 
     elif not instructions.strip() and not replace_image and not original.get("footage") and original["template"] != "chart":
         _set_scene_template(replacement, "text" if original["template"] == "explain" else "explain", source_section)
     simpler = bool(re.search(r"\b(shorter|less text|simpler|concise)\b", local_instructions))
-    sources = {original["id"]: {"section": source_section, "narration": narration}}
+    sources = {original["id"]: {"section": source_section, "narration": narration,
+                               "preceding_title": result["scenes"][index - 1]["title"] if index else ""}}
     ai_applied = False
     directed = set()
     provider_info = {}
@@ -1978,9 +1997,12 @@ def regenerate_scene(plan: dict, scene_id: str, script: dict, instructions: str 
             if replacement.get("graphics_version") != 2:
                 object_direction.apply_staging(replacement, narration, calm=calm)
             replacement["staging"] = staging_edit
+        if preference == "comparison":
+            shot_planner.apply_paired_comparison(replacement, narration, source_section.get("narration", ""),
+                                                heading=not ai_applied)
         if replacement.get("graphics_version") == 2 and preference in {"flow", "comparison"} and replacement["staging"]["world"] == "generic":
             candidate = {**replacement, "staging": {**replacement["staging"], "action": "connect" if preference == "flow" else "compare"}}
-            if not object_direction.grounding_issues(candidate, narration):
+            if not object_direction.grounding_issues(candidate, narration, context=source_section.get("narration", "")):
                 replacement["staging"] = candidate["staging"]
         if not instructions.strip() and not replace_image and not original.get("image") and replacement.get("graphics_version") == 2:
             replacement["staging"]["camera"] = "wide" if original.get("staging", {}).get("camera") == "detail" else "detail"

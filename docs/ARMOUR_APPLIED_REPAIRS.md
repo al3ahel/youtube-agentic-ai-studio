@@ -1,10 +1,12 @@
 # Armour repairs, actual model and Hybrid scope
 
-**Status on 10 November 2026, Dubai time:** fresh Edge TTS narration and the
-preceding automatic mix are complete. The additional visual, sound-selection,
-review and planner-status corrections below are implemented and tested. A new
-normal Studio continuation will apply the five scene edits and produce another
-mix, encode and strict review. Its outcome is not yet claimed in this revision.
+**Status on 10 November 2026, Dubai time:** fresh Edge TTS narration is complete.
+All five additional scene edits have been applied through the normal Studio
+editor, and a fresh automatic mix has selected the verified proof-contact cue.
+The first revised encode was interrupted by automatic approval review over an
+optional package-version lookup. Its saved inputs are preserved, and the safer
+local-render continuation is prepared with update checks disabled. A completed
+new movie or semantic approval is not yet claimed in this revision.
 
 This is the current follow-up to [the authorized audio run](AUTHORIZED_AUDIO_RUN.md).
 The earlier six-of-ten result, its four rejected responses and its unchanged
@@ -13,8 +15,10 @@ authority to repair a scene: its claimed defect still needs actual evidence.
 
 ## Concrete corrections
 
-The following requests use the ordinary scene editor, with trusted photo
-replacement disabled and a fresh plan revision for each request:
+The following requests were applied through the ordinary scene editor, with
+trusted photo replacement disabled and a fresh plan revision for each request.
+The table describes their intended visible result; final pixel inspection follows
+the completed encode:
 
 | Scene | Requested visible correction | Scope |
 | --- | --- | --- |
@@ -24,18 +28,20 @@ replacement disabled and a fresh plan revision for each request:
 | 006 | Close 3D view, locked camera; **Reinforcing layer** | Removes the unsupported physical-gap claim. Separation is an explanatory diagram convention. |
 | 010 | Medium, locked comparison; **Armour and firearms** | Reconstructs the source pair with **Armour** and **Firearms** labels. A torso plate is not labeled mail rings, and the stocked long gun is not labeled a pistol. |
 
-The editor supports an explicit quoted heading without letting words inside
-that heading accidentally alter a camera or style. Generated actor labels must
+The local editor parser separates an explicit quoted heading from camera/style
+commands; the model still receives the complete edit request. Generated actor labels must
 match both the source and the catalogue drawing. Generated material headings
 cannot turn an exploded diagram into an unsupported gap, cavity, insulation,
 damage or performance claim. These checks operate in the shared Motion/Hybrid
 path. Rejected generated proposals remain rejected in the planning journal;
 local editorial controls are not credited as new model inventions.
 
-The timing/source inputs and trusted photo identities are preserved. The
-preparation check applied all five requests sequentially to the archived plan
-in memory and verified that the other five scene objects were unchanged.
-That preparation did not establish the quality of a new encoded film.
+The live editor calls preserved timing/source inputs and trusted photo
+identities and verified that untargeted scenes were unchanged at every step.
+Scenes 002, 003 and 005 retained accepted model contributions; scenes 006 and
+010 used the supported local controls after real model replies. The model also
+changed styling in some edited scenes. Dormant descriptive metadata in scene
+005 remains imperfect and must not be treated as proof of rendered content.
 
 ## Sound and review corrections
 
@@ -54,7 +60,7 @@ Both responses are retained separately with hashes. Valid uncertainty and
 valid failures are not retried to obtain a pass. Source alignment, sampling,
 confidence and repair-authority requirements remain unchanged; the hosted
 eight-request budget also includes corrections. Transport/adapter failures
-retain their existing failure status and the driver's raw request captures.
+retain their existing failure status and the driver's raw response captures.
 
 The Review screen now distinguishes recorded model planning, replayed decisions,
 template fallback and missing older provenance. It shows recorded model identity
@@ -62,17 +68,43 @@ and accepted/rejected counts where available, and links to the project's model
 settings and existing rebuild controls. Viewing those controls does not generate
 a film or change settings. Planning provenance is not visual approval.
 
+## Interrupted render and safer local continuation
+
+The first edited Studio run completed all five editor calls and its automatic
+mix. It selected *Cylinder One* and a licensed metal-contact recording at
+**17.134458 seconds**, bound to scene 007 and the spoken word **hit**. The earlier
+page-turn proposal is explicitly omitted with `effect_budget_exhausted`.
+
+Rendering reached a last saved progress of 26% before automatic approval review
+rejected an unexpected connection to the npm registry. The installed Hyperframes
+0.9.19 code identifies this as an optional public package-version GET, not an
+operation required to use the already installed renderer. No owned application,
+model or renderer process remained afterward. The original application report
+is retained with its last saved `running` state; a separate external-termination
+receipt records the interruption rather than fabricating an application result.
+The five edits, complete narration and new mix were exported in a verified
+67-file checkpoint.
+
+The production render subprocess now forces the CLI's supported
+`HYPERFRAMES_NO_UPDATE_CHECK=1` and `HYPERFRAMES_NO_AUTO_INSTALL=1` settings while
+preserving its existing telemetry opt-outs. This prevents the optional lookup;
+it does not change a permission gate, install a package or alter `node_modules`.
+The new real benign-child regression fails on the old environment and passes
+with the fix. All **67 affected renderer tests** pass. The continuation will
+reuse the edited plan and recording through normal Studio restoration and the
+music/video routes in a new output directory.
+
 ## What generated this armour example
 
 | Component | Actual source or implementation |
 | --- | --- |
 | Narration text | The fixed five-section, 84-word armour fixture, not a newly model-written script. |
-| Scene proposals | Local Ollama **`qwen3.5:4b`**. The preceding complete plan accepted eight proposals, rejected two and retained six nontext model changes. A later audio-binding continuation replayed four sealed planning responses. |
+| Scene proposals | Local Ollama **`qwen3.5:4b`**. The preceding complete plan accepted eight proposals, rejected two and retained nontext model choices in six scenes. A later audio-binding continuation replayed four sealed planning responses. |
 | Sound choices | Fresh local `qwen3.5:4b` requests through the normal audio director. |
 | Image review | The same installed `qwen3.5:4b`, using decoded film frames. |
 | Voice | Edge TTS **`en-US-AndrewNeural`**, pitch `+0Hz`; selected complete take at `+14%`. |
 | Photographs | Three acquired museum images with retained source identities and credits. |
-| Drawn animation and encoding | The repository's Hyperframes HTML/SVG/GSAP scene renderer, Chromium and FFmpeg. |
+| Drawn animation and encoding | The repository's Hyperframes HTML/SVG/GSAP scene renderer, Three.js for 3D views, Chromium and FFmpeg. |
 | Current corrective direction | Inspected-frame editorial requests plus the reusable production safeguards above. |
 
 The installed model digest is

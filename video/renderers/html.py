@@ -680,6 +680,7 @@ def _run_render(command: list[str], cwd: Path, timeout: float, stop_event=None,
     environment.update({
         "DO_NOT_TRACK": "1", "HYPERFRAMES_NO_TELEMETRY": "1", "NO_COLOR": "1",
         "HYPERFRAMES_NO_CAPTURE_DOTENV": "1", "HYPERFRAMES_SKIP_SKILLS": "1",
+        "HYPERFRAMES_NO_UPDATE_CHECK": "1", "HYPERFRAMES_NO_AUTO_INSTALL": "1",
     })
     options = ({"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW}
                if os.name == "nt" else {"start_new_session": True})

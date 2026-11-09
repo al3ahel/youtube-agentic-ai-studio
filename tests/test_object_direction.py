@@ -57,6 +57,91 @@ def test_unknown_local_subject_does_not_invent_equipment():
     assert all(item["symbol"] == "concept" for item in scene["items"])
 
 
+@pytest.mark.parametrize("label,narration,symbol", [
+    ("Armour", "Armour and firearms evolved together.", "armour"),
+    ("The breastplate", "The breastplate covered the torso.", "armour"),
+    ("Firearms", "Armour and firearms evolved together.", "firearm"),
+    ("Battery", "A battery stores energy.", "battery"),
+    ("Solar panels", "Solar panels feed batteries.", "solar"),
+    ("Floating homes", "Floating homes rise with water.", "building"),
+    ("Satellite", "A satellite orbits the planet.", "orbit"),
+    ("Documents", "Documents preserve the agreement.", "document"),
+])
+def test_literal_catalogue_labels_cannot_be_generic_cubes(label, narration, symbol):
+    scene = {"staging": {"version": 1, "world": "generic", "action": "reveal", "camera": "wide"},
+             "items": [{"label": label, "symbol": "concept", "role": "subject"}]}
+    assert not object_direction.symbol_supported("concept", narration, label=label)
+    assert object_direction.grounding_issues(scene, narration) == [
+        "A named catalogue subject needs its supported actor instead of an abstract concept."]
+    scene["items"][0]["symbol"] = symbol
+    assert not object_direction.grounding_issues(scene, narration)
+
+
+@pytest.mark.parametrize("label,narration", [
+    ("Armour limits", "Armour had limits; protection was never a universal guarantee."),
+    ("Battery costs", "Battery costs affect the economics of stored energy."),
+    ("Solar efficiency", "Solar efficiency describes the conversion of sunlight."),
+    ("Water rights", "Water rights concern access to a shared resource."),
+    ("Current challenges", "Current challenges affect many people."),
+    ("History", "History offers perspectives on changing communities."),
+    ("A philosophical question", "A philosophical question concerns the nature of certainty."),
+    ("Telescope", "A telescope appears in the observatory."),
+])
+def test_abstract_labels_and_subjects_outside_the_catalogue_keep_concept(label, narration):
+    scene = {"staging": {"version": 1, "world": "generic", "action": "reveal", "camera": "wide"},
+             "items": [{"label": label, "symbol": "concept", "role": "subject"}]}
+    assert object_direction.symbol_supported("concept", narration, label=label)
+    assert not object_direction.grounding_issues(scene, narration)
+
+
+@pytest.mark.parametrize("label,narration", [
+    ("Armour", "The current question concerns confidence, without armour."),
+    ("Firearms", "No firearms were used. Armour remained on display."),
+    ("Mines", "Data mining finds patterns in records."),
+])
+def test_concept_guard_does_not_require_a_literal_actor_absent_from_the_shot(label, narration):
+    assert object_direction.symbol_supported("concept", narration, label=label)
+
+
+@pytest.mark.parametrize("material", [False, True])
+def test_model_concept_substitution_is_rejected_only_for_ordinary_actors(monkeypatch, material):
+    monkeypatch.setattr(visual_director.config, "SHOT_PLANNING_ENABLED", True)
+    narration = ("Steel armour has a reinforcing layer." if material else
+                 "Armour and firearms evolved together for centuries; protection always had limits.")
+    section = {"id": "subject", "title": "Supported subjects", "narration": narration}
+    script = {"title": "Supported subjects", "sections": [section]}
+    timeline = {"fps": 30, "width": 1080, "height": 1920, "duration": 4,
+                "sections": [{"id": "subject", "start": 0, "duration": 4}], "captions": [], "words": []}
+    plan = visual_director.plan_scenes(script, timeline, use_ai=False)
+    original = deepcopy(plan["scenes"][0])
+    response = {key: deepcopy(original[key]) for key in
+                ("id", "template", "title", "visual_goal", "items", "composition", "staging", "shot")}
+    if material:
+        assert original["mechanism"]["kind"] == "layers"
+        response["mechanisms"] = [deepcopy(original["mechanism"])]
+        response["items"] = [{"label": "Armour", "symbol": "concept", "role": "subject"},
+                             {"label": "Reinforcement", "symbol": "concept", "role": "support"}]
+    else:
+        assert [item["symbol"] for item in original["items"]] == ["armour", "firearm"]
+        assert "mechanism" not in original
+        for item in response["items"]:
+            item["symbol"] = "concept"
+    journal, directed = {}, set()
+    visual_director._apply_design(plan, {"scenes": [response]},
+                                 {original["id"]: {"narration": narration, "section": section}},
+                                 directed=directed, provenance=journal)
+    record = journal["scenes"][0]
+    if material:
+        assert record["status"] == "accepted"
+        assert plan["scenes"][0]["items"] == response["items"]
+        assert plan["scenes"][0]["mechanism"] == original["mechanism"]
+    else:
+        assert plan["scenes"][0] == original
+        assert record["status"] == "rejected" and record["reason"] == "unsupported_actors_or_action"
+        assert record["changes"] == [] and not directed
+        assert any("supported actor instead of an abstract concept" in warning for warning in plan["warnings"])
+
+
 def test_equipment_vocabulary_survives_normal_planning_schema_and_legacy_validation(monkeypatch):
     monkeypatch.setattr(visual_director.config, "SHOT_PLANNING_ENABLED", True)
     narration = "Armour and firearms evolved together for centuries; protection always had limits."

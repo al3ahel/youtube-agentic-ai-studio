@@ -41,6 +41,26 @@ _RULES = (
     ("building", r"\b(?:buildings?|cities|city|urban|hous\w*|homes?|shelters?|settlements?|school\w*|hospital\w*|factory|factories)\b"),
     ("people", r"\b(?:people|human\w*|population\w*|famil\w*|communities|community|workers?|residents?|migration|migrants?|survivors?|engineers?)\b"),
 )
+# These are whole object-name labels, narrower than the contextual evidence
+# above: "history" can suggest records, but is still a legitimate abstraction.
+# A model must not replace a named, supported catalogue object with a cube.
+_LITERAL_LABELS = {
+    "census": r"census|censuses",
+    "people": r"people|humans?|famil(?:y|ies)|communities|community|(?:rescue |construction |census )?workers?|residents?|migrants?|survivors?|engineers?",
+    "mining": r"mining|mines?|miners?|ore|copper|iron|coal|minerals?",
+    "solar": r"solar(?: panels?)?|sunlight|photovoltaic panels?",
+    "battery": r"battery|batteries",
+    "circuit": r"(?:electric(?:al)? )?circuits?|electrons?",
+    "water": r"water|rivers?|rain|oceans?|reservoirs?|floodwater",
+    "plant": r"plants?|roots?|forests?|trees?|seeds?|gardens?",
+    "network": r"(?:(?:computer|data|neural) )?networks?|computers?|servers?|internet",
+    "trade": r"cargo",
+    "document": r"records?|documents?|treaty|treaties|constitutions?|agreements?",
+    "orbit": r"satellites?|planets?|astronauts?|spacecraft",
+    "building": r"(?:(?:floating|raised|flooded|school) )?(?:buildings?|cities|city|houses?|homes?|shelters?|settlements?|schools?|hospitals?|factory|factories)",
+    "armour": r"(?:body )?armou?r|breastplates?|cuirass(?:es)?",
+    "firearm": r"firearms?|muskets?|pistols?|handguns?|arquebus(?:es)?|rifles?",
+}
 _STOP = {"the", "and", "for", "with", "from", "that", "this", "into", "are", "was", "has", "its", "can", "their"}
 _WORLD_EVIDENCE = {
     "flood": r"\b(?:flood\w*|deluge|inundat\w*|submerg\w*)\b|\bwater\b.{0,60}\b(?:cover\w*|ris\w*|engulf\w*)\b|\bris\w*\b.{0,40}\bwater\b|\b(?:rising|covering)\s+(?:sea|water)\b|\bsea.level\b.{0,30}\bris\w*\b",
@@ -112,9 +132,17 @@ def _source_text(narration):
     return re.sub(r"\b(?:without|not about|unrelated to|no mention of|excluding)\b[^.!?;]*", "", str(narration), flags=re.I)
 
 
-def symbol_supported(symbol, narration):
+def symbol_supported(symbol, narration, *, label=None):
     if symbol == "concept":
-        return True
+        # Only a complete literal label makes this a substitution. Do not turn
+        # "battery costs" or "armour limits" into physical objects, nor borrow
+        # an actor that is absent from the current shot's narration. Material
+        # geometry has its own grounding path; its concept part labels do not
+        # go through this ordinary actor check.
+        name = re.sub(r"^(?:a|an|the|this|that|these|those)\s+", "",
+                      " ".join(str(label or "").split()).strip(" .,:;!?"), flags=re.I)
+        return not any(re.fullmatch(expression, name, re.I) and symbol_supported(subject, narration)
+                       for subject, expression in _LITERAL_LABELS.items())
     expression = dict(_RULES).get(symbol)
     if symbol == "mining" and re.search(r"\bdata\s+mining\b", str(narration), re.I) and not re.search(r"\b(?:ore|mines?|minerals?|drill\w*)\b", str(narration), re.I):
         return False
@@ -145,8 +173,10 @@ def grounding_issues(scene, narration):
     if action in _ACTION_EVIDENCE and not qualitative_comparison and not re.search(_ACTION_EVIDENCE[action], source, re.I):
         issues.append("The selected action is not supported by this scene's narration.")
     for item in scene.get("items", []):
-        if not symbol_supported(item.get("symbol"), source):
-            issues.append("A depicted actor is not supported by this scene's narration.")
+        if not symbol_supported(item.get("symbol"), source, label=item.get("label")):
+            issues.append("A named catalogue subject needs its supported actor instead of an abstract concept."
+                          if item.get("symbol") == "concept" else
+                          "A depicted actor is not supported by this scene's narration.")
     if world == "census" and any(item.get("role") == "subject" and item.get("symbol") not in {"census", "census-gap", "people", "document"} for item in scene.get("items", [])):
         issues.append("The census setting needs a census, people or records subject.")
     if world == "flood" and action in {"adapt", "float"}:

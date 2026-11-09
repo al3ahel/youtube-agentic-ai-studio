@@ -100,6 +100,18 @@
     ctx.strokeStyle = color; ctx.lineWidth = width; ctx.stroke();
   }
 
+  function arrow(ctx, from, to, color, width = 6) {
+    const dx = to[0] - from[0], dy = to[1] - from[1], length = Math.hypot(dx, dy);
+    if (length < 2) return;
+    const ux = dx / length, uy = dy / length, head = Math.min(width * 3.8, length * .36);
+    ctx.save(); ctx.lineCap = "round";
+    line(ctx, [from, [to[0] - ux * head * .45, to[1] - uy * head * .45]], color, width);
+    ctx.fillStyle = color; ctx.beginPath(); ctx.moveTo(...to);
+    ctx.lineTo(to[0] - ux * head - uy * head * .45, to[1] - uy * head + ux * head * .45);
+    ctx.lineTo(to[0] - ux * head + uy * head * .45, to[1] - uy * head - ux * head * .45);
+    ctx.closePath(); ctx.fill(); ctx.restore();
+  }
+
   function buildMechanism2D(context, api) {
     const {scene} = context, model = scene.mechanism;
     const surface = canvasSurface(context, "2d"), ctx = surface.getContext("2d");
@@ -155,24 +167,32 @@
     }
     function armour(phase) {
       const {x, y, size: s} = metric(), framing = scene.shot.framing;
-      const interacting = ["approach", "impact", "deflect", "penetrate", "absorb"].includes(model.action);
+      const interacting = ["approach", "impact", "deflect", "glance", "penetrate", "absorb"].includes(model.action);
       if (model.material === "mail") {
         const radius = s * (framing === "macro" ? .065 : .045), cols = framing === "macro" ? 6 : 9, rows = framing === "macro" ? 7 : 11;
         const step = radius * 1.5, left = x - (cols - 1) * step / 2, top = y - (rows - 1) * step / 2;
         for (let row = 0; row < rows; row++) for (let col = 0; col < cols; col++) {
           const bx = left + col * step + row % 2 * step * .5, by = top + row * step;
           const distance = Math.hypot(bx - x, by - y) / (radius * 3);
-          const deformation = interacting || model.action === "separate" ? phase.result : 0;
+          const deformation = (interacting && model.action !== "glance") || model.action === "separate" ? phase.result : 0;
           const spread = deformation * Math.max(0, 1 - distance) * radius * (["penetrate", "separate"].includes(model.action) ? 2.2 : .4);
           const angle = Math.atan2(by - y || .1, bx - x || .1);
-          const xx = bx + Math.cos(angle) * spread, yy = by + Math.sin(angle) * spread;
+          // Reveal a linked construction, not a fixed texture with a moving
+          // caption. The saved clock places every ring; reverse seeks rebuild
+          // exactly the same arrangement without a physics accumulator.
+          const rank = (row + col * .55) / (rows - 1 + (cols - 1) * .55);
+          const joined = model.action === "reveal" ? between(phase.p, rank * .42, rank * .42 + .25) : 1;
+          const xx = bx + Math.cos(angle) * spread + (1 - joined) * radius * .6;
+          const yy = by + Math.sin(angle) * spread - (1 - joined) * radius * 1.5;
+          ctx.save(); ctx.globalAlpha = .18 + .82 * joined;
           ctx.beginPath(); ctx.ellipse(xx, yy, radius, radius * .82, row % 2 ? -.23 : .23, 0, Math.PI * 2);
           ctx.lineWidth = radius * .28; ctx.strokeStyle = dark; ctx.stroke();
           ctx.lineWidth = radius * .15; ctx.strokeStyle = row % 2 ? "#81949a" : "#b3c0bc"; ctx.stroke();
           ctx.beginPath(); ctx.ellipse(xx, yy - 1, radius, radius * .82, row % 2 ? -.23 : .23, 3.5, 5.7);
           ctx.lineWidth = radius * .07; ctx.strokeStyle = "#f7f4e6"; ctx.stroke();
+          ctx.restore();
         }
-        if (interacting && !phase.settled) {
+        if (interacting && model.action !== "glance" && !phase.settled) {
           const px = !phase.active ? lerp(x - s * .62, x - s * .07, phase.incoming)
             : model.action === "penetrate" ? lerp(x - s * .07, x + s * .6, phase.result)
             : model.action === "deflect" ? x - s * .07 - s * .37 * phase.result : x - s * .07;
@@ -180,11 +200,22 @@
           bullet(px, py, s / 800, model.action === "deflect" ? -phase.result * 2 : 0);
           if (model.action !== "approach") pulse(x, y, s, phase);
         }
+        if (model.action === "glance") {
+          const face = x - s * .08;
+          arrow(ctx, [x - s * .55, y], [lerp(x - s * .5, face, phase.incoming), y], copper, s * .009);
+          if (phase.active) arrow(ctx, [face, y], [face - s * .32 * phase.result, y - s * .35 * phase.result], blue, s * .009);
+        }
       } else if (interacting) {
         // A profile cutaway makes contact, bending and passage readable.
         const width = s * .13, top = y - s * .4, height = s * .8;
+        const redirects = ["deflect", "glance"].includes(model.action);
+        const tilt = redirects ? .42 : -.12;
+        // The tip reaches the actual front face at the narration contact beat.
+        // A glancing blow changes direction at that face instead of travelling
+        // through the plate and then reversing somewhere behind it.
+        const contactX = x - width / (2 * Math.cos(tilt)), tip = s * 52 / 800;
         const penetration = model.action === "penetrate" && phase.active;
-        ctx.save(); ctx.translate(x, y); ctx.rotate(-.12); ctx.translate(-x, -y);
+        ctx.save(); ctx.translate(x, y); ctx.rotate(tilt); ctx.translate(-x, -y);
         const metal = ctx.createLinearGradient(x - width, 0, x + width, 0);
         metal.addColorStop(0, "#3b5965"); metal.addColorStop(.4, "#c1cecc"); metal.addColorStop(.65, "#f5f0dd"); metal.addColorStop(1, "#57717a");
         ctx.fillStyle = metal; ctx.strokeStyle = dark; ctx.lineWidth = 4;
@@ -203,13 +234,28 @@
           ctx.closePath(); ctx.fill(); ctx.stroke();
         }
         ctx.restore();
-        const px = phase.active ? (model.action === "deflect" ? x - s * .36 * phase.result : model.action === "penetrate" ? x + s * .49 * phase.result : x - s * .1)
-          : lerp(x - s * .55, x - s * .1, phase.incoming);
-        const py = model.action === "deflect" ? y - s * .38 * phase.result : y;
-        if (!phase.settled) {
-          line(ctx, [[x - s * .6, y], [Math.min(px - 45, x - 45), y]], "#b56f4555", 3);
-          bullet(px, py, s / 800, model.action === "deflect" ? -phase.result * 2 : 0);
-          if (model.action !== "approach") pulse(x, y, s, phase);
+        const reflected = [-Math.cos(2 * tilt), -Math.sin(2 * tilt)];
+        const px = phase.active ? redirects ? contactX - tip + reflected[0] * s * .48 * phase.result
+          : model.action === "penetrate" ? lerp(contactX - tip, x + s * .49, phase.result)
+          : contactX - tip + s * .035 * phase.result
+          : lerp(x - s * .55, contactX - tip, phase.incoming);
+        const py = redirects && phase.active ? y + reflected[1] * s * .48 * phase.result : y;
+        if (model.action === "glance") {
+          // The narration names a blow, not a particular weapon/projectile.
+          // Arrows explain the direction change without inventing either one.
+          const front = contactX - 8;
+          arrow(ctx, [x - s * .55, y], [lerp(x - s * .5, front, phase.incoming), y], copper, s * .009);
+          if (phase.active) arrow(ctx, [front, y],
+            [front + reflected[0] * s * .48 * phase.result, y + reflected[1] * s * .48 * phase.result], blue, s * .009);
+        } else if (!phase.settled) {
+          line(ctx, [[x - s * .6, y], [phase.active ? contactX : px - tip, y]], "#b56f4555", 3);
+          if (model.action === "deflect" && phase.active) {
+            ctx.save(); ctx.setLineDash([9, 9]);
+            line(ctx, [[contactX, y], [px, py]], "#b56f4577", 3); ctx.restore();
+          }
+          bullet(px, py, s / 800, model.action === "deflect" && phase.active
+            ? Math.atan2(reflected[1], reflected[0]) * between(phase.result, 0, .16) : 0);
+          if (model.action !== "approach") pulse(contactX, y, s, phase);
         }
       } else {
         // Original curved breastplate silhouette, with a neck and a waist.
@@ -289,6 +335,7 @@
       surface.dataset.resultView = String(phase.settled);
       surface.dataset.projectileVisible = String(!phase.settled && (layered
         ? ["approach", "impact", "penetrate", "absorb"] : ["approach", "impact", "deflect", "penetrate", "absorb"]).includes(model.action));
+      surface.dataset.forceDirectionVisible = String(model.action === "glance");
     }
     views.push({scene, draw, surface});
   }
@@ -315,7 +362,7 @@
     return texture;
   }
 
-  function plateModel(parent, perforated) {
+  function plateModel(parent, perforated, colour = 0x97a8b0) {
     const group = new THREE.Group(); parent.add(group);
     const shape = new THREE.Shape();
     shape.moveTo(-.96, .9); shape.lineTo(-.62, 1.29); shape.quadraticCurveTo(-.3, .96, 0, .97);
@@ -326,27 +373,54 @@
     // ShapeGeometry triangulates only the outline. Add interior vertices so a
     // contact actually bends the plate surface, instead of floating a mark on
     // an unchanged flat triangle. Only broad front/back faces need subdivision.
-    const points = outline.attributes.position, subdivided = [];
+    const points = outline.attributes.position, sourceNormals = outline.attributes.normal;
+    const subdivided = [], subdividedNormals = [];
     const distance2 = (a, b) => (a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2;
-    function split(a, b, c, depth = 0) {
+    function split(a, b, c, na, nb, nc, depth = 0) {
       const lengths = [distance2(a, b), distance2(b, c), distance2(c, a)];
       const maximum = Math.max(...lengths), flat = Math.max(a[2], b[2], c[2]) - Math.min(a[2], b[2], c[2]) < .00001;
       if (flat && maximum > .22 ** 2 && depth < 9) {
-        const index = lengths.indexOf(maximum), triangle = [a, b, c], u = triangle[index], v = triangle[(index + 1) % 3], opposite = triangle[(index + 2) % 3];
+        const index = lengths.indexOf(maximum), triangle = [a, b, c], normals = [na, nb, nc];
+        const u = triangle[index], v = triangle[(index + 1) % 3], opposite = triangle[(index + 2) % 3];
+        const nu = normals[index], nv = normals[(index + 1) % 3], no = normals[(index + 2) % 3];
         const middle = u.map((value, i) => (value + v[i]) / 2);
-        split(u, middle, opposite, depth + 1); split(middle, v, opposite, depth + 1);
-      } else subdivided.push(...a, ...b, ...c);
+        const normal = nu.map((value, i) => (value + nv[i]) / 2);
+        split(u, middle, opposite, nu, normal, no, depth + 1);
+        split(middle, v, opposite, normal, nv, no, depth + 1);
+      } else { subdivided.push(...a, ...b, ...c); subdividedNormals.push(...na, ...nb, ...nc); }
     }
     for (let i = 0; i < points.count; i += 3) split(
       [points.getX(i), points.getY(i), points.getZ(i)],
       [points.getX(i + 1), points.getY(i + 1), points.getZ(i + 1)],
-      [points.getX(i + 2), points.getY(i + 2), points.getZ(i + 2)]);
+      [points.getX(i + 2), points.getY(i + 2), points.getZ(i + 2)],
+      [sourceNormals.getX(i), sourceNormals.getY(i), sourceNormals.getZ(i)],
+      [sourceNormals.getX(i + 1), sourceNormals.getY(i + 1), sourceNormals.getZ(i + 1)],
+      [sourceNormals.getX(i + 2), sourceNormals.getY(i + 2), sourceNormals.getZ(i + 2)]);
     const geometry = new THREE.BufferGeometry(); geometry.setAttribute("position", new THREE.Float32BufferAttribute(subdivided, 3));
+    geometry.setAttribute("normal", new THREE.Float32BufferAttribute(subdividedNormals, 3));
     outline.dispose();
     const coordinates = geometry.attributes.position;
     for (let i = 0; i < coordinates.count; i++) coordinates.setZ(i, coordinates.getZ(i) + .37 * (1 - Math.pow(coordinates.getX(i) / 1.05, 2)));
-    geometry.computeVertexNormals();
-    const steel = metal(0x97a8b0, .29, .8); const plate = mesh(geometry, steel, group);
+    // The outline triangulator duplicates vertices at triangle boundaries.
+    // Recomputing normals on that non-indexed mesh produces a faceted surface.
+    // Transform the extrusion normals with the actual curvature derivative,
+    // preserving the rolled edge while keeping broad steel faces continuous.
+    function smoothPlateNormals(depth = 0) {
+      const normals = geometry.attributes.normal;
+      for (let i = 0; i < coordinates.count; i++) {
+        const x = subdivided[i * 3], y = subdivided[i * 3 + 1];
+        const depression = depth * Math.exp(-(x * x + y * y) / .075);
+        const dx = -.74 * x / 1.05 ** 2 + depression * 2 * x / .075;
+        const dy = depression * 2 * y / .075;
+        const nz = subdividedNormals[i * 3 + 2];
+        const nx = subdividedNormals[i * 3] - dx * nz, ny = subdividedNormals[i * 3 + 1] - dy * nz;
+        const length = Math.hypot(nx, ny, nz) || 1;
+        normals.setXYZ(i, nx / length, ny / length, nz / length);
+      }
+      normals.needsUpdate = true;
+    }
+    smoothPlateNormals();
+    const steel = metal(colour, .33, .8); const plate = mesh(geometry, steel, group);
     const edge = new THREE.LineSegments(new THREE.EdgesGeometry(geometry, 32), new THREE.LineBasicMaterial({color: 0x576a72, transparent: true, opacity: .44})); group.add(edge);
     const detail = metal(0xe3bd76, .33, .8);
     for (const side of [-1, 1]) for (let row = 0; row < 7; row++) {
@@ -368,7 +442,8 @@
           vertices.setXYZ(i, x, y, z - depth * Math.exp(-(x * x + y * y) / .075));
         }
         vertices.needsUpdate = true;
-        if (surface.attributes.normal) surface.computeVertexNormals();
+        if (surface === geometry) smoothPlateNormals(depth);
+        else if (surface.attributes.normal) surface.computeVertexNormals();
         surface.computeBoundingBox();
       }
       dent.position.z = .487 - depth * .5;
@@ -417,9 +492,17 @@
     // single armour material gets one panel; an explicit layers mechanism gets
     // repeated layers of that stated material. Only "mixed" adds other types.
     const materials = materialKind === "mixed" ? [ceramic, core, fabric] : Array(layered ? 2 : 1).fill(single);
+    const breastplates = materialKind === "steel" && layered;
     for (let layer = 0; layer < materials.length; layer++) {
       const plane = new THREE.Group(); group.add(plane); layers.push(plane);
-      if (layer === 0 && materialKind === "mixed") {
+      if (breastplates) {
+        // The base and reinforcement remain the same stated steel material.
+        // A second curved shell, with a small presentation tint, makes the
+        // relationship legible instead of two indistinguishable flat boxes.
+        const shell = plateModel(plane, false, layer === 0 ? 0x9baeb3 : 0x658791);
+        shell.group.scale.setScalar(layer === 0 ? 1 : .91);
+        plane.userData.shell = shell;
+      } else if (layer === 0 && materialKind === "mixed") {
         for (let row = 0; row < 8; row++) for (let col = 0; col < 6; col++) {
           const x = (col - 2.5) * .303 + (row % 2 ? .076 : -.076), y = (row - 3.5) * .265;
           const tile = mesh(new THREE.CylinderGeometry(.173, .173, .09, 6), ceramic, plane, [x, y, 0]);
@@ -431,14 +514,25 @@
         const sheet = mesh(geometry, materials[layer], plane);
         plane.userData.sheet = sheet; plane.userData.original = Float32Array.from(geometry.attributes.position.array);
       }
-      const edge = mesh(new THREE.BoxGeometry(2.0, .025, .12), metal(0x9baba5, .4, .3), plane, [0, -1.18, 0]);
-      edge.name = "layer-edge";
+      if (!breastplates) {
+        const edge = mesh(new THREE.BoxGeometry(2.0, .025, .12), metal(0x9baba5, .4, .3), plane, [0, -1.18, 0]);
+        edge.name = "layer-edge";
+      }
     }
     function pose(phase, action) {
       const separation = action === "separate" ? between(phase.p, .08, .78) : action === "compare" ? .88 : .15;
       layers.forEach((layer, i) => {
-        layer.position.z = .4 - i * (.13 + separation * .62);
-        layer.position.x = i * separation * .12;
+        if (breastplates) {
+          // Index zero is the original breastplate. The reinforcing shell is
+          // in front of it and separates far enough in screen space for both
+          // silhouettes to remain visible, even with a locked portrait camera.
+          layer.position.set((i - .5) * separation * 2.7,
+            (i - .5) * separation * -.25, i * (.17 + separation * .5));
+          layer.userData.shell.pose(phase, action);
+        } else {
+          layer.position.z = .4 - i * (.13 + separation * .62);
+          layer.position.x = i * separation * .12;
+        }
         const sheet = layer.userData.sheet;
         if (!sheet) return;
         const original = layer.userData.original, attributes = sheet.geometry.attributes.position;
@@ -456,7 +550,7 @@
       }
     }
     pose({p: 0, result: 0}, "reveal");
-    return {group, layers, pose};
+    return {group, layers, pose, breastplates};
   }
 
   function projectile(parent) {
@@ -465,6 +559,22 @@
     mesh(new THREE.ConeGeometry(.085, .2, 20), metal(0xe1b474, .28, .72), group, [0, .195, 0]);
     mesh(new THREE.CylinderGeometry(.091, .091, .035, 20), metal(0xb99b66, .34, .62), group, [0, -.185, 0]);
     group.rotation.x = -Math.PI / 2;
+    return group;
+  }
+
+  function forceArrow(parent, direction, origin, colour) {
+    const group = new THREE.Group(); parent.add(group);
+    group.position.copy(origin);
+    group.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction);
+    const paint = new THREE.MeshBasicMaterial({color: colour});
+    const shaft = mesh(new THREE.CylinderGeometry(.022, .022, 1, 12), paint, group);
+    const tip = mesh(new THREE.ConeGeometry(.074, .19, 16), paint, group);
+    group.setLength = length => {
+      const head = Math.min(.19, length * .35), stem = Math.max(.002, length - head);
+      shaft.scale.y = stem; shaft.position.y = stem / 2;
+      tip.scale.set(head / .19, head / .19, head / .19); tip.position.y = stem + head / 2;
+    };
+    group.setLength(.01);
     return group;
   }
 
@@ -481,6 +591,13 @@
     const material = model.kind === "layers" || ["ceramic", "fiber", "mixed"].includes(model.material)
       ? layersModel(assembly, model.material, model.kind === "layers") : model.material === "mail" ? mailModel(assembly, scene.shot.framing === "macro") : plateModel(assembly, model.action === "penetrate");
     const moving = projectile(assembly);
+    const forceContact = new THREE.Vector3(-.65, 0, .095 + .37 * (1 - (.65 / 1.05) ** 2));
+    const forceStart = new THREE.Vector3(-1.8, -.42, 1.3);
+    const forceNormal = new THREE.Vector3(.74 * forceContact.x / 1.05 ** 2, 0, 1).normalize();
+    const forceDirection = forceContact.clone().sub(forceStart).normalize().reflect(forceNormal);
+    const forceIn = forceArrow(assembly, forceContact.clone().sub(forceStart).normalize(), forceStart, 0xe39e70);
+    const forceOut = forceArrow(assembly, forceDirection, forceContact, 0x78b7bf);
+    forceIn.visible = forceOut.visible = false;
     const sparks = [];
     for (let i = 0; i < 13; i++) {
       const spark = mesh(new THREE.OctahedronGeometry(.018 + (i % 3) * .006), new THREE.MeshBasicMaterial({color: i % 3 ? 0xe6bd77 : 0xffedd4}), assembly);
@@ -494,6 +611,11 @@
     mesh(new THREE.CylinderGeometry(.045, .045, 1.0, 16), metal(0x455761, .56, .4), stand, [0, -1.1, -.4]);
     mesh(new THREE.CylinderGeometry(.68, .8, .08, 48), metal(0x293b46, .5, .45), stand, [0, -1.56, -.4]);
     stand.visible = scene.shot.role === "establish" && model.kind === "armour";
+    // A horizon-sized grey disc obscured the bottom half of detail shots.
+    // Only the establishing stand needs a ground; exploded diagrams float in
+    // their existing neutral studio field so all layers stay visible.
+    ground.visible = stand.visible;
+    ground.scale.setScalar(.42);
     const camera = new THREE.PerspectiveCamera(portrait ? 35 : 31, outputWidth / outputHeight, .05, 80);
     // Fit the actual mechanism at both ends of its action, not an assumed
     // icon-sized box. This keeps exploded backing layers and mail visible in
@@ -501,6 +623,10 @@
     const bounds = new THREE.Box3().setFromObject(material.group);
     material.pose?.({p: 1, result: 1, active: true, shock: 1}, model.action);
     bounds.union(new THREE.Box3().setFromObject(material.group));
+    if (model.action === "glance") {
+      bounds.expandByPoint(forceStart);
+      bounds.expandByPoint(forceContact.clone().addScaledVector(forceDirection, 1.7));
+    }
     if (model.material === "mail") bounds.expandByScalar(.1);
     material.pose?.({p: 0, result: 0, active: false, shock: 0}, model.action);
     const centre = bounds.getCenter(new THREE.Vector3());
@@ -508,17 +634,21 @@
     for (const x of [bounds.min.x, bounds.max.x]) for (const y of [bounds.min.y, bounds.max.y]) for (const z of [bounds.min.z, bounds.max.z]) corners.push(new THREE.Vector3(x, y, z).sub(centre));
     const coverage = {wide: [.71, .51], medium: [.78, .55], close: [.86, .61], macro: [.91, .65]}[scene.shot.framing] || [.78, .55];
     const labels = [];
+    let leaders;
     if (material.layers && model.action === "separate") {
+      leaders = svg("svg", {viewBox: portrait ? "0 0 1080 1920" : "0 0 1920 1080", class: "shot-layer-leaders", "aria-hidden": "true"}, context.stage);
       scene.items.slice(0, material.layers.length).forEach((item, i) => {
         const label = element("div", "shot-layer-label", item.label.length <= 64 ? item.label : "");
-        context.stage.append(label); labels.push({label, layer: material.layers[i], index: i});
+        const connector = svg("polyline", {fill: "none", "stroke-width": 2.5}, leaders);
+        const endpoint = svg("circle", {r: 5}, leaders);
+        context.stage.append(label); labels.push({label, connector, endpoint, layer: material.layers[i], index: i});
       });
     }
     function draw(time) {
       const phase = mechanismPhase(scene, time), action = model.action;
-      const interacting = ["approach", "impact", "deflect", "penetrate", "absorb"].includes(action);
-      const orbit = scene.shot.camera === "orbit" ? lerp(-.16, .18, smooth(phase.p)) : 0;
-      const side = interacting ? 1.0 : model.action === "separate" ? .74 : .42;
+      const interacting = ["approach", "impact", "deflect", "glance", "penetrate", "absorb"].includes(action);
+      const orbit = scene.shot.camera === "orbit" ? lerp(-.3, .34, smooth(phase.p)) : 0;
+      const side = action === "glance" ? .78 : interacting ? 1.0 : model.action === "separate" ? .74 : .55;
       const theta = side + orbit;
       const forward = new THREE.Vector3(Math.sin(theta), .14, Math.cos(theta)).normalize();
       const right = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), forward).normalize();
@@ -539,7 +669,7 @@
           || phase.settled && action === "absorb");
         material.dent.scale.set(1 + phase.result * .4, 1 + phase.result * .22, 1);
       }
-      moving.visible = interacting && !phase.settled;
+      moving.visible = interacting && action !== "glance" && !phase.settled;
       moving.position.set(0, 0, lerp(3.0, .7, phase.incoming));
       moving.rotation.set(-Math.PI / 2, 0, 0);
       moving.scale.set(1, 1, 1);
@@ -553,32 +683,46 @@
           moving.scale.set(1 + phase.result * .48, 1 - phase.result * .32, 1 + phase.result * .48);
         }
       }
+      forceIn.visible = action === "glance";
+      forceOut.visible = action === "glance" && phase.active && phase.result > .001;
+      if (forceIn.visible) forceIn.setLength(Math.max(.01, forceStart.distanceTo(forceContact) * phase.incoming));
+      if (forceOut.visible) forceOut.setLength(Math.max(.01, 1.7 * phase.result));
       // Small deterministic fragments indicate contact, never a gun explosion.
       sparks.forEach((spark, i) => {
         const theta = i * 2.39996, age = clamp((phase.p - phase.hit) / .2);
-        spark.visible = interacting && !phase.settled && phase.active && age < 1 && action !== "approach";
+        spark.visible = interacting && !phase.settled && phase.active && age < 1 && !["approach", "glance"].includes(action);
         spark.position.set(Math.cos(theta) * age * .65, Math.sin(theta) * age * .65 - age * age * .12, .53 + age * (.13 + i % 4 * .08));
         spark.scale.setScalar(Math.max(.01, 1 - age)); spark.rotation.set(i * .3 + age, i * .2, age);
       });
       const age = clamp((phase.p - phase.hit) / .27);
-      shock.visible = interacting && !phase.settled && phase.active && action !== "approach";
+      shock.visible = interacting && !phase.settled && phase.active && !["approach", "glance"].includes(action);
       shock.scale.setScalar(1 + age * 4.2); shock.material.opacity = (1 - age) * .38;
       world.updateMatrixWorld(true); camera.updateMatrixWorld(true);
       renderer.render(world, camera);
       pixels.clearRect(0, 0, outputWidth, outputHeight); pixels.drawImage(renderer.domElement, 0, 0);
-      for (const {label, layer, index} of labels) {
-        const point = layer.localToWorld(new THREE.Vector3(index === 0 ? -.98 : .98, index === 0 ? .8 : -.55 - index * .2, 0)).project(camera);
+      for (const {label, connector, endpoint, layer, index} of labels) {
+        const anchor = material.breastplates ? new THREE.Vector3(index === 0 ? -.52 : .56, index === 0 ? .65 : -.65, .37)
+          : new THREE.Vector3(index === 0 ? -.98 : .98, index === 0 ? .8 : -.55 - index * .2, 0);
+        const point = layer.localToWorld(anchor).project(camera);
         const dw = portrait ? 1080 : 1920, dh = portrait ? 1920 : 1080;
         const width = portrait ? 355 : 390;
         const x = clamp((point.x * .5 + .5) * dw + (index === 0 ? -width - 15 : 12), 66, dw - width - 66);
         const projectedY = (-point.y * .5 + .5) * dh;
-        const y = index > 0 ? layerLabelY(index) : clamp(projectedY, portrait ? 440 : 265, portrait ? 1450 : 825);
+        const y = material.breastplates ? (index === 0 ? portrait ? 490 : 275 : portrait ? 1380 : 800)
+          : index > 0 ? layerLabelY(index) : clamp(projectedY, portrait ? 440 : 265, portrait ? 1450 : 825);
         label.style.left = `${x}px`; label.style.top = `${y}px`;
-        label.style.opacity = String(between(phase.p, .2, .44));
+        const opacity = between(phase.p, .2, .44);
+        label.style.opacity = String(opacity);
+        const endX = (point.x * .5 + .5) * dw;
+        const labelWidth = label.offsetWidth, fromX = endX > x + labelWidth / 2 ? x + labelWidth : x;
+        connector.setAttribute("points", `${fromX},${y} ${endX},${y} ${endX},${projectedY}`);
+        endpoint.setAttribute("cx", String(endX)); endpoint.setAttribute("cy", String(projectedY));
+        connector.style.opacity = endpoint.style.opacity = label.textContent ? String(opacity * .82) : "0";
       }
       surface.dataset.phase = phase.p.toFixed(6); surface.dataset.contact = phase.active ? "after" : "before";
       surface.dataset.resultView = String(phase.settled);
       surface.dataset.projectileVisible = String(moving.visible);
+      surface.dataset.forceDirectionVisible = String(forceIn.visible);
       surface.dataset.meshes = String(renderer.info.render.calls);
       surface.dataset.projectileZ = moving.position.z.toFixed(6);
     }

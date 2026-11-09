@@ -278,7 +278,14 @@ def _template(narration: str, section: dict, index: int) -> str:
     return "explain"
 
 
-def _scene_text(section: dict, start: float, end: float, captions: list[dict]) -> str:
+def _scene_text(section: dict, start: float, end: float, captions: list[dict], words=()) -> str:
+    from agents.narration_scope import scene_source
+    source = scene_source(section, start, end, captions, words)
+    if source["source_alignment"] == "exact":
+        return source["source_narration"]
+    # Incomplete legacy word events cannot replace a full source sentence.
+    # Their captions remain a labeled fallback for planning, never proof of
+    # precise word alignment during the encoded semantic review.
     matches = [caption["text"] for caption in captions
                if caption["start"] < end - 0.00001 and caption["end"] > start + 0.00001]
     if matches:
@@ -321,6 +328,8 @@ def _beats(scene: dict, words: list[dict], fps: int, captions: list[dict] | None
     matched = 0
     phrase_matched = 0
     reveals = []
+    emphases = []
+    subject_established = False
     for index, item in enumerate(scene["items"]):
         anchor = _anchor(item["label"], events, used)
         if anchor:
@@ -338,6 +347,15 @@ def _beats(scene: dict, words: list[dict], fps: int, captions: list[dict] | None
             else:
                 when = duration * (0.12 + 0.62 * index / max(1, len(scene["items"]) - 1))
         when = round(min(ceiling, max(0, when)), 6)
+        emphases.append(when)
+        if (len(scene["items"]) == 1 and scene["template"] in {"text", "explain"}
+                and scene.get("shot") and not scene.get("mechanism")
+                and not scene.get("image") and not scene.get("footage")):
+            # One subject carries this whole shot. Establish it immediately;
+            # its spoken mention still owns the later emphasis, not visibility.
+            established = round(min(when, .25, duration * .12), 6)
+            subject_established = subject_established or established < when
+            when = established
         reveals.append(when)
         beats.append({"time": when, "target": f"item-{index}", "action": "reveal"})
         if scene["template"] == "chart":
@@ -348,6 +366,7 @@ def _beats(scene: dict, words: list[dict], fps: int, captions: list[dict] | None
     if scene["template"] in {"chart", "timeline"}:
         beats.append({"time": min(ceiling, 0.1), "target": "scene", "action": "draw"})
     for index, when in enumerate(reveals):
+        when = emphases[index]
         next_reveal = reveals[index + 1] if index + 1 < len(reveals) else duration * 0.9
         highlight = min(ceiling, max(when, min(next_reveal - 0.1, when + duration * 0.12)))
         beats.append({"time": round(highlight, 6), "target": f"item-{index}", "action": "highlight"})
@@ -358,6 +377,8 @@ def _beats(scene: dict, words: list[dict], fps: int, captions: list[dict] | None
     quality = ("word" if matched == len(scene["items"]) else
                "phrase" if phrase_matched == len(scene["items"]) else
                "mixed" if matched or phrase_matched else "distributed")
+    if subject_established and quality in {"word", "phrase"}:
+        quality = "mixed"
     return beats, quality
 
 
@@ -389,7 +410,7 @@ def _offline_scenes(script: dict, plan: dict) -> tuple[list[dict], dict[str, dic
         if shots_enabled:
             boundaries = shot_planner.cut_boundaries(section, count, plan)
         for index, (start, end) in enumerate(zip(boundaries, boundaries[1:])):
-            narration = _scene_text(section, start, end, plan["captions"])
+            narration = _scene_text(section, start, end, plan["captions"], plan["words"])
             template = _template(narration, original, index)
             items = _chart_data(original) if template == "chart" else _semantic_items(narration, original, index, count)
             title = _text(original.get("title") or script.get("title") or "Explore the idea", 64)
@@ -592,7 +613,9 @@ def _request_design_impl(scenes: list[dict], sources: dict, instructions: str = 
         "technique=stage2d/collage/footage/diagram3d; camera=locked/push/orbit/track; transition=cut/match/dissolve; "
         "focus is a short subject label, action states the visible change in plain words. Existing media alone enables collage/footage. "
         "Keep current mechanisms unless this shot's source supports a change. Return mechanisms as an empty array or one supported object, version=1: kind=armour/layers, "
-        "material=steel/mail/ceramic/fiber/mixed, action=reveal/approach/impact/deflect/penetrate/separate/absorb/compare. "
+        "material=steel/mail/ceramic/fiber/mixed, action=reveal/approach/impact/deflect/glance/penetrate/separate/absorb/compare. "
+        "Use glance for a plate deflecting unspecified blows: it draws incoming and outgoing force arrows without inventing a projectile. "
+        "Use deflect only for a source-supported projectile. Preserve a narrated interaction instead of replacing it with reveal. "
         "diagram3d requires a grounded material mechanism; do not invent physical outcomes. Good stage2d is sufficient for other subjects. "
         "Material shots draw their named mechanism directly; use generic/reveal staging and concept actors for their part labels, "
         "rather than inventing unrelated actors. Choose a view that makes the material or action readable. "
@@ -1046,6 +1069,18 @@ def _apply_design(plan: dict, design: dict, sources: dict, *, directed: set[str]
                 candidate["mechanism"] = mechanism
         elif "mechanisms" in update:
             candidate.pop("mechanism", None)
+        required_interaction = scene.get("mechanism")
+        if (required_interaction and required_interaction["action"] in
+                {"approach", "impact", "deflect", "glance", "penetrate", "separate", "absorb"}
+                and candidate["template"] != "chart" and not candidate.get("image") and not candidate.get("footage")
+                and (not candidate.get("mechanism") or candidate["mechanism"]["action"] == "reveal")):
+            # Generic actor layouts cannot perform this narrated interaction.
+            # Retain its source-grounded geometry while accepting other useful
+            # model choices. The journal does not credit this retained fallback
+            # action as a new model-authored visual decision.
+            candidate["mechanism"] = copy.deepcopy(required_interaction)
+            journal["rejected_fields"]["mechanism"] = "omitted_narrated_interaction"
+            plan["warnings"].append(f"{scene['id']} retained its narrated material interaction instead of a held reveal.")
         if candidate["template"] == "chart":
             candidate.pop("mechanism", None)
         shot_planner.reconcile_media(candidate)
@@ -1826,7 +1861,7 @@ def regenerate_scene(plan: dict, scene_id: str, script: dict, instructions: str 
     if original["section_id"] not in lookup:
         raise ValueError("This scene no longer matches the script. Regenerate the storyboard.")
     source_section = lookup[original["section_id"]]
-    narration = _scene_text(section, original["start"], original["start"] + original["duration"], result["captions"])
+    narration = _scene_text(section, original["start"], original["start"] + original["duration"], result["captions"], result.get("words", []))
     replacement = copy.deepcopy(original)
     look, rhythm, composition = art_direction.explicit_direction(local_instructions)
     palette = art_direction.explicit_palette(local_instructions)
@@ -2031,7 +2066,7 @@ def regenerate_scene(plan: dict, scene_id: str, script: dict, instructions: str 
     for scene in result["scenes"]:
         timing = next(section for section in result["sections"] if section["id"] == scene["section_id"])
         all_sources[scene["id"]] = {"section": lookup[scene["section_id"]],
-            "narration": _scene_text(timing, scene["start"], scene["start"] + scene["duration"], result["captions"])}
+            "narration": _scene_text(timing, scene["start"], scene["start"] + scene["duration"], result["captions"], result.get("words", []))}
     prior_ai = {row["scene_id"] for row in result.get("direction_report", {}).get("scenes", []) if row.get("source") == "ai"}
     prior_ai.discard(original["id"])
     result["direction_report"] = _direction_report(result, all_sources, prior_ai | directed)

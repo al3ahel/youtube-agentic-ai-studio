@@ -18,7 +18,7 @@ CAMERAS = ("locked", "push", "orbit", "track")
 TRANSITIONS = ("cut", "match", "dissolve")
 MATERIALS = ("steel", "mail", "ceramic", "fiber", "mixed")
 MECHANISMS = ("armour", "layers")
-MECHANISM_ACTIONS = ("reveal", "approach", "impact", "deflect", "penetrate", "separate", "absorb", "compare")
+MECHANISM_ACTIONS = ("reveal", "approach", "impact", "deflect", "glance", "penetrate", "separate", "absorb", "compare")
 
 
 def _line(value, maximum):
@@ -125,6 +125,7 @@ _ACTION = {
     "approach": r"\b(?:approach\w*|towards?|arriv\w*|incoming|flying)\b",
     "impact": r"\b(?:impact\w*|strik\w*|hit\w*|collision|collid\w*|contact)\b",
     "deflect": r"\b(?:deflect\w*|bounc\w*|ricochet\w*|glanc\w*)\b",
+    "glance": r"\b(?:deflect\w*|bounc\w*|glanc\w*)\b",
     "penetrate": r"\b(?:penetrat\w*|pierc\w*|passes?\s+through|punch\w*\s+through)\b",
     "separate": r"\b(?:layers?|separat\w*|cutaway|cross\s?section|inside)\b",
     "absorb": r"\b(?:absorb\w*|dissipat\w*|deform\w*|stop\w*|(?:spread\w*|distribut\w*)\s+(?:the\s+)?(?:force|energy|impact)|slow\w*\s+(?:the\s+)?(?:bullet|projectile|impact))\b",
@@ -132,26 +133,63 @@ _ACTION = {
 }
 
 
+def _positive_at(text, position):
+    before = text[max(0, position - 45):position].replace("’", "'")
+    return not re.search(r"\b(?:not|never|cannot|can't|couldn't|doesn't|don't|didn't|isn't|wasn't|won't|wouldn't|no)\b[^.!?;؟]{0,25}$", before, re.I)
+
+
 def _positive_match(expression, text):
-    for match in re.finditer(expression, text, re.I):
-        before = text[max(0, match.start() - 45):match.start()]
-        if not re.search(r"\b(?:not|never|cannot|can't|couldn't|doesn't|don't|didn't|isn't|wasn't|won't|wouldn't|no)\b[^.!?;]{0,25}$", before, re.I):
-            return True
-    return False
+    return any(_positive_at(text, match.start()) for match in re.finditer(expression, text, re.I))
 
 
-def _supported_action(action, text):
+def _scoped_action_matches(action, text, context=""):
+    """Own the excerpt's actions while preserving their original polarity.
+
+    A cut can remove 'did not' or the beginning of a question. Locate a unique
+    lexical occurrence in the original section and inspect each owned action's
+    original sentence. Context may qualify an owned action, never introduce a
+    later action. Repeated ambiguous excerpts abstain instead of choosing the
+    convenient positive occurrence. Unrelated context remains identity context.
+    """
+    expression = _ACTION[action]
+    evidence, begin, end = text, 0, len(text)
+    tokens = re.compile(r"\w+(?:['’]\w+)*")
+    normalize = lambda value: value.casefold().replace("’", "'")
+    excerpt = [normalize(value) for value in tokens.findall(text)]
+    original = list(tokens.finditer(context))
+    original_tokens = [normalize(match.group()) for match in original]
+    if excerpt and original_tokens:
+        positions = [index for index in range(len(original_tokens) - len(excerpt) + 1)
+                     if original_tokens[index:index + len(excerpt)] == excerpt]
+        if len(positions) > 1:
+            return
+        if positions:
+            first = positions[0]
+            evidence = context
+            begin, end = original[first].start(), original[first + len(excerpt) - 1].end()
+    for sentence in re.finditer(r"[^.!?;؟]+[.!?;؟]*", evidence):
+        # The whole original sentence supplies punctuation; the owned range
+        # ensures its other verbs cannot become this shot's physical action.
+        if action in {"approach", "impact", "deflect", "glance", "penetrate", "absorb"} and sentence.group().rstrip().endswith(("?", "؟")):
+            continue
+        for match in re.finditer(expression, sentence.group(), re.I):
+            absolute_start, absolute_end = sentence.start() + match.start(), sentence.start() + match.end()
+            if begin <= absolute_start and absolute_end <= end and _positive_at(sentence.group(), match.start()):
+                yield match
+
+
+def _supported_action(action, text, context=""):
+    if action == "glance":
+        # A statement about deflecting unspecified blows does not identify a
+        # bullet, arrow or sword. Show directions of force, not a new weapon.
+        return (_supported_action("deflect", text, context)
+                and _positive_match(r"\bblows?\b", text)
+                and not _positive_match(_PROJECTILE, text))
     if action == "compare":
         # The contract does not yet name which physical property to vary.
         # A thickness/range comparison must not become arbitrary geometry.
         return False
-    # A question about whether armour stops a projectile does not establish
-    # that it did. Likewise, "firearms spread" is not force distribution.
-    if action in {"deflect", "penetrate", "absorb", "impact"}:
-        return any(_positive_match(_ACTION[action], sentence)
-                   for sentence in re.findall(r"[^.!?]+[.!?]?", text)
-                   if not sentence.rstrip().endswith("?"))
-    return _positive_match(_ACTION[action], text)
+    return next(_scoped_action_matches(action, text, context), None) is not None
 
 
 def _materials(text):
@@ -175,7 +213,7 @@ def _mechanism_source(narration, context):
                   if len(_materials(part)) == 1]
     if not candidates:
         return None
-    return next((part for part in candidates if any(_supported_action(action, part)
+    return next((part for part in candidates if any(_supported_action(action, part, context or narration)
                 for action in ("deflect", "penetrate", "absorb", "impact", "separate", "compare"))), candidates[0])
 
 
@@ -209,8 +247,8 @@ def mechanism_for(narration, context=""):
         return None
     if material == "mail":
         kind = "armour"  # Layered mail still consists of rings, never solid sheets.
-    action = next((name for name in ("compare", "deflect", "penetrate", "absorb", "separate", "impact", "approach")
-                   if _supported_action(name, narration)
+    action = next((name for name in ("compare", "glance", "deflect", "penetrate", "absorb", "separate", "impact", "approach")
+                   if _supported_action(name, narration, context)
                    and (name not in {"approach", "impact", "deflect", "penetrate", "absorb"}
                         or _projectile_supported(narration, context))), "reveal")
     return {"version": 1, "kind": kind, "material": material, "action": action}
@@ -227,7 +265,7 @@ def grounding_issues(mechanism, narration, context=""):
     evidence = _mechanism_source(narration, context) or ""
     if mechanism["action"] in {"approach", "impact", "deflect", "penetrate", "absorb"} and not _projectile_supported(evidence, context):
         issues.append("The contact animation requires a source-supported projectile.")
-    if mechanism["action"] != "reveal" and not _supported_action(mechanism["action"], evidence):
+    if mechanism["action"] != "reveal" and not _supported_action(mechanism["action"], evidence, context):
         issues.append("The depicted outcome is not supported by this shot's narration.")
     return issues
 
@@ -319,7 +357,7 @@ def validate_scene(scene):
 def contact_beat(scene, words, narration=None, context=""):
     """Use a real spoken action as the shared visual/sound contact anchor."""
     action = scene.get("mechanism", {}).get("action")
-    if action not in {"approach", "impact", "deflect", "penetrate", "absorb"}:
+    if action not in {"approach", "impact", "deflect", "glance", "penetrate", "absorb"}:
         return None
     events = [word for word in words if scene["start"] <= word["start"] < scene["start"] + scene["duration"]]
     source = narration if narration is not None else " ".join(word["word"] for word in events)
@@ -330,19 +368,11 @@ def contact_beat(scene, words, narration=None, context=""):
     # Prefer a stated physical contact to a later description of its outcome.
     # An ambiguous repeated word stays unanchored; no guessed word time is saved.
     for cue_action in (("impact", action) if action in {"absorb", "deflect", "penetrate"} else (action,)):
-        for sentence in re.findall(r"[^.!?;]+[.!?;]?", evidence):
-            if sentence.rstrip().endswith("?"):
-                continue
-            for match in re.finditer(_ACTION[cue_action], sentence, re.I):
-                if not _positive_match(_ACTION[cue_action], sentence[:match.end()]):
-                    continue
-                prefix = sentence[max(0, match.start() - 45):match.start()]
-                if not _positive_match(_ACTION[cue_action], prefix + match.group(0)):
-                    continue
-                token = normalize(match.group(0).split()[0])
-                matches = [word for word in events if normalize(word["word"]) == token]
-                if len(matches) == 1:
-                    return {"time": round(matches[0]["start"] - scene["start"], 6), "target": "scene", "action": "highlight"}
+        for match in _scoped_action_matches(cue_action, evidence, context):
+            token = normalize(match.group(0).split()[0])
+            matches = [word for word in events if normalize(word["word"]) == token]
+            if len(matches) == 1:
+                return {"time": round(matches[0]["start"] - scene["start"], 6), "target": "scene", "action": "highlight"}
     return None
 
 
@@ -391,7 +421,7 @@ def mechanism_result_view(previous, scene, previous_narration, narration, contex
     # Even a new hit phrased with an anaphor must not become a frozen result.
     if re.search(_ACTION["impact"] + "|" + _ACTION["approach"], narration, re.I):
         return False
-    if any(sum(_supported_action(action, text) for action in ("deflect", "penetrate", "absorb")) > 1
+    if any(sum(_supported_action(action, text, context) for action in ("deflect", "penetrate", "absorb")) > 1
            for text in (previous_narration, narration)):
         return False
     prior_contacts = list(re.finditer(_ACTION["impact"], previous_narration, re.I))

@@ -3,6 +3,8 @@
     python renderers/hyperframes/comparable_demo.py --prepare-only
     python renderers/hyperframes/comparable_demo.py --render --output OUTPUT
     python renderers/hyperframes/comparable_demo.py --render --output OUTPUT --resume
+    python renderers/hyperframes/comparable_demo.py --output OUTPUT --export-checkpoint SAVED
+    python renderers/hyperframes/comparable_demo.py --output NEW_OUTPUT --resume-from-checkpoint SAVED --render
 
 The original script and pinned reference are in fixtures/armor-*.json. The
 reference's intended 29.49 seconds rounds to 885 frames / 29.5 seconds at 30 fps.
@@ -11,6 +13,13 @@ bounded number of fresh recordings may adjust the voice rate; no spoken audio
 is cut, stretched, replaced with silence, or taken from the reference. At most
 0.75 seconds of labelled end silence can pad a complete recording to the exact
 frame clock. --resume reuses verified recordings and acquired museum assets.
+
+--export-checkpoint saves a verified, portable directory of the complete raw
+narration, measured timing, original voice attempt and acquired assets. Export
+does not call any model or voice service. --resume-from-checkpoint restores those
+bytes into a new output directory; the ordinary resumed run then makes fresh
+planning, sound and review requests. A checkpoint is not a new inference result
+or an approval, and the source comparison report is retained with it.
 
 An explicit --replay-visual-responses BINDING option can reapply immutable
 captured local proposals after a validator repair. It requires unchanged source
@@ -46,10 +55,12 @@ from importlib.metadata import PackageNotFoundError, version
 import json
 import math
 from pathlib import Path
+from pathlib import PurePosixPath
 import re
 import shutil
 import subprocess
 import sys
+import tempfile
 from urllib.parse import urlparse
 import wave
 
@@ -62,6 +73,16 @@ MAX_RESPONSE_CAPTURES = 64
 VISUAL_BINDING_FILES = ("script.json", "narration.wav", "narration.timings.json", "timeline.json", "image_map.json")
 VISUAL_BINDING_FUNCTIONS = {"_normalise_timeline", "_offline_scenes", "_ai_schema", "_request_design", "_request_design_impl"}
 VISUAL_BINDING_SUPPORT = ("agents/shot_planner.py", "agents/art_direction.py", "agents/object_direction.py")
+CHECKPOINT_REQUIRED = ("script.json", "reference.json", "narration.wav", "narration.timings.json",
+                       "narration.srt", "narration_attempts.json", "timeline.json")
+CHECKPOINT_OPTIONAL = ("narration.service.json", "input_preparation.json", "museum_assets.json", "image_map.json", "image_binding.json",
+                       "credits.json", "scene_plan.json", "visual_response_binding.json", "comparison_report.json",
+                       "visual_qa.json", "render_audio.json", "sound_design.json", "audio_master.json", "audio_credits.json")
+CHECKPOINT_VOICE_FILES = ("narration.wav", "narration.timings.json", "narration.srt", "narration.service.json")
+MAX_CHECKPOINT_FILES = 256
+MAX_CHECKPOINT_FILE_BYTES = 64 * 1024 * 1024
+MAX_CHECKPOINT_BYTES = 256 * 1024 * 1024
+MAX_CHECKPOINT_MANIFEST_BYTES = 1024 * 1024
 
 
 class ComparisonBlocked(RuntimeError):
@@ -86,6 +107,230 @@ def _sha(path):
         for block in iter(lambda: source.read(1024 * 1024), b""):
             digest.update(block)
     return digest.hexdigest()
+
+
+def _checkpoint_root(value):
+    path = Path(value).expanduser().absolute()
+    if any(parent.is_symlink() for parent in (path, *path.parents)):
+        raise ComparisonBlocked("Checkpoint paths cannot contain symbolic links.")
+    return path.resolve()
+
+
+def _checkpoint_name(name):
+    """Only the comparison's data files can enter a portable checkpoint."""
+    if (not isinstance(name, str) or not name or "\\" in name or ":" in name or "\0" in name
+            or PurePosixPath(name).is_absolute() or PurePosixPath(name).as_posix() != name
+            or any(part in {".", ".."} for part in name.split("/"))):
+        raise ComparisonBlocked("Checkpoint contains an unsafe relative path.")
+    allowed = name in (*CHECKPOINT_REQUIRED, *CHECKPOINT_OPTIONAL)
+    allowed |= bool(re.fullmatch(r"images/met-\d+\.jpg", name))
+    allowed |= bool(re.fullmatch(r"model_responses/response-\d+\.json", name))
+    allowed |= bool(re.fullmatch(r"soundtracks/[a-f0-9]{32}\.(?:wav|mp3|m4a|ogg|aac|flac|opus)", name))
+    if re.fullmatch(r"voice_attempts/attempt-\d+/[^/]+", name):
+        allowed |= PurePosixPath(name).name in CHECKPOINT_VOICE_FILES
+    if not allowed:
+        raise ComparisonBlocked("Checkpoint contains a file outside the comparison data allowlist.")
+    return name
+
+
+def _checkpoint_file(root, name):
+    name = _checkpoint_name(name)
+    path = root / name
+    cursor = root
+    for part in PurePosixPath(name).parts:
+        cursor /= part
+        if cursor.is_symlink():
+            raise ComparisonBlocked("Checkpoint files cannot contain symbolic links.")
+    if not path.is_file() or not path.resolve().is_relative_to(root):
+        raise ComparisonBlocked(f"Checkpoint is missing a regular data file: {name}")
+    return path
+
+
+def _verify_checkpoint_files(root, records):
+    if not isinstance(records, list) or not 0 < len(records) <= MAX_CHECKPOINT_FILES:
+        raise ComparisonBlocked("Checkpoint file count exceeds its bound or is empty.")
+    names, total = set(), 0
+    for row in records:
+        if not isinstance(row, dict):
+            raise ComparisonBlocked("Checkpoint file record is invalid.")
+        name = _checkpoint_name(row.get("path"))
+        size, digest = row.get("bytes"), row.get("sha256")
+        if (name.casefold() in names or type(size) is not int or not 0 <= size <= MAX_CHECKPOINT_FILE_BYTES
+                or not isinstance(digest, str) or not re.fullmatch(r"[a-f0-9]{64}", digest)):
+            raise ComparisonBlocked("Checkpoint has duplicate files, an invalid hash or an excessive file size.")
+        names.add(name.casefold())
+        total += size
+        if total > MAX_CHECKPOINT_BYTES:
+            raise ComparisonBlocked("Checkpoint total size exceeds its bound.")
+        path = _checkpoint_file(root, name)
+        if path.stat().st_size != size or _sha(path) != digest:
+            raise ComparisonBlocked(f"Checkpoint bytes or SHA-256 do not match: {name}")
+    if not set(CHECKPOINT_REQUIRED).issubset(names):
+        raise ComparisonBlocked("Checkpoint lacks the complete narration and measured inputs required for resume.")
+    return names
+
+
+def _verify_checkpoint_inputs(root, names):
+    """Rebuild timing on private copies, never changing the source evidence."""
+    import config
+    from video.timeline import build_timeline, script_signature
+    script, reference = _read(root / "script.json"), _read(root / "reference.json")
+    timing, timeline = _read(root / "narration.timings.json"), _read(root / "timeline.json")
+    history = _read(root / "narration_attempts.json")
+    if (not all(isinstance(value, dict) for value in (script, reference, timing, timeline))
+            or not isinstance(script.get("sections"), list)
+            or not all(isinstance(row, dict) for row in script["sections"])
+            or not isinstance(timing.get("benchmark_tail"), dict)
+            or not isinstance(reference.get("target"), dict)):
+        raise ComparisonBlocked("Checkpoint script, timing or reference metadata is invalid.")
+    if (not isinstance(history, list) or not 0 < len(history) <= 100
+            or not all(isinstance(row, dict) for row in history)):
+        raise ComparisonBlocked("Checkpoint has no bounded narration attempt history.")
+    source_hash = timing.get("benchmark_tail", {}).get("source_audio_sha256")
+    selected = next((row for row in history if isinstance(row, dict) and row.get("status") == "recorded"
+                     and row.get("audio_sha256") == source_hash and source_hash), None)
+    if not selected or not re.fullmatch(r"voice_attempts/attempt-\d+", str(selected.get("directory", ""))):
+        raise ComparisonBlocked("Checkpoint lacks the original voice attempt bound to the complete narration.")
+    attempt = selected["directory"]
+    required_voice = [f"{attempt}/{name}" for name in CHECKPOINT_VOICE_FILES[:3]]
+    if not set(required_voice).issubset(names):
+        raise ComparisonBlocked("Checkpoint is missing raw voice, timing or subtitles for the selected attempt.")
+    if (_sha(_checkpoint_file(root, required_voice[0])) != source_hash
+            or selected.get("script_signature") != script_signature(script)):
+        raise ComparisonBlocked("Checkpoint voice attempt does not match its recorded script and audio.")
+    target = reference.get("target", {})
+    settings = {"SHORTS_WIDTH": target.get("width"), "SHORTS_HEIGHT": target.get("height"),
+                "SHORTS_FPS": target.get("fps")}
+    if (not all(type(value) is int for value in settings.values())
+            or not 64 <= settings["SHORTS_WIDTH"] <= 4096 or settings["SHORTS_WIDTH"] % 2
+            or not 64 <= settings["SHORTS_HEIGHT"] <= 4096 or settings["SHORTS_HEIGHT"] % 2
+            or not 1 <= settings["SHORTS_FPS"] <= 60):
+        raise ComparisonBlocked("Checkpoint reference format is invalid.")
+    try:
+        with tempfile.TemporaryDirectory(prefix="yaas-checkpoint-verify-") as temporary:
+            work = Path(temporary)
+            audio, padded = _pad_complete_narration(root / attempt, work, float(target["duration_seconds"]))
+            if _sha(audio) != _sha(root / "narration.wav") or padded != timing:
+                raise ComparisonBlocked("Checkpoint complete narration differs from its original measured voice attempt.")
+            if (work / "narration.srt").read_bytes() != (root / "narration.srt").read_bytes():
+                raise ComparisonBlocked("Checkpoint subtitles differ from the original voice attempt.")
+            with config.profile_context(settings):
+                rebuilt = build_timeline(script, audio, str(work), "shorts")
+            if rebuilt != timeline:
+                raise ComparisonBlocked("Checkpoint timeline differs from the verified recorded narration.")
+    except (KeyError, TypeError, ValueError, OSError, EOFError, wave.Error) as exc:
+        raise ComparisonBlocked("Checkpoint narration or timing validation failed.") from exc
+    if "museum_assets.json" in names:
+        museum = _read(root / "museum_assets.json")
+        if not isinstance(museum, list) or len(museum) > 50:
+            raise ComparisonBlocked("Checkpoint museum metadata is invalid.")
+        acquired = {}
+        for row in museum:
+            if not isinstance(row, dict) or row.get("status") != "acquired":
+                continue
+            name = _checkpoint_name(row.get("file"))
+            if (name not in names or name != f"images/met-{row.get('object_id')}.jpg"
+                    or row.get("is_public_domain") is not True or _sha(root / name) != row.get("sha256")):
+                raise ComparisonBlocked("Checkpoint museum asset differs from its acquisition evidence.")
+            acquired[name] = row["sha256"]
+        if "image_map.json" in names:
+            image_map = _read(root / "image_map.json")
+            if (not isinstance(image_map, dict) or not all(isinstance(rows, list)
+                    and all(isinstance(name, str) and name in acquired for name in rows) for rows in image_map.values())):
+                raise ComparisonBlocked("Checkpoint image map contains unverified assets.")
+    elif "image_map.json" in names:
+        raise ComparisonBlocked("Checkpoint image map lacks its acquisition metadata.")
+    if "render_audio.json" in names:
+        sound = _read(root / "render_audio.json")
+        if not isinstance(sound, dict):
+            raise ComparisonBlocked("Checkpoint soundtrack metadata is invalid.")
+        soundtrack = _checkpoint_name(sound.get("path"))
+        if (soundtrack not in names or sound.get("audio_sha256") != timing["audio_sha256"]
+                or _sha(root / soundtrack) != sound.get("soundtrack_sha256")):
+            raise ComparisonBlocked("Checkpoint soundtrack differs from its audio binding.")
+    return {"script_signature": script_signature(script), "audio_sha256": timing["audio_sha256"],
+            "timeline_signature": timeline["timeline_signature"], "selected_voice_attempt": attempt}
+
+
+def _export_checkpoint(source, destination):
+    """Export allowlisted recorded inputs; no provider calls or settings writes."""
+    source, destination = _checkpoint_root(source), _checkpoint_root(destination)
+    if not source.is_dir() or destination.exists() or destination.is_relative_to(source):
+        raise ComparisonBlocked("Export needs an existing run and a new checkpoint directory outside it.")
+    paths = set(CHECKPOINT_REQUIRED)
+    paths.update(name for name in CHECKPOINT_OPTIONAL if (source / name).exists() or (source / name).is_symlink())
+    for pattern in ("voice_attempts/attempt-*/*", "images/met-*.jpg", "model_responses/response-*.json", "soundtracks/*"):
+        for path in source.glob(pattern):
+            name = path.relative_to(source).as_posix()
+            if pattern.startswith("voice_attempts") and path.name not in CHECKPOINT_VOICE_FILES:
+                continue
+            paths.add(_checkpoint_name(name))
+    if len(paths) > MAX_CHECKPOINT_FILES:
+        raise ComparisonBlocked("Checkpoint file count exceeds its bound.")
+    records, total = [], 0
+    for name in sorted(paths):
+        path = _checkpoint_file(source, name)
+        size = path.stat().st_size
+        total += size
+        if size > MAX_CHECKPOINT_FILE_BYTES or total > MAX_CHECKPOINT_BYTES:
+            raise ComparisonBlocked("Checkpoint data exceeds its size bound.")
+        records.append({"path": name, "bytes": size, "sha256": _sha(path)})
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix=".yaas-checkpoint-", dir=destination.parent) as temporary:
+        staged = Path(temporary) / "checkpoint"
+        payload = staged / "files"
+        payload.mkdir(parents=True)
+        for row in records:
+            target = payload / row["path"]
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(_checkpoint_file(source, row["path"]), target)
+        names = _verify_checkpoint_files(payload, records)
+        inputs = _verify_checkpoint_inputs(payload, names)
+        manifest = {"version": 1, "kind": "yaas_comparison_checkpoint", "created_at": datetime.now(timezone.utc).isoformat(),
+                    "files": records, "inputs": inputs, "new_inference": False, "approval_granted": False,
+                    "scope": "Recorded inputs and source receipts only. Resume reruns normal direction, sound and review; export is not a new comparison."}
+        _write(staged / "checkpoint.json", manifest)
+        staged.rename(destination)
+    return manifest
+
+
+def _restore_checkpoint(source, destination):
+    """Verify all bytes before publishing a new runnable output directory."""
+    source, destination = _checkpoint_root(source), _checkpoint_root(destination)
+    if destination.exists() or destination.is_relative_to(source):
+        raise ComparisonBlocked("Restore requires a new output directory outside the checkpoint.")
+    manifest_path = source / "checkpoint.json"
+    if (manifest_path.is_symlink() or not manifest_path.is_file()
+            or manifest_path.stat().st_size > MAX_CHECKPOINT_MANIFEST_BYTES):
+        raise ComparisonBlocked("Checkpoint manifest is unavailable or exceeds its size bound.")
+    manifest = _read(manifest_path)
+    if not isinstance(manifest, dict) or manifest.get("version") != 1 or manifest.get("kind") != "yaas_comparison_checkpoint":
+        raise ComparisonBlocked("Unsupported checkpoint manifest.")
+    payload = _checkpoint_root(source / "files")
+    names = _verify_checkpoint_files(payload, manifest.get("files"))
+    inputs = _verify_checkpoint_inputs(payload, names)
+    if inputs != manifest.get("inputs"):
+        raise ComparisonBlocked("Checkpoint input provenance does not match its verified contents.")
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix=".yaas-restore-", dir=destination.parent) as temporary:
+        staged = Path(temporary) / "output"
+        staged.mkdir()
+        for row in manifest["files"]:
+            target = staged / row["path"]
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(_checkpoint_file(payload, row["path"]), target)
+        _verify_checkpoint_files(staged, manifest["files"])
+        receipt = {"version": 1, "mode": "verified_checkpoint_restore", "restored_at": datetime.now(timezone.utc).isoformat(),
+                   "checkpoint_manifest_sha256": _sha(manifest_path), "inputs": inputs, "new_inference_during_restore": False,
+                   "subsequent_run": "Normal resume: recorded narration/assets may be reused; direction, sound and review make fresh requests unless visual replay is explicitly selected."}
+        archive = staged / "checkpoint_source"
+        archive.mkdir()
+        shutil.copyfile(manifest_path, archive / "checkpoint.json")
+        if "comparison_report.json" in names:
+            shutil.copyfile(staged / "comparison_report.json", archive / "comparison_report.json")
+        _write(staged / "checkpoint_origin.json", receipt)
+        staged.rename(destination)
+    return receipt
 
 
 def _error(exc):
@@ -490,6 +735,8 @@ def _record_narration(script, output, settings, target, *, resume=False, attempt
         if target - MAX_TAIL_SECONDS <= row["duration_seconds"] <= target:
             chosen = directory
             break
+    reused_recording = chosen is not None
+    attempts_before = len(history)
     rate_match = re.fullmatch(r"([+-]\d+)%", str(config.VOICE_RATE))
     if not rate_match:
         raise ValueError("The configured voice rate must be a signed percentage.")
@@ -535,6 +782,7 @@ def _record_narration(script, output, settings, target, *, resume=False, attempt
         raise ComparisonBlocked("The complete recordings did not fit the reference duration after bounded voice-rate attempts. They are retained for inspection.")
     audio, timing = _pad_complete_narration(chosen, output, target)
     return audio, {"status": "recorded", "engine": "edge-tts", "voice": config.VOICE_ID,
+                   "recording_reused": reused_recording, "new_recording_attempts": len(history) - attempts_before,
                    "selected_attempt": chosen.relative_to(output).as_posix(), "attempts": history,
                    "word_events": len(timing.get("words", [])), "sections": timing["sections"],
                    "voice_service": timing.get("voice_service"),
@@ -576,6 +824,11 @@ def run(args):
     script, reference = _read(FIXTURES / "armor-script.json"), _read(FIXTURES / "armor-reference.json")
     target = reference["target"]
     output = args.output.expanduser().resolve()
+    restored = None
+    if getattr(args, "resume_from_checkpoint", None) is not None:
+        restored = _restore_checkpoint(args.resume_from_checkpoint, args.output)
+        args.resume = True
+        print("Verified checkpoint restored. Reusing matching recorded narration/assets; normal direction, sound and review will make fresh requests.", flush=True)
     replay_binding = getattr(args, "replay_visual_responses", None)
     if replay_binding is not None and not args.resume:
         raise ComparisonBlocked("Recorded visual response replay requires --resume and its unchanged measured inputs.")
@@ -604,6 +857,8 @@ def run(args):
               "comparison_complete": False, "reference_quality_parity_claimed": False,
               "subjective_audio_listening": "not_performed_by_this_harness",
               "implementation": "production narrator, timeline, visual planner, studio sound path, renderer and encoded review loop"}
+    if restored is not None:
+        report["checkpoint_origin"] = restored
     destination = output / "comparison_report.json"
     _write(output / "script.json", script)
     _write(output / "reference.json", reference)
@@ -755,11 +1010,15 @@ def main():
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--prepare-only", action="store_true", help="Run real narration, planning and sound; prepare HTML without encoding")
     mode.add_argument("--render", action="store_true", help="Encode and review the complete comparison (default)")
+    mode.add_argument("--export-checkpoint", type=Path, default=None,
+                      help="Export verified raw narration, measured inputs and assets from --output to this NEW directory, then exit without inference")
     parser.add_argument("--output", type=Path, default=Path(__file__).parent / ".smoke" / "comparable-armour")
     parser.add_argument("--profile", default=None, help="Existing channel profile ID; defaults to the active profile")
     parser.add_argument("--local-model", default=None, help="Use an installed local model for this run only; never use a hosted fallback")
     parser.add_argument("--local-url", default=None, help="Loopback Ollama address for --local-model; otherwise use the configured address")
     parser.add_argument("--resume", action="store_true", help="Reuse verified recordings/assets from this output folder; rerun direction and review")
+    parser.add_argument("--resume-from-checkpoint", type=Path, default=None,
+                        help="Verify and restore a checkpoint to a NEW --output, then resume with normal fresh direction, sound and review requests")
     parser.add_argument("--replay-visual-responses", type=Path, default=None,
                         help="Explicitly reapply a sealed local-response binding through current validators; requires --resume and unchanged inputs/model/prompt/schema; sound and vision still run normally")
     parser.add_argument("--voice-attempts", type=int, choices=range(1, 6), default=4)
@@ -769,6 +1028,12 @@ def main():
                         help="Retain a clearly labelled incomplete demonstration when a model or semantic review is unavailable")
     args = parser.parse_args()
     try:
+        if args.export_checkpoint is not None:
+            if args.resume_from_checkpoint is not None or args.replay_visual_responses is not None or args.resume:
+                raise ComparisonBlocked("Checkpoint export is a standalone read of --output; do not combine it with resume or replay.")
+            manifest = _export_checkpoint(args.output, args.export_checkpoint)
+            print(f"Verified checkpoint: {args.export_checkpoint}\nRetained {len(manifest['files'])} files; no model, narration or rendering calls were made.", flush=True)
+            return 0
         return run(args)
     except (OSError, ValueError, ComparisonBlocked) as exc:
         print(f"Comparison cannot start: {_error(exc)['message']}", file=sys.stderr)

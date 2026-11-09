@@ -71,6 +71,7 @@ async function sample(page, scene, time, suppressEvents = false) {
     const canvas = document.querySelector(`#scene-${scene} canvas`);
     return {pixels: canvas.toDataURL(), phase: canvas.dataset.phase, contact: canvas.dataset.contact,
       projectile: canvas.dataset.projectileZ, projectileVisible: canvas.dataset.projectileVisible,
+      forceDirectionVisible: canvas.dataset.forceDirectionVisible,
       resultView: canvas.dataset.resultView, meshes: Number(canvas.dataset.meshes || 0)};
   }, {scene, time, suppressEvents});
 }
@@ -93,6 +94,84 @@ async function collageCaptionPixels(page) {
 }
 
 for (const orientation of ["portrait", "landscape"]) {
+  test(`${orientation}: a non-projectile blow uses directional arrows without inventing a bullet`, {skip}, async () => {
+    for (const technique of ["stage2d", "diagram3d"]) {
+      const page = await open(orientation, false, plan => {
+        const scene = plan.scenes[1];
+        Object.assign(scene.shot, {technique, camera: "locked"});
+        scene.mechanism.action = "glance";
+        return plan;
+      });
+      const early = await sample(page, 1, 4.7), contact = await sample(page, 1, 6.0), late = await sample(page, 1, 7.6);
+      for (const pose of [early, contact, late]) {
+        assert.equal(pose.projectileVisible, "false", "A generic blow must not introduce a specific projectile");
+        assert.equal(pose.forceDirectionVisible, "true");
+      }
+      assert.notEqual(hash(early.pixels), hash(contact.pixels), "Incoming force needs an actual approach");
+      assert.notEqual(hash(contact.pixels), hash(late.pixels), "The direction change must become visible after contact");
+      assert.equal(contact.contact, "after");
+      await sample(page, 1, 4.2);
+      assert.equal(hash((await sample(page, 1, 7.6, true)).pixels), hash(late.pixels));
+      await page.screenshot({path: path.join(root, "screenshots", `glance-${technique}-${orientation}.png`)});
+      await page.close();
+    }
+  });
+
+  test(`${orientation}: a locked mail detail reveals linked construction on the saved clock`, {skip}, async () => {
+    const page = await open(orientation, false, plan => {
+      const scene = plan.scenes[0];
+      Object.assign(scene.shot, {technique: "stage2d", camera: "locked", framing: "macro", role: "detail"});
+      Object.assign(scene.mechanism, {material: "mail", action: "reveal"});
+      return plan;
+    });
+    const early = await sample(page, 0, .2), middle = await sample(page, 0, 1.4), assembled = await sample(page, 0, 3.0);
+    assert.notEqual(hash(early.pixels), hash(middle.pixels), "The construction cannot depend only on camera motion");
+    assert.notEqual(hash(middle.pixels), hash(assembled.pixels), "The result must show the assembled links");
+    assert.equal(assembled.projectileVisible, "false");
+    await sample(page, 0, .2);
+    assert.equal(hash((await sample(page, 0, 3.0, true)).pixels), hash(assembled.pixels));
+    await page.screenshot({path: path.join(root, "screenshots", `mail-reveal-${orientation}.png`)});
+    await page.close();
+  });
+
+  test(`${orientation}: steel reinforcement exposes two distinct curved shells with connected labels`, {skip}, async () => {
+    const page = await open(orientation, false, plan => {
+      const scene = plan.scenes[4];
+      Object.assign(scene.shot, {technique: "diagram3d", camera: "locked"});
+      scene.mechanism.material = "steel";
+      scene.items = [{label: "Original breastplate"}, {label: "Reinforcing layer"}];
+      return plan;
+    });
+    const joined = await sample(page, 4, 16.05), separated = await sample(page, 4, 19.6);
+    assert.notEqual(hash(joined.pixels), hash(separated.pixels), "Exploded layers must change the actual geometry arrangement");
+    const parts = await page.$eval("#scene-4 canvas", canvas => {
+      const {width, height} = canvas, pixels = canvas.getContext("2d").getImageData(0, 0, width, height).data;
+      const visited = new Uint8Array(width * height), components = [];
+      for (let pixel = 0; pixel < visited.length; pixel++) {
+        if (visited[pixel] || pixels[pixel * 4 + 3] < 220) continue;
+        const pending = [pixel]; visited[pixel] = 1; let count = 0;
+        while (pending.length) {
+          const current = pending.pop(); count++;
+          const x = current % width, y = Math.floor(current / width);
+          for (const next of [x > 0 ? current - 1 : -1, x < width - 1 ? current + 1 : -1,
+            y > 0 ? current - width : -1, y < height - 1 ? current + width : -1]) {
+            if (next < 0 || visited[next] || pixels[next * 4 + 3] < 220) continue;
+            visited[next] = 1; pending.push(next);
+          }
+        }
+        if (count > width * height * .008) components.push(count);
+      }
+      return components.sort((a, b) => b - a);
+    });
+    assert.equal(parts.length, 2, `Both shells need their own visible silhouette, not one occluded stack: ${parts}`);
+    const labels = await page.$$eval("#scene-4 .shot-layer-label", nodes => nodes.map(node => ({text: node.textContent, opacity: Number(node.style.opacity)})));
+    assert.deepEqual(labels.map(label => label.text), ["Original breastplate", "Reinforcing layer"]);
+    assert.ok(labels.every(label => label.opacity > .99));
+    assert.equal(await page.$$eval("#scene-4 .shot-layer-leaders polyline", nodes => nodes.filter(node => node.getAttribute("points").split(" ").length === 3 && Number(node.style.opacity) > .8).length), 2);
+    await page.screenshot({path: path.join(root, "screenshots", `steel-layers-${orientation}.png`)});
+    await page.close();
+  });
+
   test(`${orientation}: a settled result holds the real deformation without replaying contact in 2D or 3D`, {skip}, async () => {
     for (const technique of ["stage2d", "diagram3d"]) {
       const directed = resultView => plan => {

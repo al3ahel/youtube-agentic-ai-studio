@@ -87,6 +87,63 @@ def test_preview_then_final_reuses_edited_storyboard_without_provider_or_voice(j
     assert archived == [True]
 
 
+def test_sound_is_planned_after_current_visuals_and_before_motion_preparation(job, monkeypatch):
+    from agents import visual_director
+    from video.renderers import html
+    output, script, archived = job
+    calls = []
+    make_plan = visual_director.plan_scenes
+
+    def visual_plan(*args, **kwargs):
+        result = make_plan(*args, **kwargs)
+        calls.append("visuals")
+        return result
+
+    def mix(narration_path, timeline, directory, profile_id):
+        calls.append("sound")
+        assert state["visual_plan"]["timeline_signature"] == timeline["timeline_signature"]
+        assert state["visual_plan"]["script_signature"] == script_signature(script)
+        assert state["visual_plan"]["profile_id"] == profile_id
+        target = Path(directory) / "prepared.wav"
+        shutil.copy2(narration_path, target)
+        return str(target)
+
+    def prepare(plan, audio_path, directory):
+        calls.append("preview")
+        assert audio_path == str(output / "prepared.wav")
+        assert plan is state["visual_plan"]
+        return output / "motion" / "index.html"
+
+    monkeypatch.setattr(visual_director, "plan_scenes", visual_plan)
+    monkeypatch.setattr(runner, "_mix_project_audio", mix)
+    monkeypatch.setattr(html, "prepare_motion_project", prepare)
+    runner.run_pipeline_thread(["music", "visuals"], visual_mode="motion")
+    assert state["error"] is None
+    assert calls == ["visuals", "sound", "preview"]
+    assert state["stages"]["music"] == state["stages"]["visuals"] == "done"
+
+
+def test_sound_only_can_ignore_stale_visuals_but_video_still_requires_current_storyboard(job, monkeypatch):
+    output, script, archived = job
+    runner.run_pipeline_thread(["visuals"], visual_mode="motion")
+    assert state["error"] is None
+    state["visual_plan"]["timeline_signature"] = "old-voice-timeline"
+    calls = []
+
+    def mix(voice, timeline, directory, profile_id):
+        from agents.audio_director import _bound_visual_plan
+        calls.append("source-timed-sound")
+        assert _bound_visual_plan(state["visual_plan"], timeline, script, profile_id) is None
+        return voice
+
+    monkeypatch.setattr(runner, "_mix_project_audio", mix)
+    runner.run_pipeline_thread(["music"], visual_mode="motion")
+    assert state["error"] is None and calls == ["source-timed-sound"]
+    runner.run_pipeline_thread(["video"], visual_mode="motion")
+    assert "No matching storyboard" in state["error"]
+    assert calls == ["source-timed-sound"]
+
+
 def test_render_only_rejects_mode_changed_or_missing_plan(job, monkeypatch):
     from video.renderers import html
     monkeypatch.setattr(html, "render_motion_video", lambda *a, **k: pytest.fail("No matching plan"))

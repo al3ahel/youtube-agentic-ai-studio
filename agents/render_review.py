@@ -25,6 +25,7 @@ import uuid
 import wave
 
 import config
+from agents.narration_scope import scene_source
 from apis import openrouter
 
 MAX_TECHNICAL_SHOTS = 24
@@ -126,7 +127,7 @@ def _sample_times(scene, info, words=()):
         raise ValueError("The encoded movie has no complete frame for this shot.")
     cue = None
     result_view = scene.get("mechanism_result_view") is True
-    if not result_view and scene.get("mechanism", {}).get("action") in {"approach", "impact", "deflect", "penetrate", "absorb"}:
+    if not result_view and scene.get("mechanism", {}).get("action") in {"approach", "impact", "deflect", "glance", "penetrate", "absorb"}:
         cue = next((beat["time"] for beat in scene.get("beats", [])
                     if beat.get("target") == "scene" and beat.get("action") == "highlight"), None)
     metadata = {"method": "fixed_fractions", "fractions": [fraction for _, fraction in PHASES]}
@@ -202,7 +203,7 @@ def _technical_shot_issues(scene, metrics, frames, previous, pixels, sampling):
                              severity="error", samples=samples))
     result_view = scene.get("mechanism_result_view") is True
     changing = not result_view and (scene.get("shot", {}).get("role") == "interaction"
-        or scene.get("mechanism", {}).get("action") in {"approach", "impact", "deflect", "penetrate", "separate", "absorb"})
+        or scene.get("mechanism", {}).get("action") in {"approach", "impact", "deflect", "glance", "penetrate", "separate", "absorb"})
     if not sampling["progression_covered"]:
         issues.append(_issue(scene["id"], "incomplete_action_sampling", "The available decoded frames do not bracket this shot's action. Its progression remains unassessed; do not infer an absent action from these samples.", samples=samples))
     if sampling["progression_covered"] and max(metrics["central_stage_change"]) < .55 and scene["duration"] >= 2:
@@ -360,7 +361,12 @@ def _vision_prompt(scenes, sampled):
     for scene in scenes:
         evidence = sampled[scene["id"]]
         frames = evidence["frames"]
-        section_narration = evidence.get("source_section_narration", "")
+        # Keep the full section in saved evidence, but do not send unrelated
+        # sentences to the model when word timing establishes this shot's scope.
+        # Small reviewers otherwise demand the next shot's event in this one.
+        scoped = evidence.get("source_alignment") == "exact"
+        section_narration = "" if scoped else evidence.get("source_section_narration", "")
+        sentence_context = evidence.get("source_sentence_context", "")
         first = len(order)
         order.extend({"image_index": first + index, "sample_id": row["id"], "time": row["time"]}
                      for index, row in enumerate(frames))
@@ -368,8 +374,12 @@ def _vision_prompt(scenes, sampled):
                      "source_narration": evidence.get("source_narration", "")[:1200],
                      "source_truncated": len(evidence.get("source_narration", "")) > 1200,
                      "source_scope": evidence.get("source_scope", "shot_excerpt"),
+                     "source_alignment": evidence.get("source_alignment", "unavailable"),
+                     "source_sentence_context": sentence_context[:1200],
+                     "source_sentence_truncated": len(sentence_context) > 1200,
                      "source_section_narration": section_narration[:1200],
                      "source_section_truncated": len(section_narration) > 1200,
+                     "source_section_omitted": scoped,
                      "shot_window_seconds": {"start": scene["start"], "end": round(scene["start"] + scene["duration"], 6)},
                      "shot": scene.get("shot"), "staging": scene.get("staging"), "mechanism": scene.get("mechanism"),
                      "mechanism_result_view": scene.get("mechanism_result_view") is True,
@@ -380,8 +390,12 @@ def _vision_prompt(scenes, sampled):
         "sample labels, not mandatory physical stages. Inspect all three images for every shot. "
         "First describe visible subjects and their position/action in EACH image, independently of printed captions. "
         "Judge subject relevance, including on-screen factual claims, against source_narration, not the generated title or intent. "
-        "The shot excerpt may come from overlapping subtitles and omit punctuation; source_section_narration preserves original "
-        "punctuation and surrounding context, which may include events outside shot_window_seconds. A missing or truncated shot source is uncertain. "
+        "For word_timing scope, source_narration owns only words starting inside shot_window_seconds and preserves original punctuation. "
+        "A subtitle visible in the pixels can span a cut; do not import its next-shot words into this shot's requirements. "
+        "source_sentence_context is grammatical context only: use it for questions, negation and possibility, not to require every event in the sentence. "
+        "Unrelated section sentences are omitted when timing is aligned. source_section_narration, when present for a legacy fallback, "
+        "is broader background only and may include events outside shot_window_seconds. Never report a missing action solely because it appears "
+        "in context outside the current shot excerpt. A missing or truncated shot source is uncertain. An unverified word alignment is also uncertain. "
         "Distinguish a question, possibility or general description from an assertion that a physical event occurred. "
         "Establishing views, questions, reveals and intentional holds do not inherently require a new impact or physical consequence. "
         "Assess their visible relevance, readability and reveal/hold purpose; role or intent metadata proves no visual success. "
@@ -437,6 +451,12 @@ def _request_vision(paths, prompt, schema, stop_event):
     return value, details
 
 
+def _source_reviewable(source):
+    return (bool(source["source_narration"].strip()) and len(source["source_narration"]) <= 1200
+            and source.get("source_alignment") != "unverified"
+            and len(source.get("source_sentence_context", "")) <= 1200)
+
+
 def review_render(video_path, plan, output_dir, *, stop_event=None, progress=None, attempt=0, run_id=None):
     """Review one encoded attempt and save hashes, decoded frames and a report.
 
@@ -444,7 +464,7 @@ def review_render(video_path, plan, output_dir, *, stop_event=None, progress=Non
     VISUAL_REVIEW_ENABLED and the configured free/local route. This function
     never changes a plan, narration or video.
     """
-    from agents.visual_director import _scene_text, validate_plan
+    from agents.visual_director import validate_plan
 
     validate_plan(plan)
     if type(attempt) is not int or not 0 <= attempt <= 2:
@@ -503,12 +523,10 @@ def review_render(video_path, plan, output_dir, *, stop_event=None, progress=Non
             report["issues"].extend(_technical_shot_issues(scene, metrics, frames,
                 (adjacent[1], adjacent[2]) if adjacent else None, pixels, sampling))
             section = sections[scene["section_id"]]
-            narration = _scene_text(section, scene["start"], scene["start"] + scene["duration"], plan.get("captions", []))
-            caption_overlap = any(caption["start"] < scene["start"] + scene["duration"] - .00001
-                                  and caption["end"] > scene["start"] + .00001 for caption in plan.get("captions", []))
+            source = scene_source(section, scene["start"], scene["start"] + scene["duration"],
+                                  plan.get("captions", []), plan.get("words", []))
             row = {"shot_id": scene["id"], "frames": frames, "metrics": metrics, "sampling": sampling,
-                   "source_narration": narration, "source_section_narration": section["narration"],
-                   "source_scope": "caption_overlap" if caption_overlap else "section_excerpt_by_duration"}
+                   **source}
             sampled[scene["id"]] = row
             report["samples"].append(row)
             previous = (index, scene, pixels)
@@ -536,7 +554,7 @@ def review_render(video_path, plan, output_dir, *, stop_event=None, progress=Non
                         value = _check_observations(value, batch)
                         for observation in value["shots"]:
                             evidence = sampled[observation["shot_id"]]
-                            if not evidence["source_narration"].strip() or len(evidence["source_narration"]) > 1200:
+                            if not _source_reviewable(evidence):
                                 observation["assessments"]["subject_relevance"] = "uncertain"
                                 observation["reliable"] = False
                             if not evidence["sampling"]["progression_covered"]:
@@ -598,6 +616,16 @@ def _validated_reviews(plan, report):
     try:
         value = {"shots": [{key: deepcopy(value) for key, value in row.items() if key != "reliable"} for row in rows]}
         checked = _check_observations(value, [scenes[row["shot_id"]] for row in rows])
+        sections = {section["id"]: section for section in plan["sections"]}
+        for row in checked["shots"]:
+            scene = scenes[row["shot_id"]]
+            source = scene_source(sections[scene["section_id"]], scene["start"], scene["start"] + scene["duration"],
+                                  plan.get("captions", []), plan.get("words", []))
+            if not _source_reviewable(source):
+                # Revalidation must not restore confidence merely because an
+                # error issue turned an uncertain assessment back into 'fail'.
+                row["assessments"]["subject_relevance"] = "uncertain"
+                row["reliable"] = False
         return {row["shot_id"]: row for row in checked["shots"]}
     except (ValueError, TypeError, KeyError, AttributeError):
         return {}
@@ -639,7 +667,8 @@ def _source_redirection(plan, identifier, script, category, stop_event=None):
         raise ValueError("Source redirection needs the unchanged narration script.")
     original = next(scene for scene in plan["scenes"] if scene["id"] == identifier)
     section = next(section for section in plan["sections"] if section["id"] == original["section_id"])
-    narration = visual_director._scene_text(section, original["start"], original["start"] + original["duration"], plan.get("captions", []))
+    narration = scene_source(section, original["start"], original["start"] + original["duration"],
+                             plan.get("captions", []), plan.get("words", []))["source_narration"]
     instructions = (
         "Rebuild this illustrated scene as animated objects showing only subjects and actions supported by the supplied source narration. "
         "Correct the depicted subject and action. Keep the saved media and narration clock. "

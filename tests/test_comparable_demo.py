@@ -230,3 +230,133 @@ def test_recorded_content_still_faces_production_schema_validation(tmp_path, mon
             visual_director._request_design_impl([scene], sources, direction=plan["visual_direction"],
                                                  brief=plan["creative_brief"], mode="motion")
     assert gemini_client.generate is ordinary
+
+
+def _checkpoint_fixture(tmp_path):
+    import config
+    from PIL import Image
+    from renderers.hyperframes import comparable_demo as demo
+    source = tmp_path / "original-run"
+    source.mkdir()
+    attempts = source / "voice_attempts"
+    attempts.mkdir()
+    script, _, timing = _recorded_fixture(attempts / "attempt-1")
+    demo._write(source / "script.json", script)
+    demo._write(source / "reference.json", {"target": {"width": 1080, "height": 1920, "fps": 30,
+                                                       "duration_seconds": 1.5}})
+    demo._write(source / "narration_attempts.json", [{
+        "directory": "voice_attempts/attempt-1", "status": "recorded", "voice": config.VOICE_ID,
+        "pitch": config.VOICE_PITCH, "rate": config.VOICE_RATE, "engine": "edge-tts",
+        "engine_version": demo._package("edge-tts"), "script_signature": script_signature(script),
+        "audio_sha256": timing["audio_sha256"], "duration_seconds": 1.0}])
+    audio, _ = demo._pad_complete_narration(attempts / "attempt-1", source, 1.5)
+    with config.profile_context({"SHORTS_WIDTH": 1080, "SHORTS_HEIGHT": 1920, "SHORTS_FPS": 30}):
+        build_timeline(script, audio, str(source), "shorts")
+    (source / "images").mkdir()
+    image = source / "images/met-123.jpg"
+    Image.new("RGB", (20, 30), "navy").save(image)
+    demo._write(source / "museum_assets.json", [{"object_id": 123, "status": "acquired", "is_public_domain": True,
+                                                "file": "images/met-123.jpg", "sha256": demo._sha(image)}])
+    demo._write(source / "image_map.json", {"one": ["images/met-123.jpg"]})
+    demo._write(source / "comparison_report.json", {"status": "rendered_needs_review", "comparison_complete": False})
+    # Credentials and unrelated run files must never be swept into a package.
+    (source / "private-settings.json").write_text('{"token":"not-for-export"}')
+    return demo, source, script
+
+
+def test_checkpoint_round_trip_reuses_exact_recordings_without_provider_calls(tmp_path, monkeypatch):
+    from video import narrator
+    demo, source, script = _checkpoint_fixture(tmp_path)
+    original = {str(path.relative_to(source)): path.read_bytes() for path in source.rglob("*") if path.is_file()}
+    checkpoint, restored = tmp_path / "saved", tmp_path / "resumed"
+    manifest = demo._export_checkpoint(source, checkpoint)
+    assert manifest["new_inference"] is False and manifest["approval_granted"] is False
+    assert "private-settings.json" not in {row["path"] for row in manifest["files"]}
+    assert original == {str(path.relative_to(source)): path.read_bytes() for path in source.rglob("*") if path.is_file()}
+    receipt = demo._restore_checkpoint(checkpoint, restored)
+    assert receipt["new_inference_during_restore"] is False
+    for row in manifest["files"]:
+        assert (restored / row["path"]).read_bytes() == original[row["path"]]
+    assert demo._read(restored / "checkpoint_source/comparison_report.json")["comparison_complete"] is False
+
+    def no_new_voice(*args, **kwargs):
+        pytest.fail("A verified restored voice must not call the narration service")
+
+    monkeypatch.setattr(narrator, "generate_narration", no_new_voice)
+    _, evidence = demo._record_narration(script, restored, {}, 1.5, resume=True, attempts=1)
+    assert evidence["recording_reused"] is True and evidence["new_recording_attempts"] == 0
+    assert (restored / "narration.wav").read_bytes() == original["narration.wav"]
+
+
+@pytest.mark.parametrize("fault", ["tampered_bytes", "missing_voice", "traversal", "duplicate", "size", "symlink"])
+def test_checkpoint_restore_refuses_unsafe_or_incomplete_data_without_publishing(tmp_path, fault):
+    demo, source, _ = _checkpoint_fixture(tmp_path)
+    checkpoint, restored = tmp_path / "saved", tmp_path / "resumed"
+    manifest = demo._export_checkpoint(source, checkpoint)
+    if fault == "tampered_bytes":
+        path = checkpoint / "files/narration.wav"
+        path.write_bytes(path.read_bytes() + b"changed")
+    elif fault == "missing_voice":
+        manifest["files"] = [row for row in manifest["files"] if row["path"] != "voice_attempts/attempt-1/narration.wav"]
+    elif fault == "traversal":
+        manifest["files"][0]["path"] = "../outside.json"
+    elif fault == "duplicate":
+        manifest["files"].append(dict(manifest["files"][0]))
+    elif fault == "size":
+        manifest["files"][0]["bytes"] = demo.MAX_CHECKPOINT_FILE_BYTES + 1
+    else:
+        path = checkpoint / "files/images/met-123.jpg"
+        path.unlink()
+        path.symlink_to(source / "images/met-123.jpg")
+    demo._write(checkpoint / "checkpoint.json", manifest)
+    with pytest.raises(ComparisonBlocked):
+        demo._restore_checkpoint(checkpoint, restored)
+    assert not restored.exists()
+
+
+@pytest.mark.parametrize("file,change", [
+    ("timeline.json", lambda value: value.update(words=[])),
+    ("museum_assets.json", lambda value: value[0].update(sha256="0" * 64)),
+    ("image_map.json", lambda value: value.update(one=["images/met-999.jpg"])),
+    ("narration.timings.json", lambda value: value.update(words=[])),
+])
+def test_checkpoint_verifies_recording_and_asset_bindings_beyond_manifest_hashes(tmp_path, file, change):
+    demo, source, _ = _checkpoint_fixture(tmp_path)
+    checkpoint, restored = tmp_path / "saved", tmp_path / "resumed"
+    manifest = demo._export_checkpoint(source, checkpoint)
+    path = checkpoint / "files" / file
+    content = demo._read(path)
+    change(content)
+    demo._write(path, content)
+    row = next(row for row in manifest["files"] if row["path"] == file)
+    row.update(bytes=path.stat().st_size, sha256=demo._sha(path))
+    demo._write(checkpoint / "checkpoint.json", manifest)
+    with pytest.raises(ComparisonBlocked):
+        demo._restore_checkpoint(checkpoint, restored)
+    assert not restored.exists()
+
+
+def test_checkpoint_refuses_partial_exports_and_existing_destinations(tmp_path):
+    demo, source, _ = _checkpoint_fixture(tmp_path)
+    destination = tmp_path / "saved"
+    (source / "voice_attempts/attempt-1/narration.wav").unlink()
+    with pytest.raises(ComparisonBlocked, match="raw voice"):
+        demo._export_checkpoint(source, destination)
+    assert not destination.exists()
+    destination.mkdir()
+    marker = destination / "owned.txt"
+    marker.write_text("keep this")
+    with pytest.raises(ComparisonBlocked, match="new checkpoint directory"):
+        demo._export_checkpoint(source, destination)
+    with pytest.raises(ComparisonBlocked, match="new output directory"):
+        demo._restore_checkpoint(source, destination)
+    assert marker.read_text() == "keep this"
+
+
+def test_checkpoint_cli_export_never_enters_pipeline(tmp_path, monkeypatch):
+    import sys
+    demo, source, _ = _checkpoint_fixture(tmp_path)
+    monkeypatch.setattr(sys, "argv", ["comparable_demo.py", "--output", str(source),
+                                      "--export-checkpoint", str(tmp_path / "saved")])
+    monkeypatch.setattr(demo, "run", lambda args: pytest.fail("Export must not run the generation pipeline"))
+    assert demo.main() == 0

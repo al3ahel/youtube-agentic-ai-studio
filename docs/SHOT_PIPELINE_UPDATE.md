@@ -5,6 +5,11 @@ inside the measured narration sections. The planner, renderer, editor, archive
 and review worker all consume the same saved shot data. An instruction in a
 prompt counts as a capability only when it changes the rendered sequence.
 
+The follow-up [shot meaning and continuation update](SHOT_PIPELINE_REPAIR.md)
+documents precise narration ownership at cuts, stronger material-action visuals,
+contact sound tied to the current storyboard, complete recording checkpoints,
+and local visual continuation with an explicitly inherited soundtrack.
+
 ## What renders
 
 | Technique | Actual behavior | Appropriate use |
@@ -154,11 +159,14 @@ The sound director can anchor a purposeful accent to a unique measured spoken
 word within a section. The application resolves that word to its real time.
 When the model omits a word cue for a verified compatible metal-contact recording,
 the app can resolve a unique, positively stated physical contact from measured
-speech. It preserves explicit model cues and records whether timing came from the
-model's word, the source-derived contact or the section boundary. An ambiguous or
-unsupported contact retains its section-boundary timing, with the fallback reason
-recorded. An arbitrary model timestamp, fabricated asset or test tone cannot become
-a sound cue.
+speech. For supported verified contact recordings, explicit model cues face the
+same source and timing checks. A matching current storyboard also binds the cue
+to its planned visible contact. Ambiguous or unsupported contacts are omitted
+with a recorded reason; they no longer become metal hits at section boundaries.
+Other effects retain their applicable timing behavior. An arbitrary model
+timestamp, fabricated asset or test tone cannot become a sound cue. See the
+[contact and omission rules](SHOT_PIPELINE_REPAIR.md#sound-follows-the-current-visual-plan)
+for the updated production ordering and evidence.
 
 News and ASMR retain their restrained policies. Effects are bounded and are not
 automatically added to every cut. A proposed recording counts as applied only

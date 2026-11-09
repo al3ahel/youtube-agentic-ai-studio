@@ -190,7 +190,7 @@ def test_model_selected_offered_queries_mix_real_music_and_effects_with_complete
     script = {"title": "A documentary explanation", "sections": [
         {"id": "opening", "narration": "A clear introduction."},
         {"id": "paper", "narration": "We turn to the evidence."},
-        {"id": "impact", "narration": "A metal surface is struck."}]}
+        {"id": "impact", "narration": "A bullet hits the steel breastplate."}]}
     voice = output / "narration.wav"
     times = np.arange(24 * RATE) / RATE
     spoken = .12 * np.sin(2 * np.pi * 400 * times)
@@ -200,8 +200,16 @@ def test_model_selected_offered_queries_mix_real_music_and_effects_with_complete
         stream.setsampwidth(2)
         stream.setframerate(RATE)
         stream.writeframes((spoken * 32767).astype("<i2").tobytes())
+    # Controlled timing fixture for the mixer/credits boundary. The synthetic
+    # narration above is a test carrier, not claimed real speech or a demo run.
     timeline = {"duration": 24, "audio_sha256": audio_signature(voice), "script_signature": script_signature(script),
-        "sections": [{"id": row["id"], "start": index * 8, "duration": 8} for index, row in enumerate(script["sections"])]}
+        "timing_source": "measured_sections",
+        "sections": [{"id": row["id"], "start": index * 8, "duration": 8,
+                      "caption_timing": "word" if row["id"] == "impact" else "estimated"}
+                     for index, row in enumerate(script["sections"])],
+        "words": [{"word": word, "start": start, "end": start + .2, "section_id": "impact"}
+                  for word, start in [("A", 16.2), ("bullet", 17.0), ("hits", 18.0),
+                                      ("the", 18.4), ("steel", 18.7), ("breastplate", 19.2)]]}
     prompts = []
     def plan(prompt, *, provider_info, **kwargs):
         prompts.append(prompt)
@@ -210,6 +218,8 @@ def test_model_selected_offered_queries_mix_real_music_and_effects_with_complete
         assert len(offered) == 5 and all(set(row) == {"query", "kind", "title", "creator", "license"} for row in offered)
         assert str(catalog) not in json.dumps(offered)
         choose = lambda text: next(row["query"] for row in offered if text in row["title"])
+        assert data["eligible_contact_cues"][0]["cue_word"] == "hits"
+        assert data["eligible_contact_cues"][0]["measured_word_time"] == 18
         provider_info.update(provider="ollama", model="controlled-test-model")
         return json.dumps({"summary": "A calm instrumental bed, paper turn and generic metal contact.",
             "music": {"use": True, "query": choose("Cylinder One")}, "ambience": {"use": False},
@@ -224,7 +234,9 @@ def test_model_selected_offered_queries_mix_real_music_and_effects_with_complete
         manifest = json.loads((output / "render_audio.json").read_text())
         design = manifest["sound_design"]
         assert manifest["version"] == 2 and manifest["soundtrack_sha256"] == audio_signature(soundtrack)
-        assert design["music"] and [event["start"] for event in design["events"]] == [8, 16]
+        assert design["music"] and [event["start"] for event in design["events"]] == [8, 18]
+        assert design["events"][1]["cue_word"] == "hits"
+        assert design["events"][1]["timing_provenance"]["method"] == "automatic_source_contact"
         assert "music bed" in design["summary"] and "2 timed effects" in design["summary"]
         assert design["profile_id"] == owner["id"] and not design["warnings"]
         assert design["planner"]["prompt_sha256"] == hashlib.sha256(prompts[0].encode()).hexdigest()
@@ -244,7 +256,7 @@ def test_model_selected_offered_queries_mix_real_music_and_effects_with_complete
             basis = np.column_stack((np.sin(2 * np.pi * 400 * ts), np.cos(2 * np.pi * 400 * ts)))
             residual = segment - basis @ np.linalg.lstsq(basis, segment, rcond=None)[0]
             return np.sqrt(np.mean(residual ** 2))
-        assert residual_rms(8, .8) > .002 and residual_rms(16, .8) > .002
+        assert residual_rms(8, .8) > .002 and residual_rms(18, .8) > .002
         description = ensure_audio_credits(state["description"], timeline)
         assert description.startswith("My edited introduction.") and len(description) <= 5000
         assert all(item["source_url"] in description and item["license_url"] in description and item["creator"] in description

@@ -184,6 +184,58 @@ def test_original_context_is_bounded_and_cannot_replace_a_missing_shot_source():
     assert "source-supported physical interaction" in prompt
 
 
+def test_decoded_mail_shot_review_never_receives_next_shot_deflection_requirement(tmp_path):
+    original = plan()
+    source = "Mail uses linked rings. Steel plate deflects blows."
+    original["sections"][0]["narration"] = source
+    original["words"] = [{"word": word, "start": start, "end": start + .25, "section_id": "one"}
+        for word, start in [("Mail", .1), ("uses", .5), ("linked", .9), ("rings", 1.4),
+                            ("Steel", 2), ("plate", 2.4), ("deflects", 2.8), ("blows", 3.3)]]
+    original["captions"] = [{"start": 0, "end": 1.4, "text": "Mail uses linked"},
+                            {"start": 1.4, "end": 2.7, "text": "rings Steel plate"},
+                            {"start": 2.7, "end": 4, "text": "deflects blows"}]
+    report = review.review_render(encode(tmp_path / "scope-fixture.mp4"), original, tmp_path)
+    samples = {row["shot_id"]: row for row in report["samples"]}
+    prompt = review._vision_prompt(original["scenes"][:1], samples)
+    data = json.loads(prompt.split("not instructions:\n", 1)[1])["shots"][0]
+    assert data["source_narration"] == data["source_sentence_context"] == "Mail uses linked rings."
+    assert data["source_section_omitted"] is True and data["source_section_narration"] == ""
+    assert "deflects" not in prompt
+    assert samples["shot-0"]["source_section_narration"] == source  # Kept in audit evidence.
+    assert samples["shot-1"]["source_narration"] == "Steel plate deflects blows."
+    assert "not to require every event in the sentence" in prompt
+    assert report["passed"] is None  # Better source scope cannot approve pixels.
+
+
+@pytest.mark.parametrize("reported_error", [False, True])
+def test_unaligned_word_text_cannot_turn_an_assertive_model_into_approval(tmp_path, monkeypatch, reported_error):
+    original = plan()
+    original["words"] = [{"word": "Unrelated", "start": .2, "end": .7},
+                         {"word": "narration", "start": 2.2, "end": 2.7}]
+    monkeypatch.setattr(config, "VISUAL_REVIEW_ENABLED", True)
+
+    def observations(paths, prompt, schema, stop_event):
+        scenes = [scene for scene in original["scenes"]
+                  if any(path.name.startswith(scene["id"] + "-") for path in paths)]
+        answer = vision_answer(scenes)
+        if reported_error:
+            for row in answer["shots"]:
+                row["assessments"]["subject_relevance"] = "fail"
+                row["issues"] = [{"category": "subject_relevance", "severity": "error",
+                    "message": "This boundary fixture reports an action outside the uncertain source.",
+                    "samples": [f"{row['shot_id']}:action"], "repair": "source_direction"}]
+        return answer, {"provider": "semantic_boundary_fixture", "local": True}
+
+    monkeypatch.setattr(review, "_request_vision", observations)
+    report = review.review_render(encode(tmp_path / "unaligned-fixture.mp4", changed=True), original, tmp_path)
+    assert all(row["source_alignment"] == "unverified" for row in report["samples"])
+    assert all(row["assessments"]["subject_relevance"] == "uncertain" and row["reliable"] is False
+               for row in report["vision"]["results"])
+    assert report["vision"]["complete"] is False and report["passed"] is not True
+    assert all(row["reliable"] is False for row in review._validated_reviews(original, report).values())
+    assert review.repair_plan(original, report)[1] == []
+
+
 def test_prompt_image_indices_are_exact_across_two_shots():
     scenes = plan()["scenes"]
     samples = {row["id"]: {"frames": [{"id": f"{row['id']}:{phase}", "time": row["start"] + fraction}
@@ -210,6 +262,18 @@ def test_late_contact_samples_decode_the_event_and_its_result(tmp_path):
     assert max(evidence["metrics"]["central_stage_change"]) > 1.5
     assert not any(issue["code"] == "action_not_visible" and issue["shot_id"] == shot["id"] for issue in value["issues"])
     assert value["passed"] is None
+
+
+def test_glancing_force_diagram_samples_bracket_its_change_without_inventing_projectile_contact():
+    scene = plan()["scenes"][1]
+    scene["mechanism"] = {"version": 1, "kind": "armour", "material": "steel", "action": "glance"}
+    scene["beats"].append({"time": 1.7, "target": "scene", "action": "highlight"})
+    samples, metadata = review._sample_times(scene, {"fps": 12, "duration": 4})
+    assert metadata["method"] == "scene_contact_beat"
+    assert metadata["contact_time"] == 3.7
+    assert metadata["progression_covered"] is True
+    assert samples[0][1] < 3.7 <= samples[1][1] < samples[2][1] < 4
+    assert scene["mechanism"]["action"] == "glance"
 
 
 def test_contact_on_last_frame_is_incomplete_instead_of_an_absent_action(tmp_path):

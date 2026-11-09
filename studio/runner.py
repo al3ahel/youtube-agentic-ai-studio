@@ -211,7 +211,8 @@ def _prepare_project_audio(narration_path, timeline, output, profile_id):
     final_audio = str(narration_path)
     if mode == "auto":
         log("Sound director is choosing music, ambience and purposeful effects…")
-        design, resolved = direct_audio(state.get("script") or {}, timeline, profile_id, stop_event=stop_event)
+        design, resolved = direct_audio(state.get("script") or {}, timeline, profile_id, stop_event=stop_event,
+                                        visual_plan=state.get("visual_plan"))
         if resolved["music"]:
             from video.music import mix_music_with_narration
             asset, layer = resolved["music"], design["music"]
@@ -676,61 +677,19 @@ def _run_pipeline(steps, topic_override, video_type, focus_angle, use_trends,
             f"timing source: {timeline.get('timing_source', 'measured audio manifest')}.")
         mark_stage("narration", "done")
 
-        final_audio = state["audio_path"]
-        if "music" in steps:
-            mark_stage("music", "running")
-            final_audio = _mix_project_audio(
-                state["audio_path"], state["timeline"], output,
-                profile_id or state.get("profile_id") or "default")
-        elif not set(steps) & {"music", "narration"}:
-            soundtrack = _load_json(output / "render_audio.json") or {}
-            timeline = state.get("timeline") or {}
-            current_voice = soundtrack.get("audio_sha256") == timeline.get("audio_sha256")
-            if soundtrack.get("version") == 2 and current_voice:
-                from studio.workspace import _fingerprint, _local_file
-                try:
-                    candidate = _local_file(output.resolve(), soundtrack.get("path"),
-                                            {".wav", ".mp3", ".m4a", ".ogg"}, relative=True)
-                    signature = soundtrack.get("soundtrack_sha256")
-                    verified = bool(candidate and isinstance(signature, str)
-                                    and _fingerprint(output.resolve(), candidate)["sha256"] == signature)
-                except (OSError, ValueError, TypeError, RuntimeError):
-                    verified = False
-                if not verified:
-                    # A render-only request must not silently replace the
-                    # committed mix/credits with clean speech. Explicit Music
-                    # regeneration bypasses this reuse path and can repair it.
-                    raise ValueError("The saved soundtrack is missing, changed or could not be verified. Apply sound design again before rendering.")
-                final_audio = str(candidate)
-            else:
-                candidate = (output / str(soundtrack.get("path", ""))).resolve()
-            if (soundtrack.get("version") != 2 and current_voice
-                    and candidate.is_file() and output.resolve() in candidate.parents):
-                from video.timeline import audio_signature
-                if (not soundtrack.get("soundtrack_sha256")
-                        or soundtrack.get("soundtrack_sha256") == audio_signature(candidate)):
-                    final_audio = str(candidate)
-                else:
-                    raise ValueError("The saved soundtrack changed outside this project. Regenerate sound design before rendering.")
-        state["render_audio_path"] = final_audio
-        if "music" in steps:
-            _invalidate(output)
-            mark_stage("music", "done")
-        else:
-            log("Reusing the saved soundtrack." if Path(final_audio).resolve() != Path(state["audio_path"]).resolve()
-                else "Using the recorded narration without added sound; Sound design was not requested.")
-        if state.get("timeline"):
-            current = _load_json(output / "render_audio.json") or {}
-            relative = Path(final_audio).resolve().relative_to(output.resolve()).as_posix()
-            if current.get("path") != relative or current.get("audio_sha256") != state["timeline"]["audio_sha256"]:
-                _save_json(output / "render_audio.json", {
-                    "path": relative, "audio_sha256": state["timeline"]["audio_sha256"],
-                })
-        check_stop("music")
-
+        # Physical sound accents use the current planned action, so build or
+        # validate the storyboard before choosing the automatic soundtrack.
         plan = None
+        visual_steps = bool(set(steps) & {"visuals", "video"})
+        sound_visual = None
+        if mode in {"motion", "hybrid"} and "music" in steps and not visual_steps:
+            saved_sound_visual = state.get("visual_plan")
+            if _matching_plan(saved_sound_visual, timeline, mode, photos):
+                from agents.audio_director import _bound_visual_plan
+                sound_visual = _bound_visual_plan(saved_sound_visual, timeline, script,
+                    profile_id or state.get("profile_id") or "default")
         if mode in {"motion", "hybrid"} and (set(steps) & {"visuals", "video"}
-                or ("music" in steps and state.get("visual_plan"))):
+                or sound_visual is not None):
             mark_stage("visuals", "running")
             from agents.visual_director import plan_scenes, plan_uses_project_photos, validate_plan
             from video.renderers.html import prepare_motion_project
@@ -797,12 +756,66 @@ def _run_pipeline(steps, topic_override, video_type, focus_angle, use_trends,
                 log(f"Footage selection: {providers}; {clips} clips used ({reason}).")
             for warning in plan.get("warnings", []):
                 log(warning, "warn")
-            prepare_motion_project(plan, final_audio, str(output))
             mark_stage("visuals", "done")
         elif mode == "classic":
             state.update(visual_plan=None, visual_qa=None, preview_path=None)
             stage("visuals", "skipped")
         check_stop("visual planning")
+
+        final_audio = state["audio_path"]
+        if "music" in steps:
+            mark_stage("music", "running")
+            final_audio = _mix_project_audio(
+                state["audio_path"], state["timeline"], output,
+                profile_id or state.get("profile_id") or "default")
+        elif not set(steps) & {"music", "narration"}:
+            soundtrack = _load_json(output / "render_audio.json") or {}
+            timeline = state.get("timeline") or {}
+            current_voice = soundtrack.get("audio_sha256") == timeline.get("audio_sha256")
+            if soundtrack.get("version") == 2 and current_voice:
+                from studio.workspace import _fingerprint, _local_file
+                try:
+                    candidate = _local_file(output.resolve(), soundtrack.get("path"),
+                                            {".wav", ".mp3", ".m4a", ".ogg"}, relative=True)
+                    signature = soundtrack.get("soundtrack_sha256")
+                    verified = bool(candidate and isinstance(signature, str)
+                                    and _fingerprint(output.resolve(), candidate)["sha256"] == signature)
+                except (OSError, ValueError, TypeError, RuntimeError):
+                    verified = False
+                if not verified:
+                    # A render-only request must not silently replace the
+                    # committed mix/credits with clean speech. Explicit Music
+                    # regeneration bypasses this reuse path and can repair it.
+                    raise ValueError("The saved soundtrack is missing, changed or could not be verified. Apply sound design again before rendering.")
+                final_audio = str(candidate)
+            else:
+                candidate = (output / str(soundtrack.get("path", ""))).resolve()
+            if (soundtrack.get("version") != 2 and current_voice
+                    and candidate.is_file() and output.resolve() in candidate.parents):
+                from video.timeline import audio_signature
+                if (not soundtrack.get("soundtrack_sha256")
+                        or soundtrack.get("soundtrack_sha256") == audio_signature(candidate)):
+                    final_audio = str(candidate)
+                else:
+                    raise ValueError("The saved soundtrack changed outside this project. Regenerate sound design before rendering.")
+        state["render_audio_path"] = final_audio
+        if "music" in steps:
+            _invalidate(output)
+            mark_stage("music", "done")
+        else:
+            log("Reusing the saved soundtrack." if Path(final_audio).resolve() != Path(state["audio_path"]).resolve()
+                else "Using the recorded narration without added sound; Sound design was not requested.")
+        if state.get("timeline"):
+            current = _load_json(output / "render_audio.json") or {}
+            relative = Path(final_audio).resolve().relative_to(output.resolve()).as_posix()
+            if current.get("path") != relative or current.get("audio_sha256") != state["timeline"]["audio_sha256"]:
+                _save_json(output / "render_audio.json", {
+                    "path": relative, "audio_sha256": state["timeline"]["audio_sha256"],
+                })
+        check_stop("music")
+
+        if plan is not None:
+            prepare_motion_project(plan, final_audio, str(output))
 
         if "video" in steps:
             mark_stage("video", "running")

@@ -737,9 +737,18 @@ test("studio: real audio imports, previews and selections stay with their channe
   await page.select("#s-sfx_mode", "ambience");
   await page.$eval("#r-sfx_volume", node => { node.value = "12"; node.dispatchEvent(new Event("input", {bubbles: true})); });
   assert.match(await page.$eval("#audio-effect-mode-note", node => node.textContent), /Ambience loops/);
-  const saving = page.waitForResponse(response => new URL(response.url()).pathname === "/api/save-settings");
-  await page.click("#savebar-save");
-  assert.equal((await saving).status(), 200);
+  // The floating Save bar starts below the viewport while its entrance animates.
+  await page.waitForFunction(() => {
+    const bar = document.querySelector("#savebar"), button = document.querySelector("#savebar-save");
+    const r = button.getBoundingClientRect();
+    return bar.classList.contains("show") && !button.disabled && r.top > 0 && r.bottom < innerHeight
+      && Number(getComputedStyle(bar).opacity) > .99;
+  });
+  const [saving] = await Promise.all([
+    page.waitForResponse(response => new URL(response.url()).pathname === "/api/save-settings"),
+    page.click("#savebar-save"),
+  ]);
+  assert.equal(saving.status(), 200);
   await page.waitForFunction(() => !settingsSavePending && !settingsDirty());
   const stored = await (await fetch(`${origin}/api/settings?profile_id=${project.id}`)).json();
   assert.equal(stored.music_track, music.id); assert.equal(stored.sfx_track, effect.id);

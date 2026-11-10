@@ -7,6 +7,7 @@ import {createHash} from "node:crypto";
 import path from "node:path";
 import {fileURLToPath} from "node:url";
 import puppeteer from "puppeteer-core";
+import {captureBrowserArgs} from "./browser-capture.mjs";
 
 const renderer = path.resolve(fileURLToPath(new URL("../", import.meta.url)));
 const root = path.join(renderer, ".smoke");
@@ -34,7 +35,7 @@ before(async () => {
   });
   await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
   origin = `http://127.0.0.1:${server.address().port}`;
-  const args = process.env.YAAS_TEST_CHROME_ARGS ? JSON.parse(process.env.YAAS_TEST_CHROME_ARGS) : [];
+  const args = captureBrowserArgs();
   browser = await puppeteer.launch({executablePath: browserPath, headless: true, args, timeout: 30000, protocolTimeout: 30000});
 });
 

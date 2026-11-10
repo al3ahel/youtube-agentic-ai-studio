@@ -235,8 +235,9 @@ def _captured_mail_case(source):
         entry["section"] = {**entry["section"], "narration":
             "Mail armour uses linked rings. Steel plate armour can deflect some blows away from the body."}
     # Relevant fields of the real local qwen3.5:4b response-0001, scene-003.
-    # Only its ID is mapped to this isolated source/timeline fixture. This is
-    # an acceptance regression, not a live inference or rendered approval.
+    # Only its ID is mapped to this isolated source/timeline fixture. Keep the
+    # captured heading verbatim so its material mismatch remains testable.
+    # This is an offline fixture, not live inference or rendered approval.
     row = {"id": plan["scenes"][0]["id"], "template": "explain", "title": "Rings versus solid steel",
         "visual_goal": "Detail the structural difference between mail and plate armor.",
         "composition": "focus", "look": "blueprint", "rhythm": "measured", "palette": "sand",
@@ -250,8 +251,28 @@ def _captured_mail_case(source):
     return plan, sources, {"scenes": [row]}
 
 
-def test_captured_grounded_mail_proposal_ignores_unrendered_legacy_actor_symbols(source):
+def _grounded_title_mail_case(source):
+    """Adapt only the captured heading to isolate the actor/mechanism guards."""
     plan, sources, design = _captured_mail_case(source)
+    design["scenes"][0]["title"] = "Linked rings"
+    return plan, sources, design
+
+
+def test_captured_mail_heading_cannot_borrow_steel_from_section_context(source):
+    plan, sources, design = _captured_mail_case(source)
+    result = applied(plan, sources, design)
+    report = result["ai_status"]["provenance"]
+    record = report["scenes"][0]
+    assert record["status"] == "rejected"
+    assert record["reason"] == "unsupported_source_heading"
+    assert record["changes"] == []
+    assert result["scenes"] == plan["scenes"]
+    assert report["accepted_scene_count"] == report["rendered_scene_count"] == 0
+    assert director.has_model_visual_contribution(result) is False
+
+
+def test_grounded_title_mail_variant_ignores_unrendered_legacy_actor_symbols(source):
+    plan, sources, design = _grounded_title_mail_case(source)
     result, journal, directed = deepcopy(plan), {}, set()
     director._apply_design(result, design, sources, provenance=journal, directed=directed)
     assert journal["scenes"][0]["status"] == "accepted"
@@ -259,11 +280,16 @@ def test_captured_grounded_mail_proposal_ignores_unrendered_legacy_actor_symbols
     assert result["scenes"][0]["shot"] == design["scenes"][0]["shot"]
     assert not directed  # Hidden circuit/building metadata is not directed geometry.
     assert not director.shot_planner.grounding_issues(result["scenes"][0]["mechanism"], sources[result["scenes"][0]["id"]]["narration"])
+    result["ai_status"] = {"status": "planned", "provenance": journal}
+    record = director.refresh_model_provenance(result)["scenes"][0]
+    assert "shot.framing" in record["rendered_nontext_fields"]
+    assert not any(field.startswith(("items.", "staging.")) or field in {"shot.focus", "shot.action"}
+                   for field in record["rendered_fields"])
 
 
 @pytest.mark.parametrize("technique", ["stage2d", "diagram3d", "collage", "footage"])
 def test_clearing_mechanism_or_requesting_unacquired_media_keeps_actor_grounding(source, technique):
-    plan, sources, design = _captured_mail_case(source)
+    plan, sources, design = _grounded_title_mail_case(source)
     design["scenes"][0]["mechanisms"] = []
     design["scenes"][0]["shot"]["technique"] = technique
     result = applied(plan, sources, design)
@@ -273,13 +299,15 @@ def test_clearing_mechanism_or_requesting_unacquired_media_keeps_actor_grounding
 
 
 def test_unsupported_model_mechanism_cannot_replace_the_retained_grounded_mechanism(source):
-    plan, sources, design = _captured_mail_case(source)
+    plan, sources, design = _grounded_title_mail_case(source)
     design["scenes"][0]["mechanisms"][0].update(material="ceramic", action="penetrate")
     result = applied(plan, sources, design)
     record = result["ai_status"]["provenance"]["scenes"][0]
     assert record["status"] == "accepted"
     assert record["rejected_fields"]["mechanism"] == "unsupported_source_mechanism"
     assert result["scenes"][0]["mechanism"] == plan["scenes"][0]["mechanism"]
+    assert not any(change["field"].startswith("mechanism.") for change in record["changes"])
+    assert not any(field.startswith("mechanism.") for field in record["rendered_nontext_fields"])
 
 
 @pytest.mark.parametrize("overridden", [False, True])

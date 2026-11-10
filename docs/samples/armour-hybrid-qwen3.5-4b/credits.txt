@@ -1,0 +1,131 @@
+ARMOUR HYBRID SAMPLE — AUDIO AND PHOTOGRAPH CREDITS
+
+Selected film: video.mp4
+SHA-256: 52f713ec790133b918e1045ddf606ba826f90edcac285365ea029d060731c398
+Duration: 29.5 seconds. Completed 9 November 2026 (UTC).
+
+These credits describe the assets actually used in the selected film. Each
+third-party asset retains its own license and attribution below. The film and
+its diagrams are illustrative; they do not record an authenticated armour test.
+
+MUSIC
+
+Title: Cylinder One — 45-second excerpt
+Creator: Chris Zabriskie
+Collection: Cylinders (2014)
+Source: https://chriszabriskie.com/cylinders/
+License: Creative Commons Attribution 4.0 (CC BY 4.0)
+License URL: https://creativecommons.org/licenses/by/4.0/
+Bundled catalog identity: chris-zabriskie/cylinder-one/45s-v1
+
+"Cylinder One" by Chris Zabriskie, from Cylinders (2014), © 2014 Chris Zabriskie.
+https://chriszabriskie.com/cylinders/ — Licensed under Creative Commons Attribution
+4.0: https://creativecommons.org/licenses/by/4.0/ Excerpted, crossfaded into a
+loop, level reduced and transcoded for this video. No endorsement is implied.
+
+Bundled asset preparation: Excerpted source seconds 12–58; a 1-second linear
+head/tail crossfade makes a 45-second loop. Level reduced by 3 dB; resampled to
+48 kHz stereo and encoded as Ogg Vorbis quality 4.
+Film use: Background bed at planned gain 0.14, mixed with narration and foley,
+mastered with the complete soundtrack and encoded to AAC.
+
+SOUND EFFECT
+
+Title: Metal surface impact
+Creator: Oculus VR, LLC
+Collection: Oculus Audio Pack 01
+Pack: https://developers.meta.com/vr/downloads/package/oculus-audio-pack-1/
+Retained source record:
+https://github.com/facebookincubator/Meta-open-sound/blob/251c0be57d5d1b3242b91f53e0cde62ab1cb42d9/corpora/oculus-audio-pack/index/METL.json
+License: Creative Commons Attribution 4.0 (CC BY 4.0)
+License URL: https://creativecommons.org/licenses/by/4.0/
+Bundled catalog identity: oculus-audio-pack/METLImpt_MetalHitSurface_OS_01/v1
+
+"Oculus Audio Pack 01" by Oculus VR, LLC
+(https://developers.meta.com/vr/downloads/package/oculus-audio-pack-1/), licensed
+under CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/). Files renamed to
+the UCS naming convention; OGG previews transcoded from the original WAVs. Metal
+surface impact OGG copied without further audio changes; level and timing may
+be adjusted in the finished soundtrack.
+
+Bundled asset preparation: No audio changes to the upstream Ogg preview; only
+the local filename changed. Generic metal-contact foley, not an authenticated
+recording of a gunshot or armour test.
+Film use: Planned gain 0.22; cue starts at 17.134458 seconds, bound to the planned
+contact and measured word "hit" in scene 007. This is a schedule binding, not
+a perceptual synchronization assessment. The complete mix is mastered and
+encoded to AAC. No page-turn effect is present in this selected film.
+
+MUSEUM PHOTOGRAPHS
+
+All three retained acquisition records identify these images as public domain /
+The Met Open Access, from The Metropolitan Museum of Art. The original image
+files were acquired on 9 November 2026 and reused in the selected film. Images
+are scaled, framed and arranged into photographic collages.
+
+1. Armor of Emperor Ferdinand I (1503–1564)
+   Object ID: 23944
+   Maker: Kunz Lochner
+   Date: dated 1549
+   Collection: The Metropolitan Museum of Art
+   Credit line: Purchase, Rogers Fund and George D. Pratt Gift, 1933
+   Rights record: Public domain / The Met Open Access
+   Object: https://www.metmuseum.org/art/collection/search/23944
+   Original image: https://images.metmuseum.org/CRDImages/aa/web-large/DP-12881-007.jpg
+   Original image SHA-256:
+   2af9e43ee02ff7d8f89999c8e5c9c59cc80cdf7cf7806b7df8d50e8ffceb5c39
+   Use: Illustrative historical armour, not evidence that this particular suit
+   was shot.
+
+2. Mail Shirt
+   Object ID: 26849
+   Maker: Bechler
+   Date: 15th century
+   Collection: The Metropolitan Museum of Art
+   Credit line: Gift of William H. Riggs, 1913
+   Rights record: Public domain / The Met Open Access
+   Object: https://www.metmuseum.org/art/collection/search/26849
+   Original image: https://images.metmuseum.org/CRDImages/aa/web-large/DT215004.jpg
+   Original image SHA-256:
+   806ed66b71e5673b8ae2271ddf8d288a97f4e994b06844ba85ae1aebf46944a8
+   Use: Illustrative comparison of armour construction.
+
+3. Reinforcing Breastplate
+   Object ID: 22318
+   Maker: Not supplied in the retained acquisition record
+   Date: ca. 1625–30
+   Collection: The Metropolitan Museum of Art
+   Credit line: Gift of William H. Riggs, 1913
+   Rights record: Public domain / The Met Open Access
+   Object: https://www.metmuseum.org/art/collection/search/22318
+   Original image: https://images.metmuseum.org/CRDImages/aa/web-large/sfma14.25.867_142718.jpg
+   Original image SHA-256:
+   e4b46a6db470da9a5d5c8674259653153b7962405a07b9688b4c0ba8feffb7dd
+   Use: Illustrative example of a separate reinforcing plate.
+
+NARRATION, DIRECTION AND GRAPHICS
+
+Narration text: Supplied original five-section, 84-word armour script retained
+in the project's complete input checkpoint; not a newly model-written script.
+Speech synthesis: Microsoft Edge TTS, en-US-AndrewNeural, rate +14%, pitch +0 Hz.
+The complete 29.232-second take is padded by 0.268 seconds to a 29.5-second
+timeline. The five editorial repairs and final continuation reuse that recording.
+Narration SHA-256:
+52173a70871a6fdd37dbd3fbbf439a1412824181bfc80c6f2ab6720c3a144be5
+
+Scene direction, automatic sound choices and image review: Local Ollama
+qwen3.5:4b. ChatGPT contributed reusable code corrections and five editorial
+requests; three editor calls retained accepted model contributions and two used
+supported local controls. See README.md for the limits of these claims.
+
+Animation and assembly: YouTube Agentic AI Studio's Hyperframes HTML/SVG/GSAP
+renderer, Three.js for 3D views, Chromium and FFmpeg. No stock-video clip is used.
+The explanatory drawings are not measurements or physical simulations.
+
+ORIGINAL MOVIE
+
+The completed original film described by these credits has SHA-256:
+52f713ec790133b918e1045ddf606ba826f90edcac285365ea029d060731c398
+
+The movie upload to this repository is pending. Model, source, narration and
+third-party credit records remain those of the completed original film.

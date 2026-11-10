@@ -1,6 +1,30 @@
 # Renderer verification samples
 
-## Narrated local-model armour comparison
+## Hybrid armour sample with local Qwen3.5:4b
+
+[Sample, credits and reproduction](armour-hybrid-qwen3.5-4b/README.md) ·
+[Model and run manifest](armour-hybrid-qwen3.5-4b/sample.json).
+
+**Video upload pending.** The completed film's model and run records are below;
+the movie is not yet included in this repository.
+
+| Property | Selected repaired film |
+| --- | --- |
+| Delivery | 29.5 seconds; 1080 × 1920; 30 fps; 885 frames; H.264/AAC |
+| Actual model | Local Ollama `qwen3.5:4b` for direction, automatic sound and image review |
+| Inputs | Supplied 84-word script, complete Edge Andrew narration at +14%, three museum photographs |
+| Hybrid composition | Two collages, six 2D shots, two 3D views; no stock-video clip |
+| Editorial work | Five scene edits: three with accepted model contributions, two using local controls |
+| Review | Ten valid responses, eight reliable assessments; scenes 003/009 uncertain; scene 010 static-action warning; `needs_review` |
+
+This is an inspected and edited sample, not an autonomous default-generation
+benchmark. See [the repair report](../ARMOUR_APPLIED_REPAIRS.md) for exact
+provenance, remaining limitations and the free/local-model rebuild settings.
+
+## Historical narrated local-model armour comparison
+
+This earlier movie and its evidence remain unchanged. Its results belong to
+that run, not to the newer Hybrid sample above.
 
 [Watch video.mp4](comparable-armour/video.mp4) ·
 [Detailed run and limitations](comparable-armour/README.md) ·

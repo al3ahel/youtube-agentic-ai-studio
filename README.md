@@ -56,22 +56,28 @@ live account is shown. The schedule is paused in this demonstration.*
 
 #### Rendered video samples
 
-**Full narrated armour comparison with local model direction and automatic sound:**
-[Watch the 29.5-second MP4](docs/samples/comparable-armour/video.mp4) ·
-[Run, review and provenance](docs/samples/comparable-armour/README.md) ·
-[Decoded before/after evidence](docs/samples/comparable-armour/before-after.jpg).
+**Hybrid armour sample — actual model: local Ollama `qwen3.5:4b`.**
+[Sample, credits and reproduction](docs/samples/armour-hybrid-qwen3.5-4b/README.md) ·
+[Model and run manifest](docs/samples/armour-hybrid-qwen3.5-4b/sample.json).
 
-The 1080 × 1920, 30 fps H.264/AAC film contains all 84 narrated words and ten
-shots across five narration sections: two collages, six 2D views and two 3D views.
-The actual local `qwen3.5:4b` run retained non-text decisions in seven shots;
-four subsequent scene-editor corrections followed inspection of the encoded
-movie. Edge TTS supplies the complete voice, and the automatic sound director
-selected real licensed music and a metal accent. The package keeps automatic
-vision findings, independent frame observations and technical checks distinct.
-The final strict review returned **rendered, needs review**: one reliable shot
-pass, seven uncertain judgments and two rejected inconsistent replies. The film
-is complete; automatic semantic approval remains unmet. See the sample report
-for the evidence and remaining visual limitations.
+**Video upload pending:** the film, fresh narration and mix are complete; the
+GitHub movie transfer has not completed. The code fixes are merged in
+[PR #2](https://github.com/al3ahel/youtube-agentic-ai-studio/pull/2).
+
+The complete 1080 × 1920, 30 fps film combines a supplied 84-word script, fresh
+Edge Andrew narration, three museum photographs, six 2D shots and two 3D views.
+Local Qwen supplied scene direction, automatic sound choices and image review.
+Five inspection-directed editor repairs followed: three retained accepted model
+contributions and two used supported local controls. This is an edited sample,
+not an untouched default generation. The selected film has **ten valid review
+responses, eight reliable assessments, and `needs_review` status**: scenes 003
+and 009 remain uncertain; the static closing comparison retains an action warning.
+The sample tests Hybrid photos and graphics; it contains no stock footage.
+[What changed, why free-model results differ, and Motion/Hybrid scope](docs/ARMOUR_APPLIED_REPAIRS.md).
+
+The [earlier narrated armour comparison](docs/samples/comparable-armour/README.md)
+remains available with its own movie, model history and unresolved review findings.
+Its findings belong to that earlier run.
 
 **Earlier deterministic scene fixtures with real licensed sound:**
 [Landscape](docs/samples/directed-motion-landscape.mp4) ·

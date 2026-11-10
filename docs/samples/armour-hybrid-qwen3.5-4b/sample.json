@@ -1,0 +1,128 @@
+{
+  "schema_version": 1,
+  "title": "Armour Hybrid sample — local Qwen3.5:4b",
+  "kind": "edited_normal_studio_sample",
+  "completed_at": "2026-11-09T21:37:24.403206+00:00",
+  "video": {
+    "file": "video.mp4",
+    "sha256": "52f713ec790133b918e1045ddf606ba826f90edcac285365ea029d060731c398",
+    "bytes": 7575349,
+    "width": 1080,
+    "height": 1920,
+    "fps": 30,
+    "duration_seconds": 29.5,
+    "decoded_frames": 885,
+    "video_codec": "h264",
+    "audio_codec": "aac",
+    "audio_sample_rate": 48000,
+    "audio_channels": 2
+  },
+  "pipeline": {
+    "kind": "normal_studio_continuation",
+    "status": "completed",
+    "run_id": "b536f61b3e3240f09a94d1c4b0d04bb4",
+    "source_commit": "b7c41b9e6a9cee06be46d8aceb23aca66203d4bd",
+    "canonical_plan_sha256": "9425ecebd75405cbffeecffd3ef40fb2f64ab1f79c912d64e39cc20e60c21a7e",
+    "selected_review_run": "4f0f9f31bac84e8a9c313a8f49d8d04f",
+    "selected_attempt": 0,
+    "reused_corrected_plan_and_narration": true,
+    "new_editor_requests_in_final_continuation": 0,
+    "new_tts_requests_in_final_continuation": 0
+  },
+  "model": {
+    "provider": "ollama",
+    "model": "qwen3.5:4b",
+    "local": true,
+    "digest": "d8b0f5e9760cd1682034f292d7ef72ec46f432149be0df7574bf2d6e92e38c04",
+    "roles": [
+      "scene_direction",
+      "scene_editor",
+      "automatic_sound",
+      "image_review"
+    ]
+  },
+  "inputs": {
+    "script_origin": "supplied",
+    "script_words": 84,
+    "narration_sections": 5,
+    "photo_objects": [
+      23944,
+      26849,
+      22318
+    ],
+    "voice_provider": "edge_tts",
+    "voice": "en-US-AndrewNeural",
+    "voice_rate": "+14%",
+    "voice_pitch": "+0Hz",
+    "speech_duration_seconds": 29.232,
+    "tail_padding_seconds": 0.268,
+    "narration_sha256": "52173a70871a6fdd37dbd3fbbf439a1412824181bfc80c6f2ab6720c3a144be5"
+  },
+  "composition": {
+    "mode": "hybrid",
+    "shots": 10,
+    "collage": 2,
+    "stage2d": 6,
+    "diagram3d": 2,
+    "footage": 0
+  },
+  "editorial_repairs": {
+    "total": 5,
+    "accepted_model_contribution_scenes": [
+      "scene-002",
+      "scene-003",
+      "scene-005"
+    ],
+    "local_control_scenes": [
+      "scene-006",
+      "scene-010"
+    ],
+    "request_source": "ChatGPT inspection-directed editorial requests"
+  },
+  "review": {
+    "status": "needs_review",
+    "passed": null,
+    "semantic_review_complete": false,
+    "valid_final_responses": 10,
+    "reliable_assessments": 8,
+    "uncertain_scenes": [
+      "scene-003",
+      "scene-009"
+    ],
+    "technical_warnings": [
+      {
+        "scene": "scene-010",
+        "code": "action_not_visible"
+      }
+    ],
+    "additional_automatic_scene_repairs": 0,
+    "independently_inspected_sampled_frames": 30
+  },
+  "audio": {
+    "music": "Cylinder One — Chris Zabriskie",
+    "effect": "Metal surface impact — Oculus VR, LLC",
+    "effect_start_seconds": 17.134458,
+    "mixed_audio_sha256": "6fd6661b14fcae69c543d13e5fe4f28738fa7396330fe16ae3081489a5d1dbb5",
+    "decoded_aac_integrated_lufs": -16.95,
+    "decoded_aac_true_peak_dbtp": -1.7,
+    "measurement_scope": "full selected AAC track decoded by FFmpeg; signal analysis, not listening"
+  },
+  "limitations": [
+    "Edited sample with supplied script/photos; not an untouched autonomous default-generation benchmark.",
+    "No stock-video clip or stock-video quality test.",
+    "Sampled frame inspection does not establish continuous playback, physical accuracy or full reference parity.",
+    "Audio signal measurements do not establish perceptual listening or synchronization quality.",
+    "Valid model review structure does not establish that every model description is accurate."
+  ],
+  "credits": "credits.txt",
+  "report": "../../ARMOUR_APPLIED_REPAIRS.md",
+  "publication": {
+    "status": "pending_video_upload",
+    "expected_repository_file": "video.mp4",
+    "original_movie_metadata_preserved": true,
+    "code_merge_pr": "https://github.com/al3ahel/youtube-agentic-ai-studio/pull/2",
+    "code_merge_commit": "76e2945ab38d9854de7cc39855e087d76baef6ea",
+    "code_merged_at": "2026-11-10T02:07:27Z",
+    "remote_blob_readback": "Original and web-encoding blobs both returned 404 on 10 November 2026; no movie upload confirmed."
+  }
+}

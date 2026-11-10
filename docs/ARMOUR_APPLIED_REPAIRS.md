@@ -339,8 +339,33 @@ extra or changed payload file.
 - Frame manifest SHA-256: `150687029c445549886c42dbeb32eb55c5d3f589d9da6c4663597d3672a1a666`.
 - Before/after sheet SHA-256: `843d99168ed59906636853a0db4d428a7cb0d420fb0c7ea5c160fba5cf6c3070`.
 
-Publication remains on `review/armour-continuation-20261109`. The reviewed
-production fixes were published in commits `3d1c390` and `b7c41b9`; this final
-report records the actual completed run. No `main` merge or YouTube publication
-was performed. The downloadable film remains explicitly awaiting full semantic
-approval and a listening assessment.
+The reviewed production fixes were first published on
+`review/armour-continuation-20261109` in commits `3d1c390` and `b7c41b9`;
+this report records the completed run against that source. The user subsequently
+authorized merging the branch and publishing the video sample in the repository.
+[Pull request #2](https://github.com/al3ahel/youtube-agentic-ai-studio/pull/2)
+was merged into `main` at **06:07 Dubai time on 10 November 2026**, in commit
+`76e2945ab38d9854de7cc39855e087d76baef6ea`. The full local validation passed:
+**1,886 Python tests and 80 browser tests, with zero failures or skips**. The
+dependency consistency check also passed. No hosted workflow/check result was
+reported for the reviewed head; these local results do not establish a completed
+hosted Python-version matrix.
+
+## Repository sample and model explanation
+
+The completed film's model details, original run manifest and complete media
+credits are available in [the Qwen armour Hybrid sample](samples/armour-hybrid-qwen3.5-4b/README.md)
+and linked from the repository README. **The movie upload remains pending.**
+Two transfers of the original MP4 and one transfer of a smaller web encoding
+returned no GitHub success response; neither expected movie blob was present on
+readback. No unavailable movie link is presented. The original selected film and
+its source/review hashes above are preserved. The earlier `comparable-armour`
+film and its original findings remain historical evidence.
+
+The sample page explicitly identifies local **Qwen3.5:4b**, **Edge TTS
+AndrewNeural**, the repository renderer and the five editorial requests. It also
+explains why a free-model selector alone does not reproduce the result, how to
+rebuild **Music + Storyboard + Render**, and which improvements are shared with
+Hybrid photographs and video. The current film demonstrates photos and graphics;
+it makes no stock-video quality claim. Publishing or merging the source does
+not change its `needs_review` semantic result or add a listening assessment.

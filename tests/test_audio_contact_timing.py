@@ -212,6 +212,102 @@ def visual_source():
     return event, timeline, script, visual
 
 
+def saved_visual_source(change_clock=None):
+    """Keep the producer's six-decimal clock across an actual JSON round trip."""
+    event, timeline, script, visual = visual_source()
+    if change_clock:
+        change_clock(timeline)
+    normalized, _ = visual_director._normalise_timeline(script, timeline)
+    visual.update(normalized)
+    for scene, section in zip(visual["scenes"], visual["sections"]):
+        scene.update(start=section["start"], duration=section["duration"])
+    visual = json.loads(json.dumps(visual))
+    visual_director.validate_plan(visual)
+    return event, timeline, script, visual
+
+
+def test_saved_six_decimal_storyboard_retains_the_actual_visual_contact(contact_asset):
+    event, timeline, script, visual = saved_visual_source()
+    before = deepcopy((timeline, script, visual))
+    assert visual["sections"][1]["start"] == 15.733333
+    assert timeline["sections"][1]["start"] == 472 / 30
+    assert visual["sections"][1]["start"] != timeline["sections"][1]["start"]
+    assert audio_director._bound_visual_plan(visual, timeline, script, "default") is visual
+    timing = audio_director._event_timing(event, timeline, script, contact_asset, visual)
+    assert timing["timing_source"] == "visual_contact"
+    assert timing["timing_provenance"]["scene_id"] == "shot-1"
+    assert timing["start"] == visual["scenes"][1]["start"] + 1.4
+    assert (timeline, script, visual) == before
+
+
+def test_saved_storyboard_accepts_the_normalizers_final_section_rounding():
+    def final_partial_frame(timeline):
+        timeline["duration"] = 884 / 30
+        timeline["sections"][1]["duration"] = 174 / 30
+        timeline["sections"][2].update(start=646 / 30, duration=238 / 30)
+
+    _, timeline, script, visual = saved_visual_source(final_partial_frame)
+    # Rounding the start and then covering the final partial second can change
+    # the last duration by more than half, but less than one, microsecond.
+    difference = abs(visual["sections"][-1]["duration"] - timeline["sections"][-1]["duration"])
+    assert .0000005 < difference < .000001
+    assert audio_director._bound_visual_plan(visual, timeline, script, "default") is visual
+
+
+def test_saved_storyboard_timing_tolerance_does_not_grow_with_absolute_time():
+    def later_proof(timeline):
+        timeline["duration"] += 6000
+        timeline["sections"][0]["duration"] += 6000
+        for section in timeline["sections"][1:]:
+            section["start"] += 6000
+        for word in timeline["words"]:
+            word["start"] += 6000
+            word["end"] += 6000
+
+    _, timeline, script, visual = saved_visual_source(later_proof)
+    assert audio_director._bound_visual_plan(visual, timeline, script, "default") is visual
+    visual["sections"][1]["start"] += .000002
+    assert audio_director._bound_visual_plan(visual, timeline, script, "default") is None
+
+
+@pytest.mark.parametrize("field,delta", [
+    ("start", .000002), ("duration", -.000002),
+    ("start", 1 / 30), ("duration", -1 / 30),
+])
+def test_saved_storyboard_still_rejects_timing_drift(field, delta):
+    _, timeline, script, visual = saved_visual_source()
+    visual["sections"][1][field] += delta
+    # These remain structurally valid within the renderer's one-frame bounds;
+    # source binding must be substantially stricter than that layout tolerance.
+    visual_director.validate_plan(visual)
+    assert audio_director._bound_visual_plan(visual, timeline, script, "default") is None
+
+
+@pytest.mark.parametrize("field", ["start", "duration"])
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), -float("inf")])
+def test_storyboard_binding_rejects_nonfinite_section_clocks(field, value):
+    _, timeline, script, visual = saved_visual_source()
+    # Even matching invalid values cannot establish a clock binding.
+    visual["sections"][1][field] = timeline["sections"][1][field] = value
+    assert audio_director._bound_visual_plan(visual, timeline, script, "default") is None
+
+
+@pytest.mark.parametrize("change", [
+    lambda v, t, s: v.update(profile_id="0" * 32),
+    lambda v, t, s: t.update(audio_sha256="new-voice", timeline_signature="b" * 64),
+    lambda v, t, s: v.update(script_signature="b" * 64),
+    lambda v, t, s: s["sections"][1].update(narration="A different source sentence."),
+    lambda v, t, s: v["words"][0].update(start=v["words"][0]["start"] + .000002),
+    lambda v, t, s: t["sections"][1].update(id="another-section"),
+    lambda v, t, s: t["sections"].reverse(),
+    lambda v, t, s: t["sections"].pop(),
+])
+def test_saved_storyboard_keeps_source_owner_and_section_identity_guards(change):
+    _, timeline, script, visual = saved_visual_source()
+    change(visual, timeline, script)
+    assert audio_director._bound_visual_plan(visual, timeline, script, "default") is None
+
+
 def test_current_visual_contact_and_measured_word_share_the_actual_animation_beat(contact_asset):
     event, timeline, script, visual = visual_source()
     before = deepcopy(visual)
@@ -327,3 +423,103 @@ def test_unsupported_construction_accent_cannot_consume_budget_before_supported_
     assert plan["omitted_events"][0]["section_id"] == "construction"
     assert plan["omitted_events"][0]["reason"] == "source_contact_not_unique"
     assert "4.6" not in json.dumps(plan["events"])
+
+
+@pytest.fixture
+def competing_effects(tmp_path, monkeypatch):
+    """Two actual bundled proposals and a current, independently timed scene."""
+    event, timeline, script, visual = saved_visual_source()
+    timeline["sections"][0]["duration"] = 4.6
+    overview = {"id": "overview", "start": 4.6, "duration": timeline["sections"][1]["start"] - 4.6,
+                "narration": "Examine the structure of steel armour.", "caption_timing": "estimated"}
+    timeline["sections"].insert(1, overview)
+    script["sections"] = [{"id": row["id"], "narration": row["narration"]} for row in timeline["sections"]]
+    timeline["script_signature"] = script_signature(script)
+    visual["sections"] = deepcopy(timeline["sections"])
+    visual["script_signature"] = timeline["script_signature"]
+    visual["scenes"][0]["duration"] = 4.6
+    transition_scene = deepcopy(visual["scenes"][0])
+    transition_scene.update(id="overview-shot", section_id="overview", start=overview["start"], duration=overview["duration"])
+    visual["scenes"].insert(1, transition_scene)
+    monkeypatch.setattr(config, "SETTINGS_PATH", str(tmp_path / "settings.json"))
+    profile = channels.create_profile("Sparse contact selection", "general", defaults={"sound_intensity": "low"})
+    visual["profile_id"] = profile["id"]
+    visual_director.validate_plan(visual)
+    assert audio_director._bound_visual_plan(visual, timeline, script, profile["id"]) is visual
+    proposed = {"music": {"use": False}, "ambience": {"use": False}, "events": [
+        {"section_id": "overview", "query": "paper turn", "label": "Overview transition", "reason": "Mark the overview."},
+        event]}
+    monkeypatch.setattr(audio_director.gemini_client, "generate", lambda *a, **k: json.dumps(proposed))
+    monkeypatch.setattr(audio_sources, "_response", lambda *a, **k: pytest.fail("Existing recordings need no network search."))
+    return profile, script, timeline, visual, proposed
+
+
+@pytest.mark.skipif(not shutil.which("ffprobe"), reason="Real recording acquisition requires ffprobe")
+def test_later_valid_visual_contact_displaces_an_earlier_page_turn_in_the_normal_director(competing_effects):
+    profile, script, timeline, visual, proposed = competing_effects
+    before = deepcopy((script, timeline, visual, proposed))
+    plan, resolved = audio_director.direct_audio(script, timeline, profile["id"], visual_plan=visual)
+    assert len(plan["events"]) == len(resolved["events"]) == 1
+    cue = plan["events"][0]
+    assert cue["section_id"] == "proof" and cue["timing_source"] == "visual_contact"
+    assert cue["start"] == resolved["events"][0]["start"] == pytest.approx(17.133333, abs=.000001)
+    assert cue["volume"] == resolved["events"][0]["volume"] == .22
+    assert cue["duration"] == resolved["events"][0]["duration"] == pytest.approx(1.132583)
+    assert cue["asset"]["license"] == "CC BY 4.0" and cue["asset"]["provider"] == "bundled"
+    assert hashlib.sha256(Path(resolved["events"][0]["path"]).read_bytes()).hexdigest() == cue["timing_provenance"]["recording_sha256"]
+    assert [(row["section_id"], row["start"], row["reason"]) for row in plan["omitted_events"]] == [
+        ("overview", 4.6, "effect_budget_exhausted")]
+    assert plan["omitted_events"][0]["query"] == "paper turn"
+    assert (script, timeline, visual, proposed) == before
+
+
+@pytest.mark.parametrize("failure", ["noncontact_visual", "stale_visual", "noncontact_recording"])
+@pytest.mark.skipif(not shutil.which("ffprobe"), reason="Real recording acquisition requires ffprobe")
+def test_ineligible_or_unbound_contact_never_displaces_a_valid_transition(competing_effects, failure):
+    profile, script, timeline, visual, proposed = competing_effects
+    if failure == "noncontact_visual":
+        next(row for row in visual["scenes"] if row.get("mechanism"))["mechanism"]["action"] = "reveal"
+    elif failure == "stale_visual":
+        visual["timeline_signature"] = "stale"
+    else:
+        proposed["events"][1].update(query="paper turn", label="Alleged metal impact")
+    plan, resolved = audio_director.direct_audio(script, timeline, profile["id"], visual_plan=visual)
+    assert [row["section_id"] for row in plan["events"]] == ["overview"]
+    assert resolved["events"][0]["start"] == 4.6
+    omitted = next(row for row in plan["omitted_events"] if row["section_id"] == "proof")
+    assert omitted["reason"] == ("unique_aligned_visual_contact_unavailable" if failure == "noncontact_visual"
+                                  else "effect_budget_exhausted")
+
+
+@pytest.mark.skipif(not shutil.which("ffprobe"), reason="Real recording acquisition requires ffprobe")
+def test_too_short_contact_tail_does_not_consume_the_effect_budget(competing_effects, monkeypatch):
+    profile, script, timeline, visual, proposed = competing_effects
+    original = audio_director._event_timing
+
+    def resolve(event, *args, **kwargs):
+        timing = original(event, *args, **kwargs)
+        # Exercise allocation with a resolver result too close to the audio end;
+        # all source/recording eligibility checks above still run normally.
+        if event["section_id"] == "proof" and timing.get("timing_source") == "visual_contact":
+            timing["start"] = timeline["duration"] - .01
+        return timing
+
+    monkeypatch.setattr(audio_director, "_event_timing", resolve)
+    plan, _ = audio_director.direct_audio(script, timeline, profile["id"], visual_plan=visual)
+    assert [row["section_id"] for row in plan["events"]] == ["overview"]
+    assert [(row["section_id"], row["reason"]) for row in plan["omitted_events"]] == [
+        ("proof", "effect_duration_too_short")]
+
+
+@pytest.mark.parametrize("unavailable", [False, True])
+def test_contact_priority_never_inserts_an_unproposed_or_fallback_effect(competing_effects, monkeypatch, unavailable):
+    profile, script, timeline, visual, proposed = competing_effects
+    proposed["events"] = []
+    if unavailable:
+        def no_model(*args, **kwargs):
+            raise RuntimeError("No local model response")
+        monkeypatch.setattr(audio_director.gemini_client, "generate", no_model)
+        monkeypatch.setattr(audio_sources, "acquire_audio", lambda *a, **k: None)
+    plan, resolved = audio_director.direct_audio(script, timeline, profile["id"], visual_plan=visual)
+    assert plan["events"] == resolved["events"] == plan["omitted_events"] == []
+    assert plan["planner"]["status"] == ("local" if unavailable else "ai")

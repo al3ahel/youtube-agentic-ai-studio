@@ -65,6 +65,9 @@
 .world-missing { opacity: .35; stroke-dasharray: 8 8; }
 .world-unrecorded-route { fill: none; stroke: var(--world-secondary); stroke-width: 4; }
 .world-comparison-rule { fill: none; stroke: var(--world-secondary); stroke-width: 3; opacity: .5; }
+.world-pair-emphasis { fill: none; stroke: var(--world-accent); stroke-width: 4; stroke-linecap: round; }
+.world-pair-label .world-label { font-size: 35px; font-weight: 650; }
+.portrait .world-pair-label .world-label { font-size: 44px; }
 .world-shaft { fill: none; stroke: var(--world-background); stroke-width: 20; }
 .world-ore-seam { fill: none; stroke: var(--world-accent); stroke-width: 14; stroke-linejoin: round; stroke-linecap: round; }
 .world-conveyor-line { fill: none; stroke: var(--world-ink); stroke-width: 8; }

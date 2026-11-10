@@ -12,6 +12,58 @@ function storyboardUsesProjectPhotos(data = storyboardData) {
     || !!plan?.scenes?.some(scene => scene.image);
 }
 
+function showPlannerStatus(plan) {
+  const saved = plan?.ai_status, info = saved && typeof saved === "object" && !Array.isArray(saved) ? saved : {};
+  const providers = Array.isArray(info.batch_providers)
+    ? info.batch_providers.filter(row => row && typeof row === "object" && !Array.isArray(row)) : [];
+  const records = providers.length ? providers : [info];
+  const modelName = value => typeof value === "string" && /^[A-Za-z0-9][A-Za-z0-9._:/+@-]{0,159}$/.test(value) ? value : "model not recorded";
+  const providerNames = {ollama: "Ollama", openrouter: "OpenRouter", gemini: "Gemini", groq: "Groq"};
+  const providerName = value => Object.hasOwn(providerNames, value) ? providerNames[value] : "provider not recorded";
+  const identity = row => row.provider === "openrouter"
+    ? `${providerName(row.provider)} · requested ${row.model === "openrouter/free" || row.model_is_router ? "router" : "model"} ${modelName(row.model)} (responding model not recorded)`
+    : `${providerName(row.provider)} · ${modelName(row.model)}`;
+  let headline, detail;
+  if (info.status === "planned") {
+    const replayed = records.filter(row => row.response_origin === "recorded_local_response" || row.new_inference === false).length;
+    headline = replayed === records.length ? "Replayed model decisions" : replayed ? "Model decisions with some replayed responses" : "Recorded model planning";
+    const identities = [...new Set(records.map(identity))];
+    headline += " · " + identities.slice(0, 4).join("; ") + (identities.length > 4 ? "; additional recorded providers" : "");
+    detail = replayed === records.length ? "Saved responses were reused for this planning step; it did not run new scene-planning inference."
+      : replayed ? "This planning record combines new and previously saved responses." : "This is the saved planning record for this storyboard.";
+    const from = [...new Set(records.map(row => row.fallback_from).filter(value => typeof value === "string" && value))];
+    if (from.length) detail += ` A fallback model supplied decisions after ${from.map(providerName).join(" / ")} was unavailable or unusable.`;
+    const accepted = info.provenance?.accepted_scene_count, rejected = info.provenance?.rejected_scene_count;
+    if (Number.isInteger(accepted) && Number.isInteger(rejected) && accepted >= 0 && rejected >= 0 && accepted + rejected <= (plan?.scenes?.length || 0)) {
+      detail += ` ${accepted} scene proposals accepted; ${rejected} rejected.`;
+    }
+  } else if (["fallback", "unavailable", "disabled"].includes(info.status)) {
+    headline = info.status === "fallback" ? "Template fallback" : "Local templates";
+    detail = info.status === "disabled" ? "AI scene planning was off when this storyboard was built."
+      : info.status === "unavailable" ? "No configured planner was available when this storyboard was built."
+      : "The configured planner did not return a usable design, so local animated templates supplied the storyboard.";
+  } else {
+    headline = "Planner not recorded";
+    detail = "This saved storyboard has no planner record. Its existing scene designs are retained.";
+  }
+  if (plan?.last_edit) detail += " Later scene edits are also present.";
+  $("#planner-status").textContent = headline;
+  $("#planner-detail").textContent = detail + " Planning records do not establish visual approval.";
+}
+
+$("#review-planner-settings").onclick = async () => {
+  if (status.running || status.visual_editing || status.uploading) return toast("Wait for the current job before changing model settings.");
+  if (reviewProfileId && activeProfileId !== reviewProfileId) {
+    await activateChannel(reviewProfileId);
+    if (activeProfileId !== reviewProfileId) return;
+  }
+  location.hash = "#settings/models";
+};
+$("#planner-rebuild-options").onclick = () => {
+  const controls = $("#legacy-motion-card");
+  if (!controls.hidden) controls.scrollIntoView({behavior: "smooth", block: "center"});
+};
+
 function selectedSceneTime() {
   const scene = storyboardData?.plan?.scenes?.find(item => String(item.id) === selectedScene);
   return scene ? Number(scene.start) + Math.min(.35, Number(scene.duration) / 4) : null;
@@ -70,6 +122,8 @@ function updateVisualControls(st = status) {
   $("#apply-review-audio").disabled = locked || !storyboardData?.plan;
   $("#apply-review-audio").textContent = reviewRender?.steps?.includes("music") ? "Updating sound design…" : reviewSoundAction();
   $("#review-audio-settings").disabled = locked;
+  $("#review-planner-settings").disabled = locked;
+  $("#planner-rebuild-options").disabled = locked;
   $("#rv-storyboard").setAttribute("aria-busy", String(locked));
   $("#regenerate-scene").textContent = editingScene ? "Updating scene…" : reviewRender ? "Rendering video…" : "Regenerate scene & draft";
   $("#storyboard-status").textContent = reviewRender ? (reviewRender.previewOnly ? "Rendering draft" : "Rendering final")
@@ -174,6 +228,7 @@ async function loadStoryboard(st = status, { data = null, preserveEditor = false
   const scenes = Array.isArray(data.plan?.scenes) ? data.plan.scenes.filter(scene => scene && typeof scene === "object") : [], visible = scenes.length > 0;
   if (st.has_storyboard && !visible) throw new Error("The saved storyboard has no reviewable scenes. Try loading the project again.");
   storyboardData = data;
+  showPlannerStatus(data.plan);
   const brief = data.plan?.creative_brief;
   $("#film-direction").hidden = !brief;
   $("#film-direction").textContent = brief ? [brief.theme, brief.premise, brief.palette ? `Palette: ${brief.palette}.` : ""].filter(item => typeof item === "string").join(" · ") : "";

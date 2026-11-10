@@ -737,9 +737,18 @@ test("studio: real audio imports, previews and selections stay with their channe
   await page.select("#s-sfx_mode", "ambience");
   await page.$eval("#r-sfx_volume", node => { node.value = "12"; node.dispatchEvent(new Event("input", {bubbles: true})); });
   assert.match(await page.$eval("#audio-effect-mode-note", node => node.textContent), /Ambience loops/);
-  const saving = page.waitForResponse(response => new URL(response.url()).pathname === "/api/save-settings");
-  await page.click("#savebar-save");
-  assert.equal((await saving).status(), 200);
+  // The floating Save bar starts below the viewport while its entrance animates.
+  await page.waitForFunction(() => {
+    const bar = document.querySelector("#savebar"), button = document.querySelector("#savebar-save");
+    const r = button.getBoundingClientRect();
+    return bar.classList.contains("show") && !button.disabled && r.top > 0 && r.bottom < innerHeight
+      && Number(getComputedStyle(bar).opacity) > .99;
+  });
+  const [saving] = await Promise.all([
+    page.waitForResponse(response => new URL(response.url()).pathname === "/api/save-settings"),
+    page.click("#savebar-save"),
+  ]);
+  assert.equal(saving.status(), 200);
   await page.waitForFunction(() => !settingsSavePending && !settingsDirty());
   const stored = await (await fetch(`${origin}/api/settings?profile_id=${project.id}`)).json();
   assert.equal(stored.music_track, music.id); assert.equal(stored.sfx_track, effect.id);
@@ -1176,6 +1185,60 @@ test("studio: older Motion, v1 and section-level v2 drafts offer guarded rebuild
     assert.deepEqual(errors, []);
     await page.close();
   }
+});
+
+test("studio: saved planner status distinguishes local decisions, replay, routers and template fallback", {skip: skipped, timeout: 60000}, async () => {
+  const fixture = await openSceneReview(), {page, errors} = fixture;
+  const beforeProfiles = await (await fetch(`${origin}/api/channels`)).json();
+  const before = beforeProfiles.profiles.find(profile => profile.id === fixture.profileId).defaults;
+  const requests = [];
+  page.on("request", request => requests.push(new URL(request.url()).pathname));
+  const update = async (info, expectedHeadline, expectedDetail) => {
+    fixture.plan.ai_status = info;
+    await page.evaluate(() => loadReview({preserveEdits: true}));
+    assert.match(await page.$eval("#planner-status", node => node.textContent), expectedHeadline);
+    assert.match(await page.$eval("#planner-detail", node => node.textContent), expectedDetail);
+  };
+  assert.equal(await page.$eval("#planner-status", node => node.textContent), "Planner not recorded");
+  await update({status: "planned", provider: "ollama", model: "qwen3.5:4b"},
+    /^Recorded model planning · Ollama · qwen3\.5:4b$/, /saved planning record/);
+  await update({status: "planned", provider: "ollama", model: "qwen3.5:4b", new_inference: false,
+    response_origin: "recorded_local_response", provenance: {accepted_scene_count: 1, rejected_scene_count: 1}},
+    /^Replayed model decisions · Ollama · qwen3\.5:4b$/, /did not run new scene-planning inference.*1 scene proposals accepted; 1 rejected/);
+  await update({status: "planned", provider: "ollama", model: "qwen3.5:4b", batch_providers: [
+    {provider: "ollama", model: "qwen3.5:4b", new_inference: false},
+    {provider: "gemini", model: "fixture-model", fallback_from: "openrouter"},
+  ]}, /some replayed responses.*Ollama.*Gemini/, /combines new and previously saved responses.*fallback model.*OpenRouter/);
+  await update({status: "planned", provider: "openrouter", model: "openrouter/free"},
+    /OpenRouter · requested router openrouter\/free \(responding model not recorded\)/, /saved planning record/);
+  for (const status of ["fallback", "unavailable", "disabled"]) {
+    await update({status, reason: "missing_key", detail: "PRIVATE_PROVIDER_ERROR_SHOULD_NOT_APPEAR"},
+      status === "fallback" ? /^Template fallback$/ : /^Local templates$/,
+      status === "disabled" ? /planning was off/ : status === "unavailable" ? /No configured planner was available/ : /local animated templates/);
+    assert.doesNotMatch(await page.$eval(".planner-status", node => node.textContent), /PRIVATE_PROVIDER_ERROR/);
+  }
+  await update({status: "planned", provider: "ollama", model: "<img src=x onerror=alert(1)>"},
+    /Ollama · model not recorded/, /Planning records do not establish visual approval/);
+  assert.equal(await page.$(".planner-status img"), null);
+  assert.equal(await page.$eval("#planner-rebuild-options", node => node.hidden), false);
+  await page.click("#planner-rebuild-options");
+  await page.waitForFunction(() => {
+    const bounds = document.querySelector("#legacy-motion-card").getBoundingClientRect();
+    return bounds.top >= 0 && bounds.bottom <= window.innerHeight;
+  });
+  assert.equal(fixture.runs.length, 0, "Showing existing rebuild controls must not start a job");
+  await page.click("#review-planner-settings");
+  await page.waitForFunction(() => location.hash === "#settings/models" && document.querySelector("#settings-models") === document.activeElement);
+  assert.equal(await page.evaluate(() => settingsProfileId), fixture.profileId);
+  assert.ok(await page.$("#discover-local-models"));
+  assert.equal(requests.includes("/api/local-models"), false, "Navigation must not discover or select a model automatically");
+  assert.equal(requests.includes("/api/save-settings"), false, "Navigation must not save preferences");
+  assert.equal(fixture.runs.length, 0);
+  assert.equal(fixture.regenerations.length, 0);
+  const afterProfiles = await (await fetch(`${origin}/api/channels`)).json();
+  assert.deepEqual(afterProfiles.profiles.find(profile => profile.id === fixture.profileId).defaults, before);
+  assert.deepEqual(errors, []);
+  await page.close();
 });
 
 test("studio: scene regeneration refreshes the preview and automatically renders and seeks the draft", {skip: skipped, timeout: 60000}, async () => {

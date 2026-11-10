@@ -142,8 +142,8 @@ def _positive_match(expression, text):
     return any(_positive_at(text, match.start()) for match in re.finditer(expression, text, re.I))
 
 
-def _scoped_action_matches(action, text, context=""):
-    """Own the excerpt's actions while preserving their original polarity.
+def _scoped_source_matches(expression, text, context="", *, positive=True, physical=False):
+    """Own the excerpt's evidence while preserving its original polarity.
 
     A cut can remove 'did not' or the beginning of a question. Locate a unique
     lexical occurrence in the original section and inspect each owned action's
@@ -151,7 +151,6 @@ def _scoped_action_matches(action, text, context=""):
     later action. Repeated ambiguous excerpts abstain instead of choosing the
     convenient positive occurrence. Unrelated context remains identity context.
     """
-    expression = _ACTION[action]
     evidence, begin, end = text, 0, len(text)
     tokens = re.compile(r"\w+(?:['’]\w+)*")
     normalize = lambda value: value.casefold().replace("’", "'")
@@ -170,12 +169,18 @@ def _scoped_action_matches(action, text, context=""):
     for sentence in re.finditer(r"[^.!?;؟]+[.!?;؟]*", evidence):
         # The whole original sentence supplies punctuation; the owned range
         # ensures its other verbs cannot become this shot's physical action.
-        if action in {"approach", "impact", "deflect", "glance", "penetrate", "absorb"} and sentence.group().rstrip().endswith(("?", "؟")):
+        if physical and sentence.group().rstrip().endswith(("?", "؟")):
             continue
         for match in re.finditer(expression, sentence.group(), re.I):
             absolute_start, absolute_end = sentence.start() + match.start(), sentence.start() + match.end()
-            if begin <= absolute_start and absolute_end <= end and _positive_at(sentence.group(), match.start()):
+            if (begin <= absolute_start and absolute_end <= end
+                    and _positive_at(sentence.group(), match.start()) == positive):
                 yield match
+
+
+def _scoped_action_matches(action, text, context=""):
+    return _scoped_source_matches(_ACTION[action], text, context,
+        physical=action in {"approach", "impact", "deflect", "glance", "penetrate", "absorb"})
 
 
 def _supported_action(action, text, context=""):
@@ -270,6 +275,68 @@ def grounding_issues(mechanism, narration, context=""):
     return issues
 
 
+_TITLE_PHYSICAL_FEATURES = (
+    r"\b(?:gaps?|air[ -]spaces?|cavit(?:y|ies)|voids?)\b",
+    r"\b(?:holes?|perforat\w*)\b",
+    r"\b(?:cracks?|fractur\w*)\b",
+    r"\binsulat\w*\b",
+    r"\bharden\w*\b",
+    r"\bthick(?:en\w*|ness|er)?\b",
+    r"\breinforc\w*\b",
+    r"\b(?:bulletproof|impenetrab\w*|invulnerab\w*)\b",
+)
+
+
+def title_grounding_issues(title, mechanism, narration, context=""):
+    """Do not promote an explanatory view into a physical source claim.
+
+    A diagram can separate layers to expose their relationship without proving
+    that the object has an air gap. Source-supported process headings remain
+    legitimate even when a qualitative reveal cannot demonstrate that process.
+    These bounded lexical checks are not a general fact checker.
+    """
+    if not mechanism:
+        return []
+    validate_mechanism(mechanism)
+    issues = []
+    for expression in _TITLE_PHYSICAL_FEATURES:
+        for claim in re.finditer(expression, title, re.I):
+            supported = _scoped_source_matches(expression, narration, context,
+                positive=_positive_at(title, claim.start()), physical=True)
+            if next(supported, None) is None:
+                issues.append("The heading adds a physical feature or process not supported by this shot's source.")
+    materials = _materials(title)
+    if materials and mechanism["material"] != "mixed" and any(name != mechanism["material"] for name in materials):
+        issues.append("The heading names a material different from the depicted mechanism.")
+    return list(dict.fromkeys(issues))
+
+
+def apply_paired_comparison(scene, narration, context="", *, heading=True):
+    """Stage an explicit two-subject relationship with the existing contract.
+
+    This is a qualitative side-by-side composition, not a predicted contest or
+    a physical simulation. Timings and beats remain owned by the caller.
+    """
+    from agents import object_direction
+    if (scene.get("template") in {"chart", "footage"} or scene.get("image") or scene.get("footage")
+            or scene.get("mechanism", {}).get("action") not in {None, "reveal"}
+            or scene.get("staging", {}).get("action") not in {None, "reveal", "compare"}):
+        return False
+    actors = object_direction.paired_subjects(narration, context)
+    if not actors or any(actor["symbol"] == "concept" for actor in actors):
+        return False
+    scene.update(template="comparison", composition="default", graphics_version=2, items=actors,
+                 staging={"version": 1, "world": "generic", "action": "compare", "camera": "locked"})
+    scene.pop("mechanism", None)
+    if heading:
+        title = actors[0]["label"] + " and " + actors[1]["label"].lower()
+        if len(title) <= 64:
+            scene["title"] = title
+    if scene.get("shot"):
+        scene["shot"].update(technique="stage2d", framing="medium", camera="locked", focus=scene["title"])
+    return True
+
+
 def direct_shot(scene, narration, section, index, count, *, global_index=0, final=False, calm=False):
     if final:
         role = "payoff"
@@ -296,6 +363,18 @@ def direct_shot(scene, narration, section, index, count, *, global_index=0, fina
     scene["shot"] = validate_shot(shot)
     if mechanism:
         scene["mechanism"] = mechanism
+    # An owned relationship cue can need both names even when a cut split the
+    # enclosing sentence. Preserve the hook, then make its explanation/payoff
+    # a different composition and heading instead of another lone subject.
+    if global_index > 0:
+        from agents import object_direction
+        names = object_direction.paired_subjects(narration, str(section.get("narration", "")))
+        if names:
+            title = names[0]["label"] + " and " + names[1]["label"].lower()
+            if len(title) <= 64:
+                scene["title"] = title
+                scene["shot"]["focus"] = title
+        apply_paired_comparison(scene, narration, str(section.get("narration", "")))
     return scene
 
 

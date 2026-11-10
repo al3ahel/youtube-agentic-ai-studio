@@ -5,7 +5,9 @@ import {readFile, stat, mkdir, writeFile} from "node:fs/promises";
 import path from "node:path";
 import {fileURLToPath} from "node:url";
 import {createHash} from "node:crypto";
+import {spawnSync} from "node:child_process";
 import puppeteer from "puppeteer-core";
+import {captureBrowserArgs} from "./browser-capture.mjs";
 
 const fixtureRoot = path.resolve(fileURLToPath(new URL("../.smoke/", import.meta.url)));
 const browserPath = process.env.YAAS_TEST_BROWSER || process.env.HYPERFRAMES_BROWSER_PATH;
@@ -16,6 +18,17 @@ const mime = {".html": "text/html", ".js": "text/javascript", ".css": "text/css"
 
 before(async () => {
   if (skipped) return;
+  const renderer = path.dirname(fixtureRoot);
+  const python = process.env.YAAS_TEST_PYTHON || process.env.PYTHON || "python";
+  // A fresh checkout has no generated v1/v2 projects. Prepare both offline
+  // fixtures explicitly; --prepare-only never invokes the movie renderer.
+  for (const script of ["objects_demo.py", "directed_demo.py"]) {
+    for (const orientation of [[], ["--portrait"]]) {
+      const prepared = spawnSync(python, [path.join(renderer, script), "--prepare-only", ...orientation],
+        {cwd: renderer, encoding: "utf8", timeout: 30000});
+      assert.equal(prepared.status, 0, prepared.error?.message || prepared.stderr || prepared.stdout);
+    }
+  }
   server = createServer(async (request, response) => {
     try {
       const pathname = decodeURIComponent(new URL(request.url, "http://localhost").pathname);
@@ -28,7 +41,7 @@ before(async () => {
   });
   await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
   origin = `http://127.0.0.1:${server.address().port}`;
-  const args = process.env.YAAS_TEST_CHROME_ARGS ? JSON.parse(process.env.YAAS_TEST_CHROME_ARGS) : [];
+  const args = captureBrowserArgs();
   browser = await puppeteer.launch({executablePath: browserPath, headless: true, args, timeout: 20000});
 });
 

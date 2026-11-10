@@ -749,14 +749,22 @@
 
   function buildCollage(context, api) {
     const {scene, stage, index} = context, {portrait, timeline} = api;
-    const descriptors = scene.media_layers || [];
+    // The establishing collage shows the collection; a close/detail shot
+    // selects two larger views with independent, readable identity strips.
+    // A different crop alone should not replay the same three-photo layout.
+    const detail = ["close", "macro"].includes(scene.shot.framing);
+    const descriptors = (scene.media_layers || []).slice(0, detail ? 2 : 4);
     const images = descriptors.map((_, i) => document.getElementById(`layer-${index}-${i}`));
     if (images.length < 2 || images.some(image => !image)) throw new Error("Collage needs at least two different, verified local pictures");
     stage.append(element("div", "collage-paper"), element("div", "collage-rule"));
     const W = portrait ? 1080 : 1920, H = portrait ? 1920 : 1080;
-    const layout = portrait
-      ? [[.055, .25, .78, .32, -7], [.38, .48, .59, .27, 8], [.025, .54, .51, .22, -4], [.57, .27, .39, .2, 5]]
-      : [[.055, .28, .43, .49, -7], [.48, .34, .39, .50, 7], [.30, .55, .27, .27, -3], [.75, .22, .21, .30, 4]];
+    stage.dataset.collageLayout = detail ? "detail-pair" : "collection";
+    const layout = detail
+      ? (portrait ? [[.065, .255, .56, .49, -3], [.59, .35, .35, .36, 4]]
+        : [[.07, .25, .51, .56, -3], [.61, .31, .31, .45, 3]])
+      : (portrait
+        ? [[.055, .25, .78, .32, -7], [.38, .48, .59, .27, 8], [.025, .54, .51, .22, -4], [.57, .27, .39, .2, 5]]
+        : [[.055, .28, .43, .49, -7], [.48, .34, .39, .50, 7], [.30, .55, .27, .27, -3], [.75, .22, .21, .30, 4]]);
     const drawing = svg("svg", {viewBox: `0 0 ${W} ${H}`, class: "collage-stroke", "aria-hidden": "true"}, stage);
     const route = svg("path", {d: portrait ? `M${W * .16} ${H * .55} Q${W * .08} ${H * .74} ${W * .67} ${H * .71}`
       : `M${W * .24} ${H * .77} Q${W * .48} ${H * .95} ${W * .81} ${H * .79}`,
@@ -890,7 +898,12 @@
     context.width = api.portrait ? 1080 : 1920; context.height = api.portrait ? 1920 : 1080;
     Object.assign(stage.style, {left: "0px", top: "0px", width: `${context.width}px`, height: `${context.height}px`});
     const kicker = element("div", "shot-kicker", shot.role === "establish" ? scenePlan.title : "");
-    if (kicker.textContent.length > 58 || kicker.textContent === scene.title) kicker.textContent = "";
+    const titleWords = text => new Set(String(text).normalize("NFKC").toLocaleLowerCase().match(/[\p{L}\p{N}]+/gu) || []);
+    const filmWords = titleWords(kicker.textContent), headingWords = titleWords(scene.title);
+    const sharedWords = [...filmWords].filter(word => headingWords.has(word)).length;
+    const repeatsHeading = Math.min(filmWords.size, headingWords.size) >= 3
+      && sharedWords / Math.max(filmWords.size, headingWords.size) >= .8;
+    if (kicker.textContent.length > 58 || kicker.textContent === scene.title || repeatsHeading) kicker.textContent = "";
     header.prepend(kicker);
     if (shot.technique === "diagram3d") {
       if (!scene.mechanism) throw new Error("A 3D shot needs an explicit, source-grounded mechanism");

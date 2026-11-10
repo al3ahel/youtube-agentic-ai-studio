@@ -9,6 +9,9 @@ The changes apply to the normal planner, scene editor, renderer and encoded
 review worker. A sample's current acceptance status belongs in its saved review
 report; the presence of these features does not approve an individual film.
 
+The subsequent [opening, ending and review-evidence continuation](ARMOUR_CONTINUATION_REPORT.md)
+records the next editorial pass and the remaining narration/sound approval.
+
 ## What changes in the pictures
 
 | Previous failure | Updated behavior |
@@ -97,7 +100,7 @@ musical fit.
 | --- | --- | --- | --- |
 | Normal comparison | Records narration through the configured voice service and runs normal automatic sound design. | Uses the configured model route, renderer and encoded review. | Completion requires all normal comparison gates. |
 | Resume an existing run or restored checkpoint | Reuses matching verified recordings and assets; automatic sound runs again. | Normal direction and review make fresh requests unless visual-response replay is explicitly selected. | Reuse is recorded separately from new inference. |
-| Continue from a published movie | Preserves that movie's entire existing narration and mixed soundtrack. | Makes fresh local Ollama planning and review requests through the production APIs. | Visual progress can be evaluated, while fresh narration and sound remain pending. |
+| Continue from a published movie | Preserves that movie's entire existing narration and mixed soundtrack. | Makes fresh local Ollama planning and review requests through the production APIs. | This visual-only workflow does not regenerate narration or mix. The separately authorized fresh audio is complete; see [the current armour follow-up](ARMOUR_APPLIED_REPAIRS.md). |
 
 ### Normal complete comparison
 
@@ -203,8 +206,10 @@ already be installed.
 
 The retained soundtrack includes its original effect timings and musical
 choices. This workflow cannot demonstrate a newly synchronized contact accent,
-new music selection or new mastering. **Fresh narration and fresh automatic
-sound remain pending**, including when the new visual review passes.
+new music selection or new mastering. This workflow does not regenerate narration
+or sound, even when its new visual review passes. The separately authorized
+fresh narration and automatic mix are complete; their actual continuation and
+remaining review limitations are recorded in [the current armour follow-up](ARMOUR_APPLIED_REPAIRS.md).
 
 ### Read the saved result
 

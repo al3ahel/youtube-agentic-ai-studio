@@ -132,6 +132,115 @@ def _source_text(narration):
     return re.sub(r"\b(?:without|not about|unrelated to|no mention of|excluding)\b[^.!?;]*", "", str(narration), flags=re.I)
 
 
+def paired_subjects(narration, context=""):
+    """Recover two explicitly related names without importing another action.
+
+    A measured cut can split ``Armour and | firearms evolved together``.
+    Only a unique lexical match to the original enclosing clause may supply
+    the missing name, and the relationship cue must belong to this shot. The
+    returned labels are identity evidence; surrounding verbs are never action
+    evidence. Ambiguous excerpts and pairs in another subject's clause abstain.
+    """
+    tokens = re.compile(r"\w+(?:['’]\w+)*")
+    normalise = lambda value: value.casefold().replace("’", "'")
+    owned = [normalise(value) for value in tokens.findall(str(narration))]
+    original = list(tokens.finditer(str(context)))
+    source_tokens = [normalise(match.group()) for match in original]
+    source = str(narration)
+    begin, end = 0, len(source)
+    if owned and source_tokens:
+        positions = [index for index in range(len(source_tokens) - len(owned) + 1)
+                     if source_tokens[index:index + len(owned)] == owned]
+        if len(positions) != 1:
+            return []
+        index = positions[0]
+        source = str(context)
+        begin, end = original[index].start(), original[index + len(owned) - 1].end()
+    if not owned:
+        return []
+    relationship = re.compile(r"\b(?:depend\w*\s+on|together|both|each\s+other|compar\w*|versus)\b", re.I)
+    # These cues cannot reach through a second clause merely because its
+    # sentence happens to contain two catalogue nouns. Keep source offsets so
+    # the accepted relationship still belongs to the measured shot excerpt.
+    boundaries = list(re.finditer(r"[.!?؟;]+|\b(?:while|whereas)\b", source, re.I))
+    spans = []
+    left = 0
+    for boundary in boundaries:
+        spans.append((left, boundary.start()))
+        left = boundary.end()
+    spans.append((left, len(source)))
+
+    # A small subject-preserving predicate can connect a coordinated pair to
+    # its cue (including "were connected, then evolved together"). Unknown
+    # intervening nouns, new subjects and conjunctions abstain; this is not a
+    # general grammar parser and must not infer who an arbitrary verb concerns.
+    predicate_words = re.compile(
+        r"(?:is|are|was|were|be|been|being|has|have|had|can|could|will|would|may|might|must|should|"
+        r"also|still|then|later|often|always|sometimes|gradually|slowly|rapidly|already|now|with|alongside|"
+        r"evolv(?:e|es|ed|ing)|develop(?:s|ed|ing)?|work(?:s|ed|ing)?|chang(?:e|es|ed|ing)|"
+        r"grow|grows|grew|grown|interact(?:s|ed|ing)?|coexist(?:s|ed|ing)?|"
+        r"display(?:s|ed|ing)?|show|shows|showed|shown|connect(?:s|ed|ing)?|"
+        r"compar(?:e|es|ed|ing)|mov(?:e|es|ed|ing)|come|comes|came|put)", re.I)
+
+    def linked_cue(first, second, cue, text):
+        if first[0] <= cue.start() < second[1]:
+            return cue.group().casefold() == "versus"
+        if cue.end() <= first[0]:
+            return (re.fullmatch(r"both|compar\w*", cue.group(), re.I) is not None
+                    and re.fullmatch(r"\s*(?:the\s+)?", text[cue.end():first[0]], re.I) is not None)
+        if cue.start() < second[1]:
+            return False
+        bridge = text[second[1]:cue.start()]
+        if re.search(r"[^\w\s,]|,(?!\s*then\b)", bridge, re.I):
+            return False
+        words = tokens.findall(bridge)
+        return len(words) <= 12 and all(predicate_words.fullmatch(word) for word in words)
+
+    candidates = []
+    for offset, limit in spans:
+        text = source[offset:limit]
+        owned_cues = [cue for cue in relationship.finditer(text) if begin <= offset + cue.start() < end]
+        if not owned_cues:
+            continue
+        if re.search(r"\b(?:without|not\s+about|unrelated\s+to|no\s+mention\s+of|excluding)\b", text, re.I):
+            continue
+        if re.search(r"\b(?:not|never|cannot|can't|doesn't|don't|didn't|no)\b[^.!?;]{0,24}\b(?:depend|together|both|compar)", text, re.I):
+            continue
+        # Dependency subjects may be abstract (for example thickness/range).
+        # Keep their exact short names instead of inventing catalogue objects.
+        dependency = re.search(r"\bdepend\w*\s+on\s+(?:the\s+)?(.+?)\s+and\s+(?:the\s+)?(.+?)(?:[.;!?؟]|$)", text, re.I)
+        if dependency and any(cue.start() == dependency.start() for cue in owned_cues):
+            names = [" ".join(value.split()).strip(" ,:;.!?؟") for value in dependency.groups()]
+            if all(1 <= len(name.split()) <= 4 and len(name) <= 48
+                   and not re.search(r"\b(?:not|no|never|without|if|whether|when|because|can|could|would|should|is|are|was|were|and|or|but|then)\b", name, re.I)
+                   for name in names):
+                candidates.append(names)
+        # Otherwise accept only coordinated literal catalogue names. The
+        # relation may span a cut, but a distant incidental noun is not cast.
+        hits = []
+        for symbol, expression in _LITERAL_LABELS.items():
+            for match in re.finditer(r"\b(?:" + expression + r")\b", text, re.I):
+                if symbol_supported(symbol, text):
+                    hits.append((match.start(), match.end(), match.group()))
+        hits.sort(key=lambda row: (row[0], -(row[1] - row[0])))
+        unique = []
+        for hit in hits:
+            if not unique or hit[0] >= unique[-1][1]:
+                unique.append(hit)
+        for first, second in zip(unique, unique[1:]):
+            if (re.fullmatch(r"\s+(?:and|versus)\s+(?:the\s+)?", text[first[1]:second[0]], re.I)
+                    and any(linked_cue(first, second, cue, text) for cue in owned_cues)):
+                candidates.append([first[2], second[2]])
+    unique_pairs = {tuple(name.casefold() for name in names): names for names in candidates}
+    if len(unique_pairs) != 1:
+        return []
+    names = next(iter(unique_pairs.values()))
+    if names[0].casefold() == names[1].casefold():
+        return []
+    return [{"label": name[0].upper() + name[1:], "symbol": symbol_for_item(name, source),
+             "role": "subject" if index == 0 else "support"} for index, name in enumerate(names)]
+
+
 def symbol_supported(symbol, narration, *, label=None):
     if symbol == "concept":
         # Only a complete literal label makes this a substitution. Do not turn
@@ -155,13 +264,101 @@ def symbol_supported(symbol, narration, *, label=None):
     return bool(expression and re.search(expression, source, re.I))
 
 
-def grounding_issues(scene, narration):
+_GENERAL_ACTOR_NAMES = {
+    "armour": "armour armor", "firearm": "firearm gun", "battery": "battery",
+    "solar": "solar panel", "circuit": "circuit", "network": "network",
+    "plant": "plant", "water": "water", "building": "building",
+    "people": "people human", "document": "document record", "mining": "mining mine",
+    "census": "census", "census-gap": "census", "trade": "trade cargo",
+    "orbit": "orbit", "conflict": "conflict",
+}
+# Literal features contradicted by the bounded catalogue drawings. Source
+# support cannot turn a solid torso plate into mail, or a stocked long gun
+# into a handgun/projectile. Material mechanisms have a separate geometry path.
+_ACTOR_DEPICTION_CONFLICTS = {
+    "armour": r"\b(?:mail|chainmail|rings?|helmets?|shields?|gauntlets?)\b",
+    "firearm": r"\b(?:pistols?|handguns?|revolvers?|bullets?|projectiles?|cartridges?|ammunition)\b",
+    "solar": r"\b(?:windmills?|turbines?)\b",
+}
+_LABEL_GRAMMAR = {"a", "an", "the", "of", "and", "or", "for", "to", "in", "on", "with",
+                  "this", "that", "these", "those", "schematic", "illustrative"}
+
+
+def _label_word_forms(text):
+    """Small lexical equivalences, not a claim that paraphrases are facts."""
+    forms = set()
+    for word in re.findall(r"[^\W\d_]+", str(text).casefold()):
+        if word in _LABEL_GRAMMAR:
+            continue
+        word = word.replace("armor", "armour")
+        forms.add(word)
+        if word in {"breastplate", "breastplates"}:
+            forms.add("plate")
+        if word.endswith("ies") and len(word) > 4:
+            forms.add(word[:-3] + "y")
+        for suffix in ("ing", "ed", "es", "s"):
+            if word.endswith(suffix) and len(word) > len(suffix) + 2:
+                stem = word[:-len(suffix)]
+                forms.update((stem, stem + "e"))
+        for stem in ("reinforc", "harden", "thicken"):
+            if word.startswith(stem):
+                forms.add(stem)
+    return forms
+
+
+def label_grounding_issues(scene, narration, *, context="", visible_labels=None):
+    """Check generated text that the chosen renderer actually displays.
+
+    Ordinary actors need both literal depiction and source-supported names;
+    a supported broad symbol does not license arbitrary subtypes/adjectives.
+    A caller may instead supply visible material-part labels, whose dormant
+    actor symbols are not drawn. Media identities stay with the trusted asset
+    adapter, and abstract concepts retain the existing source policy.
+    """
+    if scene.get("image") or scene.get("footage") or scene.get("template") in {"chart", "footage"}:
+        return []
+    source = _source_text(narration) + " " + " ".join(
+        item["label"] for item in paired_subjects(narration, context))
+    material = scene.get("mechanism") or {}
+    if material and visible_labels is None:
+        return []
+    available = _label_word_forms(source)
+    items = scene.get("items", []) if visible_labels is None else [{"label": value} for value in visible_labels]
+    issues = []
+    for item in items:
+        label, symbol = str(item.get("label", "")), item.get("symbol")
+        if visible_labels is None:
+            if symbol in {None, "concept"}:
+                continue
+            direct = _subject(label)
+            own_name = dict(_RULES).get(symbol, r"(?!)")
+            family = {"census", "census-gap"} if symbol in {"census", "census-gap"} else {symbol}
+            if ((direct != "concept" and direct not in family and not re.search(own_name, label, re.I))
+                    or re.search(_ACTOR_DEPICTION_CONFLICTS.get(symbol, r"(?!)"), label, re.I)):
+                issues.append("The actor label does not match the literal catalogue depiction.")
+            allowed = available | _label_word_forms(_GENERAL_ACTOR_NAMES.get(symbol, ""))
+        else:
+            # These words describe positions/parts in an explanatory view, not
+            # physical performance. In particular, an exploded view adds no
+            # source evidence for a real gap, cavity, insulation or damage.
+            allowed = available | _label_word_forms(
+                material.get("material", "") + " inner outer front back upper lower exposed section surface layer part")
+        if any(not (_label_word_forms(word) & allowed)
+               for word in re.findall(r"[^\W\d_]+", label) if word.casefold() not in _LABEL_GRAMMAR):
+            issues.append("The displayed label adds a name or qualifier not supported by this shot's source.")
+    return list(dict.fromkeys(issues))
+
+
+def grounding_issues(scene, narration, *, context=""):
     """Check depicted actors/actions against this scene, never the whole film.
 
     These lexical checks catch unsupported subjects and mechanisms. They do not
     establish that a claim is true, or pretend to be a perceptual review.
     """
     source = _source_text(narration)
+    # The enclosing sentence contributes only the two explicit subject names;
+    # world/action evidence remains the owned narration excerpt below.
+    actor_source = source + " " + " ".join(item["label"] for item in paired_subjects(narration, context))
     issues = []
     staging = validate_staging(scene.get("staging"))
     world, action = staging["world"], staging["action"]
@@ -173,7 +370,7 @@ def grounding_issues(scene, narration):
     if action in _ACTION_EVIDENCE and not qualitative_comparison and not re.search(_ACTION_EVIDENCE[action], source, re.I):
         issues.append("The selected action is not supported by this scene's narration.")
     for item in scene.get("items", []):
-        if not symbol_supported(item.get("symbol"), source, label=item.get("label")):
+        if not symbol_supported(item.get("symbol"), actor_source, label=item.get("label")):
             issues.append("A named catalogue subject needs its supported actor instead of an abstract concept."
                           if item.get("symbol") == "concept" else
                           "A depicted actor is not supported by this scene's narration.")

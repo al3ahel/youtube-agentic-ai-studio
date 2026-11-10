@@ -430,7 +430,8 @@ def _offline_scenes(script: dict, plan: dict) -> tuple[list[dict], dict[str, dic
                                          final=len(scenes) == sum(counts) - 1, calm=calm)
             scene["beats"], scene["beat_timing"] = _beats(scene, plan["words"], plan["fps"], plan["captions"],
                                                         narration=narration, context=original.get("narration", ""))
-            sources[scene["id"]] = {"section": original, "narration": narration}
+            sources[scene["id"]] = {"section": original, "narration": narration,
+                                    "preceding_title": scenes[-1]["title"] if scenes else ""}
             scenes.append(scene)
     return scenes, sources
 
@@ -568,6 +569,11 @@ def _request_design_impl(scenes: list[dict], sources: dict, instructions: str = 
             "current_composition": scene.get("composition", "default"),
             "provided_chart_data": _chart_data(source["section"]),
         })
+        subjects = object_direction.paired_subjects(source["narration"], source["section"].get("narration", ""))
+        if subjects:
+            source_scenes[-1]["source_subjects"] = subjects
+        if source.get("preceding_title"):
+            source_scenes[-1]["preceding_title"] = source["preceding_title"]
         if scene.get("shot"):
             if instructions:
                 # An edit needs the existing choices so unrelated decisions
@@ -594,9 +600,15 @@ def _request_design_impl(scenes: list[dict], sources: dict, instructions: str = 
         "Each graphics scene needs staging (version 1, world, action, camera) and 1-4 actors in items, "
         "each with a short 2-6 word object-name label, symbol and role: exactly one subject, others support or context only when the narration actually supports them. "
         "Full spoken sentences belong in captions, not actor labels. "
+        "source_subjects, when present, names two explicitly related subjects from the same original sentence; a narration cut may have separated their names. "
+        "These are identity evidence only: keep actions and outcomes grounded in the current narration excerpt. A qualitative comparison may show both subjects together. "
+        "Give a later shot a narrower source-supported heading instead of repeating preceding_title; a payoff should retain the two subjects of an explicit relationship. "
         "Symbol choices: " + ", ".join(object_direction.SYMBOLS) + ". "
         "Symbols name literal depicted subjects, not visual analogies: a circuit cannot stand for linked mail rings, "
         "a building cannot stand for a breastplate, and census-gap cannot stand for a limit. "
+        "Labels must also match that depiction and the current source: do not add unsupported subtypes or qualifiers. "
+        "The armour actor is a solid torso plate, not mail rings or a helmet; the firearm actor is a stocked long gun, not a pistol or projectile. "
+        "A source-supported material mechanism can show mail rings instead. Keep broader source names when the source names only a broad class. "
         "Use concept for a source-supported subject outside the actor catalogue. "
         "A human response to flooding needs people or supported technology as its subject; water is context. "
         "Never invent floating homes, dams, machines or events merely to fill a frame. A concept actor is an explicitly abstract representation. "
@@ -619,6 +631,9 @@ def _request_design_impl(scenes: list[dict], sources: dict, instructions: str = 
         "diagram3d requires a grounded material mechanism; do not invent physical outcomes. Good stage2d is sufficient for other subjects. "
         "Material shots draw their named mechanism directly; use generic/reveal staging and concept actors for their part labels, "
         "rather than inventing unrelated actors. Choose a view that makes the material or action readable. "
+        "An exploded layer view is an explanatory convention, not evidence of a physical gap, cavity, insulation or damage. "
+        "Do not put those claims in headings or part labels unless this shot's narration actually supplies them. "
+        "Retain source-supported material/process names such as steel, hardening or reinforcement without inventing measured performance. "
         "Do not repeat the same subject/action throughout the film. Name the scene's specific intent in visual_goal. "
         "Match composition to the mechanism or relationship in the narration. "
         "Choose one visual_direction (version 1, look, rhythm, rationale) for the film. "
@@ -1094,13 +1109,28 @@ def _apply_design(plan: dict, design: dict, sources: dict, *, directed: set[str]
                 plan["warnings"].append(f"{scene['id']} kept local scene direction: " + " ".join(issues))
                 continue
         elif candidate.get("graphics_version") == 2 and not candidate.get("image") and not candidate.get("footage"):
-            issues = object_direction.grounding_issues(candidate, source["narration"])
+            issues = object_direction.grounding_issues(candidate, source["narration"], context=source["section"].get("narration", ""))
             if issues:
                 journal["reason"] = "unsupported_actors_or_action"
                 plan["warnings"].append(f"{scene['id']} kept local scene direction: " + " ".join(issues))
                 continue
-            if directed is not None and model_staging:
-                directed.add(scene["id"])
+        visible_labels = (render_decisions(candidate, plan).get("items.labels")
+                          if candidate.get("mechanism") else None)
+        issues = object_direction.label_grounding_issues(candidate, source["narration"],
+            context=source["section"].get("narration", ""), visible_labels=visible_labels)
+        if issues:
+            journal["reason"] = "unsupported_displayed_labels"
+            plan["warnings"].append(f"{scene['id']} kept local scene direction: " + " ".join(issues))
+            continue
+        issues = shot_planner.title_grounding_issues(candidate["title"], candidate.get("mechanism"),
+            source["narration"], source["section"].get("narration", ""))
+        if issues:
+            journal["reason"] = "unsupported_source_heading"
+            plan["warnings"].append(f"{scene['id']} kept local scene direction: " + " ".join(issues))
+            continue
+        if (directed is not None and model_staging and not candidate.get("mechanism")
+                and not candidate.get("image") and not candidate.get("footage") and candidate["template"] != "chart"):
+            directed.add(scene["id"])
         candidate["beats"], candidate["beat_timing"] = _beats(candidate, plan.get("words", []), plan["fps"], plan.get("captions", []),
                                                            narration=source["narration"], context=source["section"].get("narration", ""))
         after_fields = _decision_fields(candidate, plan.get("visual_direction"), plan.get("creative_brief"))
@@ -1144,7 +1174,8 @@ def _direction_report(plan, sources, directed=()):
                 issues.append("This shot repeats the preceding material, action and framing; review whether it explains a different idea.")
             previous = signature
         elif scene.get("graphics_version") == 2:
-            issues.extend(object_direction.grounding_issues(scene, source))
+            issues.extend(object_direction.grounding_issues(scene, source,
+                          context=sources.get(scene["id"], {}).get("section", {}).get("narration", "")))
             if all(item.get("symbol") == "concept" for item in scene["items"]):
                 issues.append("This scene remains abstract; its actors do not depict a concrete narrated subject.")
             signature = (scene["staging"]["world"], scene["staging"]["action"],
@@ -1393,6 +1424,13 @@ def _attach_images(plan: dict, image_map: dict | None, output_dir) -> None:
     for scene in plan["scenes"]:
         choices = images.get(scene["section_id"], [])
         if not choices or scene["template"] in {"chart", "footage"}:
+            continue
+        if (plan.get("mode") == "hybrid" and scene.get("shot", {}).get("role") in {"interaction", "payoff"}
+                and scene["template"] == "comparison" and scene.get("staging", {}).get("action") == "compare"
+                and len(scene["items"]) == 2 and all(item.get("symbol") not in {None, "concept"} for item in scene["items"])):
+            # A directed two-subject explanation should not be overwritten by
+            # the same section collage used to establish the topic. Explicit
+            # Animate these photos mode still keeps its picture-first contract.
             continue
         index = used.get(scene["section_id"], 0)
         scene["image"] = copy.deepcopy(choices[index % len(choices)])
@@ -1793,9 +1831,10 @@ def _visible_design(scene: dict, direction=None, brief=None, *, film_title="") -
                            "poster": "uppercase"}.get(style["look"], "sans")
         visible["rhythm"] = style["rhythm"]
         if collage_shot:
+            layer_limit = 2 if scene["shot"]["framing"] in {"close", "macro"} else 4
             visible["media_layers"] = [(layer.get("path"),
                 " ".join(((layer.get("credit") or "").strip() or (layer.get("source") or "").strip()).split()).split(" · ", 1)[0][:120])
-                for layer in scene.get("media_layers", [])]
+                for layer in scene.get("media_layers", [])[:layer_limit]]
         return ("collage-shot" if collage_shot else "material-shot", visible)
     graphics = (scene.get("graphics_version"), scene.get("staging"),
                 [(item.get("symbol"), item.get("role")) for item in scene["items"]]) if scene.get("graphics_version") and not media and scene["template"] != "chart" else None
@@ -1813,6 +1852,32 @@ def _visible_design(scene: dict, direction=None, brief=None, *, film_title="") -
     return (template, scene["title"], items, visible_media, graphics,
             composition, style["look"], style["rhythm"], style["palette"],
             shot, scene.get("mechanism"), layers)
+
+
+def _explicit_heading(instructions):
+    """A quoted heading is a bounded user edit, not a model correction.
+
+    Remove its text from the direction parser: a heading containing 'wide' or
+    'poster' must not also change the camera or style. Keep the supplied case.
+    """
+    pattern = re.compile(
+        r'\b(?:(?:set|change|use)\s+(?:the\s+)?(?:scene\s+)?)?(?:title|heading)\s*'
+        r'(?:(?:to|as)\s*|[:=]\s*)?(?:"(?P<plain>[^"\r\n]*)"|“(?P<curly>[^”\r\n]*)”)', re.I)
+    chosen = []
+    for match in pattern.finditer(instructions):
+        prefix = re.split(r"[.;!?\n]", instructions[:match.start()])[-1]
+        command = prefix + re.split(r'["“]', match.group(), maxsplit=1)[0]
+        if not re.search(r"\b(?:title|heading)\b", art_direction.positive_instruction_text(command)):
+            continue
+        heading = " ".join((match.group("plain") or match.group("curly") or "").split())
+        shot_planner._line(heading, 64)
+        chosen.append((match, heading))
+    if len(chosen) > 1:
+        raise ValueError("Choose one quoted scene heading per edit.")
+    if not chosen:
+        return None, instructions
+    match, heading = chosen[0]
+    return heading, instructions[:match.start()] + " " + instructions[match.end():]
 
 
 def regenerate_scene(plan: dict, scene_id: str, script: dict, instructions: str = "", *,
@@ -1834,9 +1899,10 @@ def regenerate_scene(plan: dict, scene_id: str, script: dict, instructions: str 
     # Photo removal is an explicitly supported negative request. Protect that
     # phrase before filtering negation, so 'do not remove photos' is still left
     # untouched rather than accidentally removing the saved image.
+    heading_edit, direction_instructions = _explicit_heading(instructions)
     local_instructions = re.sub(
         r"\b(?:no\s+|remove\s+(?:the\s+)?)(?:photos?|pictures?|images?)\b",
-        " omit project photos ", instructions, flags=re.IGNORECASE)
+        " omit project photos ", direction_instructions, flags=re.IGNORECASE)
     local_instructions = art_direction.positive_instruction_text(local_instructions)
     graphics_only = bool(re.search(r"\bgraphics[\s-]+only\b", local_instructions))
     object_graphics = bool(re.search(r"\b(?:animated\s+(?:objects?|graphics?|illustrations?|diagrams?)|object\s+(?:graphics?|animation)|illustrated\s+(?:scene|objects?|diagram))\b", local_instructions))
@@ -1896,7 +1962,8 @@ def regenerate_scene(plan: dict, scene_id: str, script: dict, instructions: str 
     elif not instructions.strip() and not replace_image and not original.get("footage") and original["template"] != "chart":
         _set_scene_template(replacement, "text" if original["template"] == "explain" else "explain", source_section)
     simpler = bool(re.search(r"\b(shorter|less text|simpler|concise)\b", local_instructions))
-    sources = {original["id"]: {"section": source_section, "narration": narration}}
+    sources = {original["id"]: {"section": source_section, "narration": narration,
+                               "preceding_title": result["scenes"][index - 1]["title"] if index else ""}}
     ai_applied = False
     directed = set()
     provider_info = {}
@@ -1922,7 +1989,7 @@ def regenerate_scene(plan: dict, scene_id: str, script: dict, instructions: str 
                 result["warnings"].append("The selected free OpenRouter planner did not produce a usable design; a configured free text model supplied this scene edit.")
         except (RuntimeError, openrouter.OpenRouterError, ValueError, KeyError, TypeError):
             result.setdefault("warnings", []).append("Scene regeneration used local templates because visual AI was unavailable.")
-    supported = preference or simpler or remove_photos or graphics_only or object_graphics or replace_image or look or rhythm or composition or palette or staging_edit or footage_requested or shot_edit
+    supported = preference or simpler or remove_photos or graphics_only or object_graphics or replace_image or look or rhythm or composition or palette or staging_edit or footage_requested or shot_edit or heading_edit is not None
     if instructions.strip() and not ai_applied and not supported:
         raise ValueError("No available AI could interpret this edit, so the storyboard was kept. Choose a local/free model in Settings, or request a supported action, camera, palette, layout, less text, or removal of photos.")
     # A supported user layout takes precedence over an optional model's choice.
@@ -1938,6 +2005,8 @@ def regenerate_scene(plan: dict, scene_id: str, script: dict, instructions: str 
         replacement["rhythm"] = "calm" if getattr(config, "CHANNEL_PRESET", "general") == "asmr" else rhythm
     if palette:
         replacement["palette"] = palette
+    if heading_edit is not None:
+        replacement["title"] = heading_edit
     if simpler:
         replacement["items"] = [
             {**item, "label": _text(" ".join(item["label"].split()[:5]), 48)}
@@ -1978,9 +2047,12 @@ def regenerate_scene(plan: dict, scene_id: str, script: dict, instructions: str 
             if replacement.get("graphics_version") != 2:
                 object_direction.apply_staging(replacement, narration, calm=calm)
             replacement["staging"] = staging_edit
+        if preference == "comparison":
+            shot_planner.apply_paired_comparison(replacement, narration, source_section.get("narration", ""),
+                                                heading=not ai_applied and heading_edit is None)
         if replacement.get("graphics_version") == 2 and preference in {"flow", "comparison"} and replacement["staging"]["world"] == "generic":
             candidate = {**replacement, "staging": {**replacement["staging"], "action": "connect" if preference == "flow" else "compare"}}
-            if not object_direction.grounding_issues(candidate, narration):
+            if not object_direction.grounding_issues(candidate, narration, context=source_section.get("narration", "")):
                 replacement["staging"] = candidate["staging"]
         if not instructions.strip() and not replace_image and not original.get("image") and replacement.get("graphics_version") == 2:
             replacement["staging"]["camera"] = "wide" if original.get("staging", {}).get("camera") == "detail" else "detail"
@@ -2017,6 +2089,11 @@ def regenerate_scene(plan: dict, scene_id: str, script: dict, instructions: str 
         if not instructions.strip() and not replace_image:
             replacement["shot"]["framing"] = "wide" if original["shot"]["framing"] in {"close", "macro"} else "close"
         shot_planner.reconcile_media(replacement)
+    if heading_edit is not None:
+        issues = shot_planner.title_grounding_issues(heading_edit, replacement.get("mechanism"),
+                                                    narration, source_section.get("narration", ""))
+        if issues:
+            raise ValueError("The requested heading is not source-grounded: " + " ".join(issues))
     before_design = _visible_design(original, result.get("visual_direction"), result.get("creative_brief"), film_title=result["title"])
     after_design = _visible_design(replacement, result.get("visual_direction"), result.get("creative_brief"), film_title=result["title"])
     if after_design == before_design:

@@ -170,7 +170,18 @@ $env:YAAS_TEST_BROWSER = "C:\Program Files\Google\Chrome\Application\chrome.exe"
 npm test
 ```
 
-`YAAS_TEST_CHROME_ARGS` optionally accepts a JSON array of browser flags for a
+The pixel-comparison suites use full rasterization and grayscale text through
+`--disable-partial-raster` and `--disable-lcd-text`. This prevents Chromium's
+partial-tile cache and LCD text edges from depending on earlier seeks. The
+existing exact DOM/timeline checks and pixel bounds remain unchanged; this
+capture setup does not change production browser flags or scene code.
+The renderer and shot suites prepare their own v1/v2 and shot projects in both
+orientations before opening the browser, so they do not depend on a previous
+local demo run. Preparation uses local fonts/assets, synthetic clocks and an
+FFmpeg test-pattern footage input; it does not generate a narrated movie or call
+inference, speech or network services.
+
+`YAAS_TEST_CHROME_ARGS` optionally accepts a JSON array of additional browser flags for a
 constrained test container. Those flags are never applied to the application.
 For Linux containers that require a sandbox override, keep it confined to the
 test environment. Browser tests skip with an explanation when no test browser

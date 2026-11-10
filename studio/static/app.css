@@ -473,6 +473,9 @@ details.more > .more-body { margin-top: 14px; }
 .review-feedback .btn { margin-top: 16px; }
 .review-feedback.error { border: 1px solid var(--pink); }
 .storyboard-layout { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(260px, 1fr); gap: 24px; }
+.planner-status { padding: 12px 14px; margin: 0 0 16px; border: 1px solid #38333f; border-radius: 8px; overflow-wrap: anywhere; }
+.planner-status p { margin: 0 0 8px; }
+#planner-status { font-size: 13px; color: var(--on-card); }
 #motion-preview { width: 100%; min-width: 0; height: clamp(300px, 40vw, 620px); display: block; border: 1px solid #333; border-radius: 8px; background: #111; }
 #motion-preview[hidden] { display: none; }
 #motion-preview-note { margin-top: 9px; }

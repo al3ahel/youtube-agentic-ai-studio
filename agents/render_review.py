@@ -33,6 +33,12 @@ MAX_VISION_SHOTS = 12
 PHASES = (("setup", .16), ("action", .50), ("result", .84))
 CHECKS = ("subject_relevance", "composition", "motion")
 REPAIRS = ("none", "reframe_wide", "reframe_close", "separate_layout", "vary_framing", "slow_motion", "source_direction")
+DEFECTS = {
+    "subject_relevance": ("missing_subject", "wrong_subject", "unsupported_claim", "source_mismatch"),
+    "composition": ("unreadable_text", "cropped_subject", "obstructed_subject", "overlapping_elements"),
+    "motion": ("missing_required_change", "wrong_action", "wrong_result"),
+    "repetition": ("repeated_staging",),
+}
 
 
 def _check_stop(stop_event):
@@ -300,19 +306,80 @@ def _vision_schema(scenes):
                                 "properties": {key: {"type": "string", "enum": ["pass", "fail", "uncertain"]} for key in CHECKS}},
                 "issues": {"type": "array", "maxItems": 6, "items": {
                     "type": "object", "additionalProperties": False,
-                    "required": ["category", "severity", "message", "samples", "repair"], "properties": {
+                    "required": ["category", "severity", "message", "samples", "repair", "defect", "expected", "observed"], "properties": {
                         "category": {"type": "string", "enum": [*CHECKS, "repetition"]},
                         "severity": {"type": "string", "enum": ["warning", "error"]},
                         "message": {"type": "string", "minLength": 12, "maxLength": 300},
                         "samples": {"type": "array", "minItems": 1, "maxItems": 3, "items": {"type": "string", "enum": samples}},
                         "repair": {"type": "string", "enum": list(REPAIRS)},
+                        "defect": {"type": "string", "enum": ["", *[kind for kinds in DEFECTS.values() for kind in kinds]]},
+                        "expected": {"type": "string", "maxLength": 180},
+                        "observed": {"type": "string", "maxLength": 320},
                     }}},
             }}},
     }}
 
 
+def _affirmative_issue(issue):
+    """Catch explicit positive verdicts, not arbitrary semantic contradictions.
+
+    The structured defect and quoted evidence are the main validation boundary.
+    This conservative extra check catches a clearly affirmative issue message;
+    it cannot establish that other free-text descriptions are factually correct.
+    """
+    message = issue["message"]
+    # A relevant subject may still have a separately stated defect. Do not
+    # reject that mixed explanation merely for containing positive language.
+    if re.search(r"\b(?:but|however|although|except|yet|despite|missing|absent|cropped|obscured|"
+                 r"overlaps?|unreadable|illegible|fails?|cannot|wrong|unsupported|instead)\b|"
+                 r"\b(?:not|never|doesn't|isn't|aren't)\b", message, re.I):
+        return False
+    positive = {
+        "subject_relevance": r"\b(?:fully|entirely|completely) (?:relevant|consistent|aligned)\b",
+        "composition": r"\b(?:fully|entirely|completely) (?:readable|legible|unobstructed)\b",
+        "motion": r"\b(?:fully|entirely|completely) (?:correct|consistent|depicted|visible)\b",
+    }.get(issue["category"])
+    return bool(positive and re.search(positive, message, re.I))
+
+
+def _check_issue_evidence(issue, row):
+    """Require a category-specific defect tied to the cited observations."""
+    assessment = row["assessments"].get(issue["category"])
+    consequential = issue["severity"] == "error" or assessment == "fail" or issue["repair"] != "none"
+    if consequential and _affirmative_issue(issue):
+        raise ValueError("Vision supplied an affirmative explanation for a reported defect.")
+    fields = {"defect", "expected", "observed"}
+    supplied = {field for field in fields if issue[field].strip()}
+    # Existing warnings without repair authority remain readable. A failure or
+    # proposed repair cannot gain authority from a category label alone.
+    if consequential or supplied:
+        if supplied != fields:
+            raise ValueError("A visual failure or repair lacks explicit defect evidence.")
+        if issue["defect"] not in DEFECTS[issue["category"]]:
+            raise ValueError("A visual defect does not match its assessment category.")
+        expected, observed = issue["expected"].strip(), issue["observed"].strip()
+        normalize = lambda text: " ".join(re.findall(r"\w+", text.casefold()))
+        if min(len(normalize(expected).split()), len(normalize(observed).split())) < 4 or normalize(expected) == normalize(observed):
+            raise ValueError("A visual defect does not distinguish expectation from observation.")
+        cited = {item["sample_id"]: item["visible"] for item in row["observations"]}
+        if not any(observed in cited.get(sample_id, "") for sample_id in issue["samples"]):
+            raise ValueError("A visual defect is not quoted from its cited visible evidence.")
+    if issue["severity"] == "error" and assessment == "pass":
+        raise ValueError("Vision both passed and reported an error for the same category.")
+
+
 def _check_observations(value, scenes):
     """Reject incomplete reviews and references to images from another shot."""
+    value = deepcopy(value)  # Validation must not rewrite the captured response.
+    # Old saved warnings remain readable without inventing defect evidence.
+    # All-fields-absent failures receive the same empty evidence and are rejected
+    # below. Partial or otherwise malformed new fields still fail the schema.
+    if isinstance(value, dict) and isinstance(value.get("shots"), list):
+        for row in value["shots"]:
+            if isinstance(row, dict) and isinstance(row.get("issues"), list):
+                for issue in row["issues"]:
+                    if isinstance(issue, dict) and not {"defect", "expected", "observed"} & issue.keys():
+                        issue.update(defect="", expected="", observed="")
     openrouter.validate_json(value, _vision_schema(scenes))
     expected = {scene["id"]: scene for scene in scenes}
     all_sample_ids = {f"{identifier}:{phase}" for identifier in expected for phase, _ in PHASES}
@@ -340,13 +407,13 @@ def _check_observations(value, scenes):
             permitted = all_sample_ids if issue["category"] == "repetition" else frame_ids
             if not set(issue["samples"]) <= permitted or not set(issue["samples"]) & frame_ids:
                 raise ValueError("A visual issue cites a different shot's frames.")
+            _check_issue_evidence(issue, row)
         for key, assessment in row["assessments"].items():
             if assessment == "fail" and not any(issue["category"] == key for issue in row["issues"]):
                 raise ValueError("Vision reported a failure without an evidenced issue.")
-        if any(issue["severity"] == "error" for issue in row["issues"]):
-            for issue in row["issues"]:
-                if issue["severity"] == "error" and issue["category"] in CHECKS:
-                    row["assessments"][issue["category"]] = "fail"
+        # Severity cannot resolve an uncertain assessment. In particular, an
+        # error label must not turn an incomplete review into trusted repair
+        # authority; contradictory pass/error pairs were rejected above.
         uncertainty = r"\b(?:cannot identify|can.t identify|unable to identify|unknown objects?|cannot determine|cannot see|no discernible|image is unclear|no image supplied)\b"
         if row["assessments"]["subject_relevance"] == "pass" and any(
                 re.search(uncertainty, item["visible"], re.I) for item in row["observations"]):
@@ -356,6 +423,8 @@ def _check_observations(value, scenes):
 
 
 def _vision_prompt(scenes, sampled):
+    from agents.object_direction import paired_subjects
+
     data = []
     order = []
     for scene in scenes:
@@ -367,6 +436,8 @@ def _vision_prompt(scenes, sampled):
         scoped = evidence.get("source_alignment") == "exact"
         section_narration = "" if scoped else evidence.get("source_section_narration", "")
         sentence_context = evidence.get("source_sentence_context", "")
+        subjects = (paired_subjects(evidence.get("source_narration", ""), evidence.get("source_section_narration", ""))
+                    if scoped else [])
         first = len(order)
         order.extend({"image_index": first + index, "sample_id": row["id"], "time": row["time"]}
                      for index, row in enumerate(frames))
@@ -377,6 +448,7 @@ def _vision_prompt(scenes, sampled):
                      "source_alignment": evidence.get("source_alignment", "unavailable"),
                      "source_sentence_context": sentence_context[:1200],
                      "source_sentence_truncated": len(sentence_context) > 1200,
+                     "source_subjects": subjects,
                      "source_section_narration": section_narration[:1200],
                      "source_section_truncated": len(section_narration) > 1200,
                      "source_section_omitted": scoped,
@@ -393,6 +465,8 @@ def _vision_prompt(scenes, sampled):
         "For word_timing scope, source_narration owns only words starting inside shot_window_seconds and preserves original punctuation. "
         "A subtitle visible in the pixels can span a cut; do not import its next-shot words into this shot's requirements. "
         "source_sentence_context is grammatical context only: use it for questions, negation and possibility, not to require every event in the sentence. "
+        "source_subjects, when present, contains the literal names of two explicitly related subjects recovered from that exact source sentence. "
+        "A cut can split their names: this field can establish their identity, never an extra action or outcome. Inspect whether those subjects are actually depicted; the field proves no visual success. "
         "Unrelated section sentences are omitted when timing is aligned. source_section_narration, when present for a legacy fallback, "
         "is broader background only and may include events outside shot_window_seconds. Never report a missing action solely because it appears "
         "in context outside the current shot excerpt. A missing or truncated shot source is uncertain. An unverified word alignment is also uncertain. "
@@ -407,7 +481,12 @@ def _vision_prompt(scenes, sampled):
         "An app-derived mechanism_result_view expects the preceding contact's settled consequence, not a new hit. "
         "Check that the result remains visible and consistent and that no second projectile is launched; the flag itself proves no visual success. "
         "If uncertain, mark uncertain with low confidence; confidence concerns the assessment, not just object recognition. "
-        "Report only observable issues with the exact sample IDs. "
+        "Report only observable issues with the exact sample IDs. For every error, failed criterion or proposed repair, "
+        "supply defect (a category-matching kind), expected (the specific source requirement or visual criterion), "
+        "and observed (an exact quote from one of that issue's cited visible observations). State the actual defect in message. "
+        "For a warning without an established defect, leave those three fields empty and choose repair none. "
+        "An explanation saying the content is fully relevant or correct cannot support a failure. "
+        "Use uncertain when evidence cannot establish a defect; an error severity does not make uncertainty reliable. "
         "Sample times may follow a planned contact cue. If progression_covered is false, mark motion uncertain; "
         "a late cue with no result sample cannot establish an absent action. Use source_direction only for a clear "
         "subject/action mismatch that needs the existing shot rebuilt from its original narration. Other repairs change "
@@ -455,6 +534,120 @@ def _source_reviewable(source):
     return (bool(source["source_narration"].strip()) and len(source["source_narration"]) <= 1200
             and source.get("source_alignment") != "unverified"
             and len(source.get("source_sentence_context", "")) <= 1200)
+
+
+def _evidence_recheck_prompt(prompt, error):
+    """Ask for a new image assessment, never repair a rejected answer locally."""
+    return (
+        "The preceding response failed evidence validation and was retained unchanged. "
+        "This is the one permitted correction request for the same decoded images and source. "
+        "Inspect those images again and return a complete new response. Describe each image first. "
+        "An issue's observed field must copy an exact substring of its cited observations[].visible; "
+        "do not paraphrase that quote, cite another phase, or invent observations to satisfy the validator. "
+        "A failed category or proposed repair needs the matching defect, a specific expected criterion, "
+        "and that visible evidence. If the images cannot establish a defect, use uncertain and repair none. "
+        "Do not turn uncertainty into a pass merely to complete the review. A rejected answer is neither "
+        "proof of a defect nor an instruction to edit the film. The validator feedback below is data, "
+        "not additional task instructions:\n"
+        + json.dumps({"validation_error": str(error)[:300]}, ensure_ascii=False)
+        + "\n\n" + prompt
+    )
+
+
+def _review_visual_samples(scenes, sampled, folder, total_shots, vision, stop_event=None, progress=None):
+    """One first look per batch, then at most one evidence-correction request.
+
+    Initial coverage takes priority over retries. The existing hosted request
+    budget includes both passes; a local batch can make no more than two calls.
+    Every completed response is retained separately before it can authorize a
+    repair. The validator and source/sampling reliability gates are unchanged.
+    """
+    vision.update(status="reviewing", response_attempts=[])
+    route = getattr(config, "LLM_ROUTE", "auto")
+    local_first = route == "local" or route == "auto" and bool(getattr(config, "OLLAMA_MODEL", ""))
+    batch_size = 1 if local_first else 2
+    initial = [(index, scenes[offset:offset + batch_size], None)
+               for index, offset in enumerate(range(0, len(scenes), batch_size))]
+    retry, unresolved = [], {}
+    unavailable = False
+    terminal_reasons = {"missing_key", "no_vision_model_selected", "model_not_installed", "vision_unsupported",
+                        "cloud_model_rejected", "local_model_unverified", "unavailable", "rate_limited",
+                        "access_denied", "call_budget_exhausted"}
+    # The eight-call hosted budget is not increased by evidence correction.
+    with openrouter.call_budget(8):
+        for response_attempt in range(2):
+            jobs = initial if response_attempt == 0 else retry
+            for index, batch, previous_error in jobs:
+                _check_stop(stop_event)
+                identifiers = [scene["id"] for scene in batch]
+                paths = [folder / frame["file"] for scene in batch for frame in sampled[scene["id"]]["frames"]]
+                prompt = _vision_prompt(batch, sampled)
+                if response_attempt:
+                    prompt = _evidence_recheck_prompt(prompt, previous_error)
+                try:
+                    _emit(progress, "Rechecking an invalid response against the same decoded frames…" if response_attempt
+                          else "Comparing rendered subjects and action phases with the configured vision model…")
+                    raw, provider = _request_vision(paths, prompt, _vision_schema(batch), stop_event)
+                    error = None
+                    try:
+                        value = _check_observations(raw, batch)
+                    except (RuntimeError, ValueError) as exc:
+                        error = str(exc)
+                    response_file = folder / f"vision-response-{index + 1:02d}-{response_attempt + 1}.json"
+                    record = {"version": 1, "shot_ids": identifiers, "response_attempt": response_attempt + 1,
+                              "provider": deepcopy(provider), "image_files": [path.name for path in paths],
+                              "prompt_sha256": hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
+                              "validation": "invalid" if error is not None else "valid",
+                              "response": deepcopy(raw)}
+                    if error is not None:
+                        record["validation_error"] = error
+                    _write(response_file, record)
+                    evidence = {"shot_ids": identifiers, "response_attempt": response_attempt + 1,
+                                "validation": record["validation"], "file": response_file.name,
+                                "sha256": _hash(response_file, stop_event)}
+                    if error is not None:
+                        evidence["validation_error"] = error
+                    vision["response_attempts"].append(evidence)
+                    if error is not None:
+                        unresolved[index] = {"shot_ids": identifiers, "reason": "invalid_review_evidence",
+                                             "validation_error": error, "response_attempts": response_attempt + 1}
+                        if response_attempt == 0:
+                            retry.append((index, batch, error))
+                        continue
+                    for observation in value["shots"]:
+                        source = sampled[observation["shot_id"]]
+                        if not _source_reviewable(source):
+                            observation["assessments"]["subject_relevance"] = "uncertain"
+                            observation["reliable"] = False
+                        if not source["sampling"]["progression_covered"]:
+                            observation["assessments"]["motion"] = "uncertain"
+                            observation["reliable"] = False
+                    vision.update(provider)
+                    vision["batches"].append({"shot_ids": identifiers, **provider,
+                                              "response_attempt": response_attempt + 1,
+                                              "response_file": response_file.name})
+                    vision["results"].extend(value["shots"])
+                    unresolved.pop(index, None)
+                except InterruptedError:
+                    raise
+                except (RuntimeError, ValueError, OSError, TypeError, ImportError) as exc:
+                    reason = getattr(exc, "code", "invalid_or_unavailable_review")
+                    if reason == "cancelled":
+                        raise InterruptedError("Stopped during local visual review") from None
+                    unresolved[index] = {"shot_ids": identifiers, "reason": reason,
+                                         "response_attempts": response_attempt + 1}
+                    if reason in terminal_reasons:
+                        unavailable = True
+                        break
+                finally:
+                    vision["failures"] = [unresolved[key] for key in sorted(unresolved)]
+            if unavailable:
+                break
+    order = {scene["id"]: index for index, scene in enumerate(scenes)}
+    vision["results"].sort(key=lambda row: order[row["shot_id"]])
+    vision["shots_reviewed"] = len(vision["results"])
+    vision["complete"] = len(vision["results"]) == total_shots and all(row["reliable"] for row in vision["results"])
+    vision["status"] = "reviewed" if vision["complete"] else "incomplete" if vision["results"] else "unavailable"
 
 
 def review_render(video_path, plan, output_dir, *, stop_event=None, progress=None, attempt=0, run_id=None):
@@ -535,49 +728,8 @@ def review_render(video_path, plan, output_dir, *, stop_event=None, progress=Non
         vision = {"status": "disabled", "shots_reviewed": 0, "complete": False, "results": [], "failures": [], "batches": []}
         report["vision"] = vision
         if getattr(config, "VISUAL_REVIEW_ENABLED", False):
-            vision["status"] = "reviewing"
             vision_scenes = [selected[index] for index in _indices(len(selected), MAX_VISION_SHOTS)]
-            route = getattr(config, "LLM_ROUTE", "auto")
-            local_first = route == "local" or route == "auto" and bool(getattr(config, "OLLAMA_MODEL", ""))
-            batch_size = 1 if local_first else 2
-            # Six image inputs per request; eight actual hosted attempts cap the
-            # entire operation, including provider retries. Local calls are also
-            # bounded by the shot count and local transport deadlines.
-            with openrouter.call_budget(8):
-                for offset in range(0, len(vision_scenes), batch_size):
-                    _check_stop(stop_event)
-                    batch = vision_scenes[offset:offset + batch_size]
-                    paths = [folder / frame["file"] for scene in batch for frame in sampled[scene["id"]]["frames"]]
-                    try:
-                        _emit(progress, "Comparing rendered subjects and action phases with the configured vision model…")
-                        value, provider = _request_vision(paths, _vision_prompt(batch, sampled), _vision_schema(batch), stop_event)
-                        value = _check_observations(value, batch)
-                        for observation in value["shots"]:
-                            evidence = sampled[observation["shot_id"]]
-                            if not _source_reviewable(evidence):
-                                observation["assessments"]["subject_relevance"] = "uncertain"
-                                observation["reliable"] = False
-                            if not evidence["sampling"]["progression_covered"]:
-                                observation["assessments"]["motion"] = "uncertain"
-                                observation["reliable"] = False
-                        vision.update(provider)
-                        vision["batches"].append({"shot_ids": [row["id"] for row in batch], **provider})
-                        vision["results"].extend(value["shots"])
-                    except InterruptedError:
-                        raise
-                    except (RuntimeError, ValueError, OSError, TypeError, ImportError) as exc:
-                        reason = getattr(exc, "code", "invalid_or_unavailable_review")
-                        if reason == "cancelled":
-                            raise InterruptedError("Stopped during local visual review") from None
-                        vision["failures"].append({"shot_ids": [row["id"] for row in batch], "reason": reason})
-                        # Missing keys/models/capability cannot improve by making
-                        # another identical request for a different shot.
-                        if reason in {"missing_key", "no_vision_model_selected", "model_not_installed", "vision_unsupported",
-                                      "cloud_model_rejected", "local_model_unverified", "unavailable", "rate_limited", "access_denied", "call_budget_exhausted"}:
-                            break
-            vision["shots_reviewed"] = len(vision["results"])
-            vision["complete"] = len(vision["results"]) == len(scenes) and all(row["reliable"] for row in vision["results"])
-            vision["status"] = "reviewed" if vision["complete"] else "incomplete" if vision["results"] else "unavailable"
+            _review_visual_samples(vision_scenes, sampled, folder, len(scenes), vision, stop_event, progress)
             for row in vision["results"]:
                 for issue in row["issues"]:
                     report["issues"].append(_issue(row["shot_id"], issue["category"], issue["message"],
@@ -627,7 +779,7 @@ def _validated_reviews(plan, report):
                 row["assessments"]["subject_relevance"] = "uncertain"
                 row["reliable"] = False
         return {row["shot_id"]: row for row in checked["shots"]}
-    except (ValueError, TypeError, KeyError, AttributeError):
+    except (ValueError, TypeError, KeyError, AttributeError, openrouter.OpenRouterError):
         return {}
 
 
@@ -714,7 +866,7 @@ def _source_redirection(plan, identifier, script, category, stop_event=None):
                 or old_mechanism["action"] != "reveal" and new_mechanism.get("action") != old_mechanism["action"]):
             raise ValueError("Source redirection changed the original supported physical outcome.")
     if replacement_subject["builder"] == "actors" and replacement.get("graphics_version") == 2:
-        if object_direction.grounding_issues(replacement, narration):
+        if object_direction.grounding_issues(replacement, narration, context=section["narration"]):
             raise ValueError("Source redirection proposed unsupported illustrated actors or actions.")
     elif replacement_subject["builder"] == "actors" and replacement.get("graphics_version") == 1:
         if any(not object_direction.symbol_supported(item.get("symbol"), narration) for item in replacement["items"]):

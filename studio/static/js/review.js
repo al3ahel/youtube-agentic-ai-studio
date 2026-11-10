@@ -342,6 +342,10 @@ function updateRebuildControls(st) {
   const photos = st.visual_mode === "classic" || storyboardUsesProjectPhotos() || Number(st.photo_count) > 0;
   const oldGraphics = ["motion", "hybrid"].includes(st.visual_mode) && storyboardData?.plan?.scenes?.some(scene => !scene.shot || !scene.image && !["footage", "chart"].includes(scene.template) && scene.graphics_version !== 2);
   $("#legacy-motion-card").hidden = !st.has_audio || !st.has_script || !(photos || oldGraphics);
+  $("#planner-rebuild-options").hidden = $("#legacy-motion-card").hidden;
+  $("#planner-next-step").textContent = $("#legacy-motion-card").hidden
+    ? "For a different planner, save this project's model settings, then select Storyboard and Render on Home with the topic blank. The recorded voice is reused."
+    : "For a different planner, save this project's model settings, then use the rebuild options. Rebuilding replaces scene designs and keeps the recorded voice.";
   $("#animate-legacy").hidden = !photos;
   $("#rebuild-motion-and-sound").hidden = !oldGraphics;
   $("#rebuild-visuals-title").textContent = oldGraphics ? "Update this draft's animation" : "Rebuild this project's visuals";

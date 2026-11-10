@@ -1,6 +1,7 @@
 """Security/timing boundaries and real subprocess cancellation for motion output."""
 import copy
 import json
+import os
 from pathlib import Path
 import sys
 import threading
@@ -360,6 +361,27 @@ def test_animated_image_is_imported_as_a_single_seekable_still(plan, audio, tmp_
         assert getattr(result, "n_frames", 1) == 1
         red, green, blue = result.convert("RGB").getpixel((16, 12))
         assert red > 240 and green < 10 and blue < 10
+
+
+def test_render_subprocess_forces_offline_flags_and_preserves_parent_config(tmp_path, monkeypatch):
+    forced = ("DO_NOT_TRACK", "HYPERFRAMES_NO_TELEMETRY", "NO_COLOR",
+              "HYPERFRAMES_NO_CAPTURE_DOTENV", "HYPERFRAMES_SKIP_SKILLS",
+              "HYPERFRAMES_NO_UPDATE_CHECK", "HYPERFRAMES_NO_AUTO_INSTALL")
+    inherited = {"HYPERFRAMES_BROWSER_PATH": str(tmp_path / "configured browser"),
+                 "YAAS_RENDER_TEST_SETTING": "preserve-parent-value"}
+    for name in forced:
+        monkeypatch.setenv(name, "0")
+    for name, value in inherited.items():
+        monkeypatch.setenv(name, value)
+    names = [*forced, *inherited]
+    child = f"import json, os; print(json.dumps({{key: os.environ.get(key) for key in {names!r}}}))"
+    renderer._run_render([sys.executable, "-c", child], tmp_path, timeout=5,
+                         progress=lambda message: None)
+    received = json.loads((tmp_path / "render.log").read_text())
+    assert {name: received[name] for name in forced} == dict.fromkeys(forced, "1")
+    assert {name: received[name] for name in inherited} == inherited
+    assert {name: os.environ[name] for name in forced} == dict.fromkeys(forced, "0")
+    assert {name: os.environ[name] for name in inherited} == inherited
 
 
 def test_render_subprocess_cancels_promptly(tmp_path):

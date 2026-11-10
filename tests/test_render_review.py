@@ -124,11 +124,253 @@ def test_high_confidence_uncertainty_and_evidenced_error_are_not_reclassified_as
     row["assessments"] = {key: "uncertain" for key in review.CHECKS}
     row["issues"] = [{"category": "subject_relevance", "severity": "error",
         "message": "The sampled objects do not establish the claimed physical event.",
-        "samples": ["shot-0:action", "shot-0:result"], "repair": "none"}]
+        "samples": ["shot-0:action", "shot-0:result"], "repair": "none",
+        "defect": "source_mismatch", "expected": "The source calls for a recognizable solar panel.",
+        "observed": row["observations"][1]["visible"]}]
+    original = deepcopy(answer)
     checked = review._check_observations(answer, scenes)["shots"][0]
     assert checked["confidence"] == .95 and checked["reliable"] is False
-    assert checked["assessments"] == {"subject_relevance": "fail", "composition": "uncertain", "motion": "uncertain"}
+    assert checked["assessments"] == {key: "uncertain" for key in review.CHECKS}
     assert len(checked["observations"]) == 3 and checked["issues"] == row["issues"]
+    assert answer == original
+
+
+def evidenced_failure(scenes):
+    answer = vision_answer(scenes)
+    for row in answer["shots"]:
+        row["assessments"]["subject_relevance"] = "fail"
+        row["issues"] = [{"category": "subject_relevance", "severity": "error",
+            "message": "The visible rectangle lacks the solar cells required to identify the panel.",
+            "samples": [f"{row['shot_id']}:action"], "repair": "source_direction",
+            "defect": "missing_subject", "expected": "The source requires an identifiable solar panel.",
+            "observed": row["observations"][1]["visible"]}]
+    return answer
+
+
+def test_captured_affirmative_failure_cannot_become_repair_authority():
+    # The exact contradictory message from the 2026-11-09 scene-007 receipt.
+    # Supplying otherwise well-formed defect fields cannot rescue its polarity.
+    scenes = plan()["scenes"][:1]
+    answer = evidenced_failure(scenes)
+    answer["shots"][0]["issues"][0]["message"] = (
+        "The visible subjects (bullet, breastplate) and their actions (approach, impact, deformation) "
+        "are fully relevant to the source narration 'In proof tests, bullets hit some steel breastplates'.")
+    original = deepcopy(answer)
+    with pytest.raises(ValueError, match="affirmative explanation"):
+        review._check_observations(answer, scenes)
+    assert answer == original
+
+
+@pytest.mark.parametrize("defect_change, error", [
+    ({"defect": "cropped_subject"}, "assessment category"),
+    ({"observed": "The scene shows only a blue sky and no panel."}, "cited visible evidence"),
+    ({"observed": "A white rectangular object occupies the left of a blue field during the result phase."}, "cited visible evidence"),
+    ({"expected": "A white rectangular object occupies the left of a blue field during the action phase."}, "distinguish expectation"),
+])
+def test_failure_requires_specific_evidence_from_its_own_cited_sample(defect_change, error):
+    scenes = plan()["scenes"][:1]
+    answer = evidenced_failure(scenes)
+    answer["shots"][0]["issues"][0].update(defect_change)
+    with pytest.raises(ValueError, match=error):
+        review._check_observations(answer, scenes)
+
+
+def test_failure_without_defect_evidence_remains_untrusted_but_clean_passes_still_work():
+    scenes = plan()["scenes"][:1]
+    answer = evidenced_failure(scenes)
+    for key in ("defect", "expected", "observed"):
+        del answer["shots"][0]["issues"][0][key]
+    original = deepcopy(answer)
+    with pytest.raises(ValueError, match="lacks explicit defect evidence"):
+        review._check_observations(answer, scenes)
+    assert answer == original
+    assert review._check_observations(vision_answer(scenes), scenes)["shots"][0]["reliable"] is True
+
+
+def test_single_uncertain_criterion_is_not_upgraded_by_error_severity():
+    scenes = plan()["scenes"][:1]
+    answer = evidenced_failure(scenes)
+    answer["shots"][0]["assessments"]["subject_relevance"] = "uncertain"
+    original = deepcopy(answer)
+    row = review._check_observations(answer, scenes)["shots"][0]
+    assert row["assessments"] == {"subject_relevance": "uncertain", "composition": "pass", "motion": "pass"}
+    assert row["reliable"] is False
+    assert answer == original
+
+
+def test_legacy_warning_remains_readable_without_invented_defect_evidence():
+    scenes = plan()["scenes"][:1]
+    answer = vision_answer(scenes)
+    answer["shots"][0]["assessments"]["motion"] = "uncertain"
+    answer["shots"][0]["issues"] = [{"category": "repetition", "severity": "warning",
+        "message": "The samples are similar; intended motion cannot be determined.",
+        "samples": ["shot-0:setup", "shot-0:action"], "repair": "none"}]
+    original = deepcopy(answer)
+    row = review._check_observations(answer, scenes)["shots"][0]
+    assert row["reliable"] is False
+    assert all(row["issues"][0][key] == "" for key in ("defect", "expected", "observed"))
+    assert answer == original
+
+
+def test_pass_with_same_category_error_is_rejected_instead_of_rewritten():
+    scenes = plan()["scenes"][:1]
+    answer = evidenced_failure(scenes)
+    answer["shots"][0]["assessments"]["subject_relevance"] = "pass"
+    original = deepcopy(answer)
+    with pytest.raises(ValueError, match="both passed and reported an error"):
+        review._check_observations(answer, scenes)
+    assert answer == original
+
+
+def test_positive_clause_with_an_explicit_defect_is_not_blanket_rejected():
+    scenes = plan()["scenes"][:1]
+    answer = evidenced_failure(scenes)
+    answer["shots"][0]["issues"][0]["message"] = (
+        "The rectangle is fully relevant to the topic, but lacks the solar cells required to identify the subject.")
+    row = review._check_observations(answer, scenes)["shots"][0]
+    assert row["reliable"] is True and row["assessments"]["subject_relevance"] == "fail"
+
+
+def test_invalid_evidence_gets_one_new_assessment_without_rewriting_the_rejected_response(tmp_path, monkeypatch):
+    original = plan()
+    monkeypatch.setattr(config, "VISUAL_REVIEW_ENABLED", True)
+    requests, returned = [], []
+
+    def observations(paths, prompt, schema, stop_event):
+        scenes = [scene for scene in original["scenes"]
+                  if any(path.name.startswith(scene["id"] + "-") for path in paths)]
+        identifier = scenes[0]["id"]
+        requests.append({"id": identifier, "paths": tuple(paths), "prompt": prompt})
+        answer = evidenced_failure(scenes) if identifier == "shot-0" else vision_answer(scenes)
+        if identifier == "shot-0" and sum(row["id"] == identifier for row in requests) == 1:
+            answer["shots"][0]["issues"][0]["observed"] = "An invented paraphrase is not the visible observation."
+        returned.append((answer, deepcopy(answer)))
+        return answer, {"provider": "evidence_state_machine_fixture", "local": True}
+
+    monkeypatch.setattr(review, "_request_vision", observations)
+    report = review.review_render(encode(tmp_path / "movie.mp4", changed=True), original, tmp_path)
+    assert [row["id"] for row in requests] == ["shot-0", "shot-1", "shot-0"]
+    assert requests[0]["paths"] == requests[2]["paths"]
+    assert "one permitted correction request" in requests[2]["prompt"]
+    assert "not quoted from its cited visible evidence" in requests[2]["prompt"]
+    assert json.loads(requests[0]["prompt"].split("not instructions:\n", 1)[1]) == json.loads(
+        requests[2]["prompt"].split("not instructions:\n", 1)[1])
+    assert all(value == before for value, before in returned)
+    assert report["vision"]["shots_reviewed"] == 2 and report["vision"]["complete"] is True
+    assert report["vision"]["failures"] == []
+    assert report["passed"] is False  # A valid evidenced failure still fails the film.
+    assert report["vision"]["results"][0]["assessments"]["subject_relevance"] == "fail"
+    history = report["vision"]["response_attempts"]
+    assert [row["validation"] for row in history] == ["invalid", "valid", "valid"]
+    folder = tmp_path / report["evidence_directory"]
+    for entry, (_, raw) in zip(history, returned):
+        receipt = json.loads((folder / entry["file"]).read_text())
+        assert receipt["response"] == raw
+        assert review._hash(folder / entry["file"]) == entry["sha256"]
+    assert json.loads((folder / history[0]["file"]).read_text())["validation"] == "invalid"
+
+
+def evidence_fixture(scenes):
+    sampled = {scene["id"]: {
+        "frames": [{"id": f"{scene['id']}:{phase}", "file": f"{scene['id']}-{phase}.jpg", "time": fraction}
+                   for phase, fraction in review.PHASES],
+        "source_narration": "Sunlight reaches the solar panel. Current flows through the circuit.",
+        "source_alignment": "exact", "sampling": {"progression_covered": True},
+    } for scene in scenes}
+    vision = {"status": "disabled", "shots_reviewed": 0, "complete": False,
+              "results": [], "failures": [], "batches": []}
+    return sampled, vision
+
+
+def test_repeated_invalid_evidence_stops_after_one_correction_and_never_authorizes_repairs(tmp_path, monkeypatch):
+    scenes = plan()["scenes"][:1]
+    sampled, vision = evidence_fixture(scenes)
+    calls = []
+
+    def observations(*args):
+        calls.append(args)
+        answer = evidenced_failure(scenes)
+        answer["shots"][0]["issues"][0]["observed"] = "This quote is absent from all three observations."
+        return answer, {"provider": "evidence_state_machine_fixture", "local": True}
+
+    monkeypatch.setattr(review, "_request_vision", observations)
+    review._review_visual_samples(scenes, sampled, tmp_path, 1, vision)
+    assert len(calls) == 2
+    assert vision["results"] == [] and vision["complete"] is False
+    assert vision["failures"][0]["reason"] == "invalid_review_evidence"
+    assert vision["failures"][0]["response_attempts"] == 2
+    assert [row["validation"] for row in vision["response_attempts"]] == ["invalid", "invalid"]
+    assert len(list(tmp_path.glob("vision-response-*.json"))) == 2
+
+
+@pytest.mark.parametrize("uncertain", [False, True])
+def test_valid_reviews_are_not_retried_to_increase_confidence(tmp_path, monkeypatch, uncertain):
+    scenes = plan()["scenes"][:1]
+    sampled, vision = evidence_fixture(scenes)
+    calls = []
+
+    def observations(*args):
+        calls.append(args)
+        answer = vision_answer(scenes)
+        if uncertain:
+            answer["shots"][0]["assessments"]["motion"] = "uncertain"
+        return answer, {"provider": "evidence_state_machine_fixture", "local": True}
+
+    monkeypatch.setattr(review, "_request_vision", observations)
+    review._review_visual_samples(scenes, sampled, tmp_path, 1, vision)
+    assert len(calls) == 1
+    assert vision["complete"] is (not uncertain)
+    assert vision["results"][0]["reliable"] is (not uncertain)
+
+
+def test_hosted_budget_preserves_initial_coverage_before_evidence_corrections(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "LLM_ROUTE", "auto")
+    scenes = [{**deepcopy(plan()["scenes"][0]), "id": f"shot-{index}"} for index in range(12)]
+    sampled, vision = evidence_fixture(scenes)
+    completed = []
+
+    class BudgetExhausted(RuntimeError):
+        code = "call_budget_exhausted"
+
+    def observations(paths, prompt, schema, stop_event):
+        # Simulates the existing provider budget; no network/model call is made.
+        if len(completed) == 8:
+            raise BudgetExhausted("The unchanged hosted budget is exhausted.")
+        batch = [scene for scene in scenes if any(path.name.startswith(scene["id"] + "-") for path in paths)]
+        completed.append([scene["id"] for scene in batch])
+        answer = evidenced_failure(batch)
+        for row in answer["shots"]:
+            row["issues"][0]["observed"] = "This paraphrase is not quoted from the cited observation."
+        return answer, {"provider": "hosted_budget_fixture", "local": False}
+
+    monkeypatch.setattr(review, "_request_vision", observations)
+    review._review_visual_samples(scenes, sampled, tmp_path, 12, vision)
+    assert completed[:6] == [[f"shot-{2 * index}", f"shot-{2 * index + 1}"] for index in range(6)]
+    assert len(completed) == 8 and len(vision["response_attempts"]) == 8
+    assert any(row["reason"] == "call_budget_exhausted" for row in vision["failures"])
+    assert vision["complete"] is False and vision["results"] == []
+
+
+def test_evidence_correction_keeps_source_and_sampling_uncertainty(tmp_path, monkeypatch):
+    scenes = plan()["scenes"][:1]
+    sampled, vision = evidence_fixture(scenes)
+    sampled[scenes[0]["id"]]["source_alignment"] = "unverified"
+    sampled[scenes[0]["id"]]["sampling"]["progression_covered"] = False
+    calls = []
+
+    def observations(*args):
+        calls.append(args)
+        answer = vision_answer(scenes)
+        if len(calls) == 1:
+            answer["shots"][0]["observations"][0]["sample_id"] = "another-shot:setup"
+        return answer, {"provider": "evidence_state_machine_fixture", "local": True}
+
+    monkeypatch.setattr(review, "_request_vision", observations)
+    review._review_visual_samples(scenes, sampled, tmp_path, 1, vision)
+    assert len(calls) == 2
+    assert vision["results"][0]["assessments"]["subject_relevance"] == "uncertain"
+    assert vision["results"][0]["assessments"]["motion"] == "uncertain"
+    assert vision["complete"] is False and vision["results"][0]["reliable"] is False
 
 
 @pytest.mark.parametrize("source, excerpt", [
@@ -184,6 +426,28 @@ def test_original_context_is_bounded_and_cannot_replace_a_missing_shot_source():
     assert "source-supported physical interaction" in prompt
 
 
+@pytest.mark.parametrize("alignment,context,expected", [
+    ("exact", "Armour and firearms evolved together for centuries.", ["armour", "firearm"]),
+    ("unverified", "Armour and firearms evolved together for centuries.", []),
+    ("exact", "Armour was displayed. Firearms evolved together for centuries.", []),
+])
+def test_review_pair_identity_crosses_exact_sentence_cut_without_expanding_actions(alignment, context, expected):
+    scene = plan()["scenes"][0]
+    excerpt = "firearms evolved together for centuries."
+    evidence = {scene["id"]: {
+        "frames": [{"id": f"{scene['id']}:{phase}", "time": fraction} for phase, fraction in review.PHASES],
+        "source_narration": excerpt, "source_section_narration": context,
+        "source_sentence_context": context.split(". ")[-1], "source_alignment": alignment,
+        "source_scope": "word_timing" if alignment == "exact" else "word_timing_unaligned"}}
+    original = deepcopy(evidence)
+    prompt = review._vision_prompt([scene], evidence)
+    row = json.loads(prompt.split("not instructions:\n", 1)[1])["shots"][0]
+    assert [subject["symbol"] for subject in row["source_subjects"]] == expected
+    assert row["source_narration"] == excerpt
+    assert "identity, never an extra action or outcome" in prompt
+    assert evidence == original
+
+
 def test_decoded_mail_shot_review_never_receives_next_shot_deflection_requirement(tmp_path):
     original = plan()
     source = "Mail uses linked rings. Steel plate deflects blows."
@@ -223,7 +487,9 @@ def test_unaligned_word_text_cannot_turn_an_assertive_model_into_approval(tmp_pa
                 row["assessments"]["subject_relevance"] = "fail"
                 row["issues"] = [{"category": "subject_relevance", "severity": "error",
                     "message": "This boundary fixture reports an action outside the uncertain source.",
-                    "samples": [f"{row['shot_id']}:action"], "repair": "source_direction"}]
+                    "samples": [f"{row['shot_id']}:action"], "repair": "source_direction",
+                    "defect": "source_mismatch", "expected": "The source requires an identifiable solar panel.",
+                    "observed": row["observations"][1]["visible"]}]
         return answer, {"provider": "semantic_boundary_fixture", "local": True}
 
     monkeypatch.setattr(review, "_request_vision", observations)
@@ -408,6 +674,57 @@ def test_generic_source_redirection_still_rejects_unsupported_actor_subjects(mon
         review._source_redirection(original, "shot-0", {"sections": original["sections"]}, "subject_relevance")
 
 
+@pytest.mark.parametrize("text,cut,actors,action,allowed", [
+    ("Armour and firearms evolved together for centuries.", 2,
+     [("Armour", "armour"), ("Firearms", "firearm")], "compare", True),
+    ("Solar panels and batteries were connected, then evolved together.", 6,
+     [("Solar panels", "solar"), ("Batteries", "battery")], "compare", True),
+    ("Solar panels and batteries were connected, then evolved together.", 6,
+     [("Solar panels", "solar"), ("Batteries", "battery")], "connect", False),
+])
+def test_source_redirection_recovers_cut_pair_identity_without_borrowing_earlier_action(
+        monkeypatch, text, cut, actors, action, allowed):
+    from agents import visual_director
+    original = plan()
+    original["sections"][0]["narration"] = text
+    # Explicit fixture clock: the two-second cut splits the original sentence.
+    # The second excerpt owns the relationship but not every paired name or
+    # the preceding connection action. No media or model approval is simulated.
+    tokens = text.split()
+    original["words"] = []
+    for index, token in enumerate(tokens):
+        start = index * 2 / cut if index < cut else 2 + (index - cut) * 2 / (len(tokens) - cut)
+        original["words"].append({"word": token.strip(".,"), "start": start,
+                                  "end": start + .1, "section_id": "one"})
+    original["scenes"][1].update(graphics_version=2,
+        staging={"version": 1, "world": "generic", "action": "reveal", "camera": "locked"},
+        items=[{"label": actors[1][0], "symbol": actors[1][1], "role": "subject"}])
+
+    def candidate(value, *args, **kwargs):
+        scene = value["scenes"][1]
+        scene.update(template="comparison" if action == "compare" else "flow",
+                     title=actors[0][0] + " and " + actors[1][0],
+                     visual_goal="Show the explicitly named subjects",
+                     staging={"version": 1, "world": "generic", "action": action, "camera": "locked"},
+                     items=[{"label": label, "symbol": symbol, "role": "subject" if index == 0 else "support"}
+                            for index, (label, symbol) in enumerate(actors)])
+        scene["shot"].update(focus=scene["title"], action=action)
+        return value
+
+    monkeypatch.setattr(visual_director, "regenerate_scene", candidate)
+    saved = deepcopy(original)
+    if allowed:
+        changed, fields = review._source_redirection(original, "shot-1", {"sections": original["sections"]}, "subject_relevance")
+        assert fields and [item["symbol"] for item in changed["scenes"][1]["items"]] == [symbol for _, symbol in actors]
+        assert changed["scenes"][0] == original["scenes"][0]
+        assert all(changed[key] == original[key] for key in ("sections", "words", "captions", "duration", "width", "height", "fps"))
+        assert "passed" not in changed
+    else:
+        with pytest.raises(ValueError, match="unsupported illustrated actors or actions"):
+            review._source_redirection(original, "shot-1", {"sections": original["sections"]}, "subject_relevance")
+    assert original == saved
+
+
 def test_unreliable_semantic_failure_cannot_request_source_redirection(monkeypatch):
     monkeypatch.setattr(review, "_source_redirection", lambda *a, **k: pytest.fail("Unreliable evidence triggered editing"))
     original = plan()
@@ -419,7 +736,9 @@ def test_unreliable_semantic_failure_cannot_request_source_redirection(monkeypat
     row["assessments"]["subject_relevance"] = "fail"
     row["issues"] = [{"category": "subject_relevance", "severity": "error",
                       "message": "The visible subject does not match the supplied narration.",
-                      "samples": ["shot-0:action"], "repair": "source_direction"}]
+                      "samples": ["shot-0:action"], "repair": "source_direction",
+                      "defect": "source_mismatch", "expected": "The source requires an identifiable solar panel.",
+                      "observed": row["observations"][1]["visible"]}]
     report = {"plan_sha256": review._plan_hash(original), "vision": {"results": rows["shots"]},
               "issues": [review._issue("shot-0", "subject_relevance", row["issues"][0]["message"],
                   severity="error", source="vision", repair="source_direction", samples=["shot-0:action"])]}
@@ -557,7 +876,10 @@ def test_repair_rolls_back_new_reliable_semantic_failure_even_when_labeled_warni
             row["issues"] = [{"category": category, "severity": "warning",
                 "message": "This boundary fixture reports a new subject failure." if state["rendered"]
                            else "This boundary fixture requests closer composition.",
-                "samples": ["shot-1:action"], "repair": "none" if state["rendered"] else "reframe_close"}]
+                "samples": ["shot-1:action"], "repair": "none" if state["rendered"] else "reframe_close",
+                "defect": "source_mismatch" if state["rendered"] else "cropped_subject",
+                "expected": "The subject must remain recognizable and fully in the frame.",
+                "observed": row["observations"][1]["visible"]}]
         return answer, {"provider": "semantic_boundary_fixture", "local": True}
 
     def render(candidate):

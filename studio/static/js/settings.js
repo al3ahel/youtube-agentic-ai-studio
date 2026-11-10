@@ -151,8 +151,8 @@ $("#discover-models").onclick = async () => {
 let localModelDiscoverySerial = 0;
 function updateLocalModelControls() {
   $("#local-model-route-note").textContent = $("#s-llm_route").value === "local"
-    ? "Writing uses the installed Ollama model on this computer. It does not fall back to a cloud writing provider. Save the address and model after checking them."
-    : "Automatic uses configured providers. Gemini and Groq need their free-tier accounts; OpenRouter uses free models. Ollama runs a model on this computer without an API fee.";
+    ? "Writing and scene planning use the installed Ollama model. Enabled visual review needs that model to support images. Local-only does not fall back to cloud providers; the OpenRouter planner and reviewer fields do not select the local model. Save the address and model after checking them."
+    : "Automatic tries a selected local model first, then configured providers. Gemini and Groq need their free-tier accounts; OpenRouter uses free models. Scene planner and reviewer fields select OpenRouter preferences; recorded planner results appear on Review.";
 }
 $("#s-llm_route").addEventListener("change", updateLocalModelControls);
 $("#discover-local-models").onclick = async () => {

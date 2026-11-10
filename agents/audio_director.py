@@ -124,13 +124,20 @@ def _bound_visual_plan(visual_plan, timeline, script, profile_id=None):
     from agents.visual_director import validate_plan
     from video.timeline import script_signature
     try:
+        # Visual direction stores section times to six decimals. Match only
+        # that rounding error (including the final section's rounded end),
+        # never a frame-sized or duration-dependent timing tolerance.
         if (profile_id is not None and visual_plan.get("profile_id") != profile_id
                 or any(not timeline.get(key) or visual_plan.get(key) != timeline[key]
                        for key in ("script_signature", "timeline_signature"))
                 or script_signature(script) != timeline["script_signature"]
                 or script_signature({"sections": visual_plan["sections"]}) != timeline["script_signature"]
-                or [(str(row["id"]), row["start"], row["duration"]) for row in visual_plan["sections"]]
-                   != [(str(row["id"]), row["start"], row["duration"]) for row in timeline["sections"]]
+                or len(visual_plan["sections"]) != len(timeline["sections"])
+                or any(str(planned["id"]) != str(measured["id"])
+                       or any(not math.isfinite(planned[key]) or not math.isfinite(measured[key])
+                              or not math.isclose(planned[key], measured[key], rel_tol=0, abs_tol=.000001)
+                              for key in ("start", "duration"))
+                       for planned, measured in zip(visual_plan["sections"], timeline["sections"]))
                 or visual_plan.get("words", []) != timeline.get("words", [])
                 or any(visual_plan.get(key) != timeline.get(key) for key in ("fps", "width", "height"))
                 or abs(visual_plan["duration"] - timeline["duration"]) > .00001):
@@ -277,6 +284,46 @@ def _eligible_contact_cues(script, timeline, visual_plan=None):
         if len(result) >= 40:
             break
     return result
+
+
+def _select_effect_candidates(candidates, event_cap, minimum_gap):
+    """Allocate scarce slots to verified visual contacts, then order playback.
+
+    Candidates have already passed acquisition, source/contact resolution and
+    usable-duration checks. A model label or an unbound spoken cue cannot earn
+    priority. Stable chronological ties preserve the original proposal order.
+    """
+    if type(event_cap) is not int or event_cap < 0:
+        raise ValueError("The effect budget must be a nonnegative integer.")
+    if (isinstance(minimum_gap, bool) or not isinstance(minimum_gap, (int, float))
+            or not math.isfinite(minimum_gap) or minimum_gap < 0):
+        raise ValueError("Effect spacing must be finite and nonnegative.")
+
+    def priority(candidate):
+        timing = candidate["timing"]
+        proof = timing.get("timing_provenance", {})
+        recording = proof.get("recording_sha256")
+        bound_contact = (
+            timing.get("timing_source") == "visual_contact"
+            and proof.get("method") in {"automatic_visual_contact", "explicit_visual_contact"}
+            and isinstance(recording, str) and re.fullmatch(r"[a-f0-9]{64}", recording)
+            and recording == candidate["asset"].get("sha256")
+            and isinstance(proof.get("scene_id"), str) and bool(proof["scene_id"])
+            and isinstance(proof.get("visual_plan_sha256"), str)
+            and re.fullmatch(r"[a-f0-9]{64}", proof["visual_plan_sha256"]))
+        return (0 if bound_contact else 1, timing["start"])
+
+    selected, omitted = [], []
+    for candidate in sorted(candidates, key=priority):
+        start = candidate["timing"]["start"]
+        if len(selected) >= event_cap:
+            omitted.append((candidate, "effect_budget_exhausted"))
+        elif any(abs(start - kept["timing"]["start"]) < minimum_gap for kept in selected):
+            omitted.append((candidate, "effect_spacing_conflict"))
+        else:
+            selected.append(candidate)
+    return (sorted(selected, key=lambda row: row["timing"]["start"]),
+            sorted(omitted, key=lambda row: row[0]["timing"]["start"]))
 
 
 def _prompt(script, timeline, profile, library, bundled=None, visual_plan=None):
@@ -477,17 +524,24 @@ def _direct_audio(script, timeline, profile_id, *, stop_event=None, visual_plan=
                                            "reason": timing["reason"], "timing_provenance": timing["timing_provenance"]})
             warnings.append(f"A contact effect for section {event['section_id']} was omitted because its contact timing was not supported.")
             continue
-        timed_candidates.append((event, row, asset, timing))
-    last_start = -100
-    # Apply sparsity to the resolved timeline, not the model's provisional
-    # section boundaries. An omitted early contact cannot consume the budget.
-    for event, row, asset, timing in sorted(timed_candidates, key=lambda candidate: candidate[3]["start"]):
-        start = timing["start"]
-        if start - last_start < (8 if low else 5) or len(plan["events"]) >= event_cap:
-            continue
-        length = min(1.2 if low else 1.8, float(asset["duration"]), float(row["duration"]), duration - start)
+        length = min(1.2 if low else 1.8, float(asset["duration"]), float(row["duration"]), duration - timing["start"])
         if length < .05:
+            plan["omitted_events"].append({"section_id": event["section_id"], "label": event["label"],
+                "start": timing["start"], "reason": "effect_duration_too_short",
+                "timing_provenance": timing["timing_provenance"]})
             continue
+        timed_candidates.append({"event": event, "asset": asset, "timing": timing, "duration": length})
+    # Resolve all eligibility before allocating slots. A verified visual
+    # contact can displace a generic transition, but never waive sparsity.
+    selected, omitted = _select_effect_candidates(timed_candidates, event_cap, 8 if low else 5)
+    for candidate, reason in omitted:
+        event, asset, timing = candidate["event"], candidate["asset"], candidate["timing"]
+        plan["omitted_events"].append({"section_id": event["section_id"], "label": event["label"],
+            "query": event.get("query", ""), "asset_id": asset["id"], "start": timing["start"],
+            "reason": reason, "timing_provenance": timing["timing_provenance"]})
+    for candidate in selected:
+        event, asset, timing = candidate["event"], candidate["asset"], candidate["timing"]
+        start, length = timing["start"], candidate["duration"]
         cue = {"section_id": event["section_id"], "start": start, "duration": length,
                "label": event["label"], "reason": event["reason"], "volume": .22 if low else .30,
                "asset": public_asset(asset)}
@@ -495,7 +549,6 @@ def _direct_audio(script, timeline, profile_id, *, stop_event=None, visual_plan=
         plan["events"].append(cue)
         resolved["events"].append({"path": asset["path"], "start": start, "duration": length,
                                     "volume": cue["volume"], "asset": asset})
-        last_start = start
     check_stop()
     return plan, resolved
 

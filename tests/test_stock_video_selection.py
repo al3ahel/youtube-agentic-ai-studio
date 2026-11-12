@@ -125,7 +125,7 @@ def test_pixabay_same_key_real_probe_and_bound_receipt(monkeypatch, tmp_path, cl
     assert request["allow_redirects"] is False
     assert KEY not in json.dumps(calls[1]) and "Authorization" not in calls[1][1]["headers"]
     assert KEY not in json.dumps(record)
-    cache_text = next((tmp_path / "data" / "video-search-cache").glob("*.json")).read_text()
+    cache_text = next((tmp_path / "data" / "video-search-cache").glob("*.json")).read_text(encoding="utf-8")
     assert KEY not in cache_text and all(response.closed for response in responses)
 
 
@@ -203,7 +203,7 @@ def test_changed_file_and_malformed_receipt_are_cache_misses_not_reuse_or_repair
     assert stock.verify_footage(record, output, **BINDING) is False
     refreshed = acquire(output)
     assert stock.verify_footage(refreshed, output, **BINDING) is True
-    (Path(refreshed["path"]).parent / "selection.json").write_text("broken receipt")
+    (Path(refreshed["path"]).parent / "selection.json").write_text("broken receipt", encoding="utf-8")
     again = acquire(output)
     assert stock.verify_footage(again, output, **BINDING) is True
     assert len(calls) == 4  # One search, three real validations/downloads; no stale directory discovery.
@@ -227,9 +227,9 @@ def test_pixabay_search_metadata_expires_after_24_hours(monkeypatch, tmp_path, c
     output = tmp_path / "output"
     acquire(output)
     cache = next((tmp_path / "data" / "video-search-cache").glob("*.json"))
-    value = json.loads(cache.read_text())
+    value = json.loads(cache.read_text(encoding="utf-8"))
     value["created"] = time.time() - stock.CACHE_SECONDS - 1
-    cache.write_text(json.dumps(value))
+    cache.write_text(json.dumps(value), encoding="utf-8")
     acquire(output, scene_id="scene-2")
     assert [url for url, _ in calls].count(stock.PIXABAY_SEARCH_URL) == 2
 

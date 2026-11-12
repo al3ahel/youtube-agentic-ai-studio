@@ -63,7 +63,7 @@ def test_decodes_every_phase_and_measures_actual_audio_without_fake_approval(tmp
     assert -25 < value["audio"]["rms_dbfs"] < -15
     assert value["audio"]["perceptual_quality"] == "not_assessed"
     assert any(issue["code"] == "repeated_layout" for issue in value["issues"])
-    assert json.loads((tmp_path / value["evidence_directory"] / "review.json").read_text()) == value
+    assert json.loads((tmp_path / value["evidence_directory"] / "review.json").read_text(encoding="utf-8")) == value
 
 
 def test_missing_audio_is_a_real_failure(tmp_path):
@@ -264,10 +264,10 @@ def test_invalid_evidence_gets_one_new_assessment_without_rewriting_the_rejected
     assert [row["validation"] for row in history] == ["invalid", "valid", "valid"]
     folder = tmp_path / report["evidence_directory"]
     for entry, (_, raw) in zip(history, returned):
-        receipt = json.loads((folder / entry["file"]).read_text())
+        receipt = json.loads((folder / entry["file"]).read_text(encoding="utf-8"))
         assert receipt["response"] == raw
         assert review._hash(folder / entry["file"]) == entry["sha256"]
-    assert json.loads((folder / history[0]["file"]).read_text())["validation"] == "invalid"
+    assert json.loads((folder / history[0]["file"]).read_text(encoding="utf-8"))["validation"] == "invalid"
 
 
 def evidence_fixture(scenes):
@@ -892,7 +892,7 @@ def test_repair_rolls_back_new_reliable_semantic_failure_even_when_labeled_warni
     assert decision["decoded_stage_change"]["shot-1"] > 1.5
     assert decision["accepted"] is False and report["repairs_applied"] == 0
     assert accepted == original and review._hash(path) == digest
-    after = json.loads((tmp_path / decision["after_report"] / "review.json").read_text())
+    after = json.loads((tmp_path / decision["after_report"] / "review.json").read_text(encoding="utf-8"))
     assert after["vision"]["complete"] is True and after["passed"] is False
     assert any(issue["code"] == "subject_relevance" and issue["severity"] == "warning" for issue in after["issues"])
     assert (tmp_path / decision["after_report"] / "encoded.mp4").is_file()

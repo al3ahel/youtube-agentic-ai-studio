@@ -94,8 +94,8 @@ def test_real_wav_import_preview_and_registry_are_owned_and_do_not_change_prefer
     assert resolved == asset
     assert path == Path(config.DATA_DIR).resolve() / "audio-library" / profile["id"] / "music" / (asset["id"] + ".wav")
     registry = path.parent.parent / "registry.json"
-    assert str(Path(config.DATA_DIR)) not in registry.read_text()
-    assert list(json.loads(registry.read_text())["assets"]) == [asset["id"]]
+    assert str(Path(config.DATA_DIR)) not in registry.read_text(encoding="utf-8")
+    assert list(json.loads(registry.read_text(encoding="utf-8"))["assets"]) == [asset["id"]]
     assert channels.get_profile(profile["id"])["defaults"] == before_defaults
     assert state == before_state
 
@@ -341,7 +341,7 @@ def test_corrupt_registry_is_not_overwritten_by_an_import(client, monkeypatch):
     monkeypatch.setattr(audio_library, "_probe_audio", lambda path: .1)
     response = client.post("/api/audio-library/import", json=_body())
     assert response.status_code == 409 and "kept" in response.json["error"]
-    assert registry.read_text() == "{broken" and path.read_bytes() == _wav()
+    assert registry.read_text(encoding="utf-8") == "{broken" and path.read_bytes() == _wav()
     assert _stored_files() == sorted([path, registry])
 
 

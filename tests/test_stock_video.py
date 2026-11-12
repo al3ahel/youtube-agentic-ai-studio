@@ -128,11 +128,11 @@ def test_full_fetch_keeps_key_on_api_only_and_saves_attribution(monkeypatch, tmp
     assert KEY not in calls[0][1]["params"]["query"]
     assert "Authorization" not in calls[1][1]["headers"]
     assert stock.get_status()["reason"] == "downloaded"
-    credits = (tmp_path / "video_credits.json").read_text()
+    credits = (tmp_path / "video_credits.json").read_text(encoding="utf-8")
     assert KEY not in credits and "videos.pexels.com" not in credits
     assert json.loads(credits)[0]["sha256"] == result["sha256"]
     stock.fetch_video("sunlight", tmp_path, min_duration=10)
-    assert len(json.loads((tmp_path / "video_credits.json").read_text())) == 1
+    assert len(json.loads((tmp_path / "video_credits.json").read_text(encoding="utf-8"))) == 1
     assert len(calls) == 2  # Verified scene/query receipt avoids another API call or download.
     assert stock.get_status()["reason"] == "reused_verified_clip"
 

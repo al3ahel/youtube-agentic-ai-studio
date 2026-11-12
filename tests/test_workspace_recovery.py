@@ -46,8 +46,8 @@ def project(tmp_path, monkeypatch, encoded_video):
               "sections": [{"id": 1, "title": "Observe", "narration": "Observe sunlight. Follow the energy."},
                            {"id": "next", "title": "Explain", "narration": "Explain the panel. Follow the electrons."}]}
     research = {"topic": "Energy", "hook_question": "Where does the energy go?"}
-    (output / "script.json").write_text(json.dumps(script))
-    (output / "research.json").write_text(json.dumps(research))
+    (output / "script.json").write_text(json.dumps(script), encoding="utf-8")
+    (output / "research.json").write_text(json.dumps(research), encoding="utf-8")
     audio = output / "narration.wav"
     with wave.open(str(audio), "wb") as handle:
         handle.setnchannels(1)
@@ -59,21 +59,21 @@ def project(tmp_path, monkeypatch, encoded_video):
         "audio_sha256": hashlib.sha256(audio.read_bytes()).hexdigest(),
         "sections": [{"id": 1, "start": 0, "duration": 1}, {"id": "next", "start": 1, "duration": 1}],
         "words": [],
-    }))
+    }), encoding="utf-8")
     timeline = build_timeline(script, str(audio), str(output))
     (output / "images").mkdir()
     photo = output / "images" / "saved.png"
     Image.new("RGB", (64, 64), "navy").save(photo)
     images = {1: [str(photo)], "next": [str(photo)]}
-    (output / "image_map.json").write_text(json.dumps({str(key): ["images/saved.png"] for key in images}))
+    (output / "image_map.json").write_text(json.dumps({str(key): ["images/saved.png"] for key in images}), encoding="utf-8")
     plan = plan_scenes(script, timeline, output_dir=output, image_map=images, use_ai=False)
     (output / "render_audio.json").write_text(json.dumps({
         "path": "narration.wav", "audio_sha256": timeline["audio_sha256"],
-    }))
+    }), encoding="utf-8")
     motion = output / "motion"
     motion.mkdir()
-    (motion / "index.html").write_text("<!doctype html><main>A saved local preview</main>")
-    (motion / "project.json").write_text(json.dumps(plan))
+    (motion / "index.html").write_text("<!doctype html><main>A saved local preview</main>", encoding="utf-8")
+    (motion / "project.json").write_text(json.dumps(plan), encoding="utf-8")
     draft = output / "motion_preview.mp4"
     draft.write_bytes(encoded_video)
     yield {"output": output, "script": script, "research": research, "timeline": timeline,
@@ -104,7 +104,7 @@ def _collage(project):
     project["plan"] = plan_scenes(project["script"], project["timeline"], output_dir=output,
                                   image_map=images, use_ai=False, use_project_photos=True)
     (output / "image_map.json").write_text(json.dumps({key: [str(Path(path).relative_to(output)) for path in values]
-                                                    for key, values in images.items()}))
+                                                    for key, values in images.items()}), encoding="utf-8")
     from studio.visual_assets import save_binding
     save_binding(output, images, project["script"], "default")
     return second
@@ -114,7 +114,7 @@ def test_every_collage_layer_is_part_of_the_completed_render_identity(project):
     second = _collage(project)
     _open_project(project)
     assert workspace.checkpoint_workspace(rendered_kind="draft")
-    checkpoint = json.loads((project["output"] / "workspace.json").read_text())
+    checkpoint = json.loads((project["output"] / "workspace.json").read_text(encoding="utf-8"))
     assert "images/second-layer.png" in checkpoint["renders"]["draft"]["binding"]["assets"]
     _empty_editor()
     assert workspace.restore_workspace() and state["preview_path"] == str(project["draft"])
@@ -213,7 +213,7 @@ def test_recovery_accepts_valid_frame_timing_with_rounded_scene_duration(project
               "audio_sha256": hashlib.sha256(project["audio"].read_bytes()).hexdigest(),
               "sections": [{"id": 1, "start": 0, "duration": 1},
                            {"id": "next", "start": 1, "duration": duration - 1}], "words": []}
-    (project["output"] / "narration.timings.json").write_text(json.dumps(timing))
+    (project["output"] / "narration.timings.json").write_text(json.dumps(timing), encoding="utf-8")
     timeline = build_timeline(project["script"], str(project["audio"]), str(project["output"]))
     plan = plan_scenes(project["script"], timeline, output_dir=project["output"], use_ai=False)
     assert plan["duration"] != timeline["duration"]
@@ -235,7 +235,7 @@ def test_checkpoint_preserves_metadata_and_contains_only_relative_media_paths(pr
     state.update(description="", thumb_text="Custom title", thumb_style="minimal",
                  thumb_bg=str(project["photo"]), thumb_path=str(project["photo"]), thumb_bg_index=2)
     assert workspace.checkpoint_workspace(rendered_kind="draft")
-    checkpoint = (project["output"] / "workspace.json").read_text()
+    checkpoint = (project["output"] / "workspace.json").read_text(encoding="utf-8")
     assert str(project["output"]) not in checkpoint
     assert json.loads(checkpoint)["renders"]["draft"]["artifact"]["path"] == "motion_preview.mp4"
     _empty_editor()
@@ -270,7 +270,7 @@ def test_checkpoint_restores_open_library_video_and_thumbnail_inside_output(proj
                  preview_path=str(video) if kind == "draft" else None, preview_only=kind == "draft",
                  thumb_path=str(thumbnail), library_id="saved-project")
     assert workspace.checkpoint_workspace(rendered_kind=kind)
-    checkpoint = json.loads((project["output"] / "workspace.json").read_text())
+    checkpoint = json.loads((project["output"] / "workspace.json").read_text(encoding="utf-8"))
     assert checkpoint["renders"][kind]["artifact"]["path"] == "library/saved-project/video.mp4"
     assert checkpoint["paths"]["thumb_path"] == "library/saved-project/thumbnail.jpg"
     _empty_editor()
@@ -285,9 +285,9 @@ def test_legacy_candidate_must_match_probed_dimensions_even_if_timestamps_look_f
     cutoff = project["draft"].stat().st_mtime_ns - 1_000_000
     for name in ("timeline.json", "scene_plan.json"):
         path = project["output"] / name
-        value = json.loads(path.read_text())
+        value = json.loads(path.read_text(encoding="utf-8"))
         value["width"] = 256
-        path.write_text(json.dumps(value))
+        path.write_text(json.dumps(value), encoding="utf-8")
         os.utime(path, ns=(cutoff, cutoff))
     assert workspace.restore_workspace()
     assert state["visual_plan"]["width"] == 256
@@ -298,7 +298,7 @@ def test_invalidation_durably_marks_old_render_unusable_even_if_its_clock_is_new
     _open_project(project)
     assert workspace.checkpoint_workspace(rendered_kind="draft")
     runner._invalidate(project["output"])
-    receipt = json.loads((project["output"] / "workspace.json").read_text())
+    receipt = json.loads((project["output"] / "workspace.json").read_text(encoding="utf-8"))
     assert receipt["renders"] == {}
     newer = (project["output"] / "workspace.json").stat().st_mtime_ns + 1_000_000_000
     os.utime(project["draft"], ns=(newer, newer))
@@ -333,7 +333,7 @@ def test_render_receipt_rejects_changed_narration_and_invalid_storyboard(project
 
 
 def test_empty_or_unreadable_plan_is_not_restored_as_a_storyboard(project):
-    (project["output"] / "scene_plan.json").write_text('{"scenes":[]}')
+    (project["output"] / "scene_plan.json").write_text('{"scenes":[]}', encoding="utf-8")
     assert workspace.restore_workspace()
     assert state["visual_plan"] is None and not state["preview_path"]
     assert state["visual_mode"] == "motion"
@@ -351,22 +351,22 @@ def test_partial_script_after_interrupted_run_never_claims_a_ready_draft(project
 
 
 def test_corrupt_checkpoint_does_not_fall_back_to_legacy_file_detection(project):
-    (project["output"] / "workspace.json").write_text("{broken")
+    (project["output"] / "workspace.json").write_text("{broken", encoding="utf-8")
     assert workspace.restore_workspace()
     assert state["visual_plan"] and state["preview_path"] is None
     assert "video information is unreadable" in state["workspace_warning"]
-    assert (project["output"] / "workspace.json").read_text() == "{broken"
+    assert (project["output"] / "workspace.json").read_text(encoding="utf-8") == "{broken"
 
 
 def test_recovery_rejects_escaping_render_receipt_and_does_not_read_external_media(project, tmp_path, monkeypatch):
     _open_project(project)
     assert workspace.checkpoint_workspace(rendered_kind="draft")
     receipt_file = project["output"] / "workspace.json"
-    receipt = json.loads(receipt_file.read_text())
+    receipt = json.loads(receipt_file.read_text(encoding="utf-8"))
     outside = tmp_path / "private.mp4"
     outside.write_bytes(project["draft"].read_bytes())
     receipt["renders"]["draft"]["artifact"]["path"] = "../private.mp4"
-    receipt_file.write_text(json.dumps(receipt))
+    receipt_file.write_text(json.dumps(receipt), encoding="utf-8")
     fingerprint = workspace._fingerprint
 
     def inside(root, path):
@@ -380,7 +380,7 @@ def test_recovery_rejects_escaping_render_receipt_and_does_not_read_external_med
 
 
 def test_invalid_saved_profile_identity_is_reported_without_adopting_project(project):
-    (project["output"] / "project_profile.json").write_text('{"profile_id":"unknown"}')
+    (project["output"] / "project_profile.json").write_text('{"profile_id":"unknown"}', encoding="utf-8")
     assert not workspace.restore_workspace()
     assert state["script"] is None and state["profile_id"] is None
     assert "could not be recovered" in state["workspace_warning"]
@@ -411,7 +411,7 @@ def test_checkpoints_cache_unchanged_media_fingerprints_but_detect_content_chang
     reads.clear()
     assert workspace.checkpoint_workspace()
     assert project["audio"] in reads
-    assert json.loads((project["output"] / "workspace.json").read_text())["renders"] == {}
+    assert json.loads((project["output"] / "workspace.json").read_text(encoding="utf-8"))["renders"] == {}
 
 
 def test_checkpoint_accepts_original_pipeline_paths_relative_to_repository(project, monkeypatch):

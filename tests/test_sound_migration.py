@@ -48,7 +48,7 @@ def test_selected_legacy_music_is_manual_until_automatic_is_explicit(tmp_path):
 
 def test_music_switch_without_a_track_does_not_migrate_to_empty_manual_folder(tmp_path):
     path = tmp_path / "settings.json"
-    path.write_text('{"MUSIC_ENABLED": true}')
+    path.write_text('{"MUSIC_ENABLED": true}', encoding="utf-8")
     assert "SOUND_MODE" not in config.load_settings(str(path))
 
 
@@ -110,10 +110,10 @@ def test_worker_uses_legacy_selected_recording_without_saving_settings(legacy_ch
         handle.writeframes(b"\x00\x00" * 48000)
     track = tmp_path / "selected.wav"
     shutil.copyfile(voice, track)
-    (tmp_path / "script.json").write_text(json.dumps(script))
+    (tmp_path / "script.json").write_text(json.dumps(script), encoding="utf-8")
     (tmp_path / "narration.timings.json").write_text(json.dumps({
         "version": 1, "script_signature": script_signature(script), "duration": 1,
-        "sections": [{"id": 1, "start": 0, "duration": 1, "caption_timing": "estimated"}], "words": []}))
+        "sections": [{"id": 1, "start": 0, "duration": 1, "caption_timing": "estimated"}], "words": []}), encoding="utf-8")
     state.update(profile_id=profile_id, script=script, research={}, visual_plan=None, timeline=None,
                  audio_path=str(voice), video_path=None, preview_path=None, image_map={},
                  error=None, library_id=None, description="My publishing text")
@@ -136,7 +136,7 @@ def test_worker_uses_legacy_selected_recording_without_saving_settings(legacy_ch
 
     assert state["error"] is None
     assert seen == [(profile_id, "a" * 32, "music")]
-    manifest = json.loads((tmp_path / "render_audio.json").read_text())
+    manifest = json.loads((tmp_path / "render_audio.json").read_text(encoding="utf-8"))
     assert manifest["sound_design"]["mode"] == "manual"
     assert manifest["sound_design"]["profile_id"] == profile_id
     assert manifest["credits"][0]["id"] == "a" * 32

@@ -10,6 +10,7 @@ until one returns results, so videos still get B-roll with no Pexels key.
 Each candidate carries a `credit` dict; stock.py writes them to credits.json
 and the description builder turns them into an attribution block.
 """
+import os
 import random
 import re
 from urllib.parse import quote
@@ -131,22 +132,57 @@ def strip_pollinations_logo(path: str) -> None:
         print(f"   ⚠ Could not clean AI image {path}: {e}")
 
 
+MAX_IMAGE_BYTES = 40 * 1024 * 1024
+
+
+def _is_image(path: str) -> bool:
+    """True when Pillow can identify and structurally verify the file."""
+    from PIL import Image
+    try:
+        with Image.open(path) as im:
+            im.verify()
+        return True
+    except Exception:
+        return False
+
+
 def fetch(candidate: dict, path: str) -> bool:
-    """Download a candidate, trying its fallback URL if the large size is missing."""
+    """Download a candidate, trying its fallback URL if the large size is missing.
+
+    The bytes go to a temporary file and only a complete, decodable image is
+    moved into place. A dropped connection or an HTML error page therefore
+    never leaves a broken section_NN_imgMM.jpg for the renderer to trip over.
+    """
+    partial = path + ".part"
     for url in (candidate.get("url"), candidate.get("fallback_url")):
         if not url:
             continue
+        r = None
         try:
             r = get(url, timeout=candidate.get("timeout", 30), stream=True)
             ctype = r.headers.get("Content-Type", "")
             if "image" not in ctype and "octet-stream" not in ctype:
                 continue
-            with open(path, "wb") as f:
-                for chunk in r.iter_content(8192):
+            size = 0
+            with open(partial, "wb") as f:
+                for chunk in r.iter_content(65536):
+                    size += len(chunk)
+                    if size > MAX_IMAGE_BYTES:
+                        raise ValueError("image exceeds the size limit")
                     f.write(chunk)
+            if not _is_image(partial):
+                continue
+            os.replace(partial, path)
             if "pollinations" in url:
                 strip_pollinations_logo(path)
             return True
         except Exception:
             continue
+        finally:
+            if r is not None:
+                r.close()
+            try:
+                os.remove(partial)
+            except OSError:
+                pass
     return False

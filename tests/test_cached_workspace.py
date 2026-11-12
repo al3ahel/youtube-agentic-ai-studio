@@ -60,7 +60,12 @@ def test_partial_run_after_restart_checks_saved_owner_before_starting_worker(wor
     saved_identity = (workspace / "project_profile.json").read_bytes()
     worker = Mock(name="pipeline_worker")
     thread_factory = Mock(name="Thread", return_value=worker)
-    monkeypatch.setattr(pipeline.threading, "Thread", thread_factory)
+    # Intercept only the pipeline worker. `pipeline.threading` is the shared
+    # threading module, and on Windows subprocess.run (the build badge's git
+    # calls) creates its pipe-reader threads through the same class.
+    real_thread = pipeline.threading.Thread
+    monkeypatch.setattr(pipeline.threading, "Thread", lambda *args, **kwargs: (
+        thread_factory if kwargs.get("target") is pipeline.run_pipeline_thread else real_thread)(*args, **kwargs))
     app = create_app()
     app.testing = True
     assert state["profile_id"] == owner["id"] and state["profile_name"] == owner["name"]

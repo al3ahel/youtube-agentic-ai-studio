@@ -10,6 +10,7 @@ import json
 import config
 from agents.gemini_client import generate
 from agents.json_utils import extract_json
+from apis.llm_session import StructuredOutputError
 
 # Path to the banned-topics file (sits next to this package's parent directory)
 _BANNED_TOPICS_FILE = os.path.join(
@@ -64,13 +65,27 @@ def save_banned_topics(topics: list) -> None:
     Write the user-managed portion of the banned list to banned_topics.txt.
     Built-in topics are excluded from the file (they're always applied anyway).
     """
-    user_topics = [t for t in topics if t not in _BUILTIN_BANNED and t.strip()]
-    with open(_BANNED_TOPICS_FILE, "w", encoding="utf-8") as f:
-        f.write("# One banned topic per line. Lines starting with # are comments.\n")
-        f.write("# Built-in banned: The Boltzmann Brain, Simulation Theory, Quantum Immortality\n")
-        f.write("# Add topics here after you make a video about them.\n\n")
-        for t in user_topics:
-            f.write(t + "\n")
+    user_topics = []
+    for t in topics:
+        # The file is line-based: collapse any line break inside a topic, and
+        # drop one that would be read back as a comment and silently vanish.
+        t = " ".join(str(t).split())
+        if t and not t.startswith("#") and t not in _BUILTIN_BANNED and t not in user_topics:
+            user_topics.append(t)
+    tmp = _BANNED_TOPICS_FILE + ".tmp"
+    try:
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.write("# One banned topic per line. Lines starting with # are comments.\n")
+            f.write("# Built-in banned: The Boltzmann Brain, Simulation Theory, Quantum Immortality\n")
+            f.write("# Add topics here after you make a video about them.\n\n")
+            for t in user_topics:
+                f.write(t + "\n")
+        os.replace(tmp, _BANNED_TOPICS_FILE)
+    finally:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
 
 
 def _grounding(topic: str) -> dict:
@@ -84,8 +99,52 @@ def _grounding(topic: str) -> dict:
     return ctx
 
 
-def _parse(raw: str) -> dict:
+# The prompt shows the expected shape with these instructions as values. A small
+# model sometimes returns them unchanged; they would otherwise become the video
+# title, the script's key points or lines of the published description.
+_SHAPE = {
+    "topic": "The specific chosen subject",
+    "why_now": "Why this is useful to this channel's audience; no invented timeliness",
+    "video_title": "An accurate title under 70 characters matching the selected profile",
+    "description": "Two clear sentences describing the video",
+    "hook_question": "The question or experience this video offers, appropriate to the profile",
+    "key_points": ["A supported fact or a calm session element", "A second supported point", "A useful conclusion"],
+    "target_audience": "The audience described by this channel",
+    "tags": ["relevant tag", "specific subject"],
+    "thumbnail_concept": "A visual suitable for the topic and channel's tone",
+}
+
+
+def _plain(text) -> str:
+    return " ".join("".join(ch if ch.isalnum() else " " for ch in str(text).casefold()).split())
+
+
+_SHAPE_TEXT = {_plain(value) for entry in _SHAPE.values() for value in (entry if isinstance(entry, list) else [entry])}
+
+
+def _parse(raw: str, requested_topic: str = "") -> dict:
     data = extract_json(raw, "Researcher")
+    if not isinstance(data, dict):
+        raise ValueError("Research must be one JSON object.")
+    if "topic" not in data and len(data) == 1 and isinstance(next(iter(data.values())), dict):
+        data = next(iter(data.values()))            # {"research": {...}}
+    # Harmless shape differences are normalised rather than spending the one retry.
+    for field in ("key_points", "tags"):
+        value = data.get(field)
+        if isinstance(value, str):
+            value = [part for part in (value.split("\n") if field == "key_points" else
+                                       value.replace(";", ",").replace("\n", ",").split(","))]
+        if isinstance(value, list):
+            data[field] = [item.strip(" \t-•*#") for item in value
+                           if isinstance(item, str) and item.strip(" \t-•*#") and _plain(item) not in _SHAPE_TEXT]
+    for field in ("why_now", "description", "hook_question", "target_audience", "thumbnail_concept"):
+        if field in data and (not isinstance(data[field], str) or _plain(data[field]) in _SHAPE_TEXT):
+            del data[field]
+    if requested_topic:
+        data["topic"] = requested_topic
+    for field in ("topic", "video_title"):
+        if isinstance(data.get(field), str) and _plain(data[field]) in _SHAPE_TEXT:
+            raise ValueError(f"Research repeats the example {field} instead of planning this video.")
     for field in ["topic", "video_title", "key_points", "tags"]:
         if field not in data:
             raise ValueError(f"Research JSON missing field: '{field}'")
@@ -96,6 +155,24 @@ def _parse(raw: str) -> dict:
             or not isinstance(data["tags"], list) or not all(isinstance(tag, str) for tag in data["tags"])):
         raise ValueError("Research must include a topic, title, key-point list and tag list.")
     return data
+
+
+def _ask(prompt: str, requested_topic: str = "") -> dict:
+    """Request research as JSON, allowing one replacement for an unusable reply.
+
+    Research is the first stage of every run. Without this, a single reply
+    wrapped in prose or missing a field failed the whole video, while the
+    writing stage already asks providers for JSON and recovers once.
+    Stop requests and provider outages are not retried here.
+    """
+    for attempt in range(2):
+        try:
+            return _parse(generate(prompt, json_mode=True), requested_topic)
+        except (ValueError, StructuredOutputError) as e:
+            if attempt:
+                raise
+            print(f"   ⚠ Research reply was not usable ({str(e).splitlines()[0][:160]}) — asking once more")
+    raise AssertionError("unreachable")
 
 
 def _profile_rules(preset: str) -> str:
@@ -129,17 +206,7 @@ def _research_prompt(channel_description, topic, focus_angle, trend_context, gro
     facts = str((grounding or {}).get("facts", ""))[:5000]
     sources = (grounding or {}).get("sources", [])
     leads = trend_context[:25] if isinstance(trend_context, list) else []
-    schema = {
-        "topic": topic or "The specific chosen subject",
-        "why_now": "Why this is useful to this channel's audience; no invented timeliness",
-        "video_title": "An accurate title under 70 characters matching the selected profile",
-        "description": "Two clear sentences describing the video",
-        "hook_question": "The question or experience this video offers, appropriate to the profile",
-        "key_points": ["A supported fact or a calm session element", "A second supported point", "A useful conclusion"],
-        "target_audience": "The audience described by this channel",
-        "tags": ["relevant tag", "specific subject"],
-        "thumbnail_concept": "A visual suitable for the topic and channel's tone",
-    }
+    schema = {**_SHAPE, "topic": topic or _SHAPE["topic"]}
     return f"""You are planning a YouTube video for the selected channel.
 
 Channel description and audience:
@@ -164,6 +231,8 @@ Use only these actual references. Do not manufacture citations or label backgrou
 
 {'First select a suitable topic; the app will retrieve its background sources and re-plan news content afterward.' if selecting else 'Plan only claims supported by the available excerpts; omit uncertain details.'}
 
+The values in the shape below are instructions describing each field. Replace every one with your own
+content for this video; never copy them.
 Return ONLY a valid JSON object matching this shape, without markdown fences:
 {json.dumps(schema, ensure_ascii=False, indent=2)}
 """
@@ -185,17 +254,15 @@ def research_topic(channel_description: str,
         print(f'   → Researching the requested topic: "{exact_topic[:120]}"')
         grounding = _grounding(exact_topic)
         prompt = _research_prompt(channel_description, exact_topic, "", trend_context, grounding)
-        data = _parse(generate(prompt))
-        data["topic"] = exact_topic
+        data = _ask(prompt, exact_topic)
     else:
         prompt = _research_prompt(channel_description, "", focus_angle, trend_context, None, selecting=True)
-        selected = _parse(generate(prompt))
+        selected = _ask(prompt)
         grounding = _grounding(selected["topic"])
         if preset == "news":
             # Topic selection without sources is never the factual research pass.
             prompt = _research_prompt(channel_description, selected["topic"], focus_angle, trend_context, grounding)
-            data = _parse(generate(prompt))
-            data["topic"] = selected["topic"]
+            data = _ask(prompt, selected["topic"])
         else:
             data = selected
     data["grounding"] = grounding

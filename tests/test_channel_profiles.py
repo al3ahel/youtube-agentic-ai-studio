@@ -26,7 +26,7 @@ def isolated(tmp_path, monkeypatch):
         monkeypatch.setattr(config, key, deepcopy(vars(config)[key]))
     monkeypatch.setattr(youtube, "TOKEN_FILE", str(tmp_path / "legacy-token.json"))
     monkeypatch.setattr(config, "YOUTUBE_CLIENT_SECRET", str(tmp_path / "client_secret.json"))
-    (tmp_path / "client_secret.json").write_text('{"installed": {}}')
+    (tmp_path / "client_secret.json").write_text('{"installed": {}}', encoding="utf-8")
     for key in ("running", "uploading", "visual_editing", "channel_connecting"):
         monkeypatch.setitem(state, key, False)
     channels._connections.clear()
@@ -51,7 +51,7 @@ def _channel(ident=CHANNEL_A):
 def _token(profile_id, value="saved-secret"):
     path = channels.token_path(profile_id)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(value)
+    path.write_text(value, encoding="utf-8")
     return path
 
 
@@ -62,7 +62,7 @@ def test_default_preserves_legacy_settings_without_freezing_them(isolated, monke
     assert channels.config_overrides() == {"CHANNEL_PRESET": "general"}
     monkeypatch.setattr(config, "VOICE_RATE", "+7%")
     assert channels.get_profile("default")["defaults"]["voice_rate"] == "+7%"
-    saved = json.loads((Path(config.DATA_DIR) / "channels.json").read_text())
+    saved = json.loads((Path(config.DATA_DIR) / "channels.json").read_text(encoding="utf-8"))
     assert saved["profiles"][0]["defaults"] == {}
 
 
@@ -112,12 +112,12 @@ def test_new_and_legacy_profiles_never_inherit_default_channel_audio_ids(isolate
     assert calm["defaults"]["sfx_mode"] == "ambience"
     # A channel saved by an earlier release has none of the new audio keys.
     path = Path(config.DATA_DIR) / "channels.json"
-    registry = json.loads(path.read_text())
+    registry = json.loads(path.read_text(encoding="utf-8"))
     for record in registry["profiles"]:
         if record["id"] == calm["id"]:
             for key in ("music_track", "sfx_track", "sfx_enabled", "sfx_volume", "sfx_mode"):
                 record["defaults"].pop(key, None)
-    path.write_text(json.dumps(registry))
+    path.write_text(json.dumps(registry), encoding="utf-8")
     restored = channels.get_profile(calm["id"])["defaults"]
     assert restored["music_track"] == restored["sfx_track"] == ""
     assert restored["sfx_enabled"] is False and restored["sfx_mode"] == "ambience"
@@ -140,7 +140,7 @@ def test_default_profile_edits_share_legacy_settings_without_duplicate_overrides
     assert saved["VOICE_RATE"] == "-10%" and saved["TARGET_DURATION_MINUTES"] == 12
     assert saved["CHANNEL_PRESET"] == "asmr"
     assert config.CHANNEL_NAME == original_name
-    raw = json.loads((Path(config.DATA_DIR) / "channels.json").read_text())["profiles"][0]
+    raw = json.loads((Path(config.DATA_DIR) / "channels.json").read_text(encoding="utf-8"))["profiles"][0]
     assert raw["name"] == "Local label"
     assert raw["defaults"] == {"music_library": "/my/calm/recordings", "video_type": "shorts"}
     assert channels.config_overrides("default") == {
@@ -203,10 +203,10 @@ def test_invalid_defaults_fail_without_saving(client, defaults):
 def test_corrupt_registry_is_not_overwritten(isolated):
     path = Path(config.DATA_DIR) / "channels.json"
     path.parent.mkdir()
-    path.write_text('{"profiles": "damaged"}')
+    path.write_text('{"profiles": "damaged"}', encoding="utf-8")
     with pytest.raises(channels.ChannelProfileError, match="not been overwritten"):
         channels.list_profiles()
-    assert path.read_text() == '{"profiles": "damaged"}'
+    assert path.read_text(encoding="utf-8") == '{"profiles": "damaged"}'
 
 
 def test_profile_id_rejects_traversal(isolated):
@@ -242,7 +242,7 @@ def test_connect_fetches_real_identity_and_saves_only_selected_profile_token(cli
         seen.append(kwargs)
         temporary = Path(kwargs["token_file"])
         temporary.parent.mkdir(parents=True, exist_ok=True)
-        temporary.write_text("new-profile-only")
+        temporary.write_text("new-profile-only", encoding="utf-8")
         return object()
 
     monkeypatch.setattr(youtube, "get_credentials", credentials)
@@ -252,8 +252,8 @@ def test_connect_fetches_real_identity_and_saves_only_selected_profile_token(cli
     shown = response.get_json()["profile"]
     assert response.status_code == 202 and shown["connected"]
     assert shown["channel"]["id"] == CHANNEL_A and shown["connection"]["status"] == "connected"
-    assert channels.token_path(profile["id"]).read_text() == "new-profile-only"
-    assert legacy.read_text() == "do-not-replace"
+    assert channels.token_path(profile["id"]).read_text(encoding="utf-8") == "new-profile-only"
+    assert legacy.read_text(encoding="utf-8") == "do-not-replace"
     assert seen[0]["interactive"] and seen[0]["force"]
     assert set(seen[0]["scopes"]) == set(youtube.CHANNEL_SCOPES)
     assert "new-profile-only" not in json.dumps(shown)
@@ -266,7 +266,7 @@ def test_wrong_channel_reconnect_keeps_previous_token_and_identity(client, monke
     channels._save_channel(profile["id"], _channel())
 
     def credentials(**kwargs):
-        Path(kwargs["token_file"]).write_text("wrong-channel-token")
+        Path(kwargs["token_file"]).write_text("wrong-channel-token", encoding="utf-8")
         return object()
 
     monkeypatch.setattr(youtube, "get_credentials", credentials)
@@ -274,7 +274,7 @@ def test_wrong_channel_reconnect_keeps_previous_token_and_identity(client, monke
     monkeypatch.setattr(channels.threading, "Thread", _NowThread)
     response = client.post(f"/api/channels/{profile['id']}/connect", json={}, headers=HEADERS)
     assert response.get_json()["profile"]["connection"]["status"] == "error"
-    assert original.read_text() == "original-token"
+    assert original.read_text(encoding="utf-8") == "original-token"
     assert channels.get_profile(profile["id"])["channel"]["id"] == CHANNEL_A
     assert not list(original.parent.glob(".connect-*"))
 
@@ -398,11 +398,11 @@ def test_used_profile_cannot_be_deleted(client, isolated, monkeypatch, usage):
         monkeypatch.setitem(state, "research", None)
         write_project_identity(config.OUTPUT_DIR, ident, profile["name"])
         if usage == "broken_workspace":
-            (Path(config.OUTPUT_DIR) / MANIFEST_NAME).write_text("{broken")
+            (Path(config.OUTPUT_DIR) / MANIFEST_NAME).write_text("{broken", encoding="utf-8")
     elif usage == "archive":
         folder = Path(library.LIB_DIR) / "saved-video"
         folder.mkdir(parents=True)
-        (folder / "meta.json").write_text(json.dumps({"profile_id": ident}))
+        (folder / "meta.json").write_text(json.dumps({"profile_id": ident}), encoding="utf-8")
     elif usage == "running":
         monkeypatch.setitem(state, "running", True)
     response = client.delete(f"/api/channels/{ident}", headers=HEADERS)

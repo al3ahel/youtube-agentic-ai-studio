@@ -512,6 +512,13 @@ def _response(url, *, host, prefix, stop_event, deadline):
                         live_socket[0].shutdown(socket.SHUT_RDWR)
                     except OSError:
                         pass
+                    if os.name == "nt":
+                        # Winsock's shutdown() does not wake a blocked read in
+                        # another thread; closing the handle directly does.
+                        try:
+                            socket.close(live_socket[0].detach())
+                        except (OSError, ValueError):
+                            pass
                 return
     threading.Thread(target=monitor, daemon=True, name="audio-download-deadline").start()
     try:

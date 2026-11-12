@@ -42,7 +42,7 @@ def _node_version():
         return None
     try:
         result = subprocess.run([node, "--version"], capture_output=True,
-                                text=True, timeout=5, check=False)
+                                text=True, encoding="utf-8", errors="replace", timeout=5, check=False)
         match = re.search(r"v?(\d+)\.(\d+)\.(\d+)", result.stdout or "")
         return tuple(map(int, match.groups())) if result.returncode == 0 and match else None
     except (OSError, subprocess.SubprocessError):

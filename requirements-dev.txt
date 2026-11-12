@@ -1,0 +1,5 @@
+# Test tooling, kept separate from what the studio needs at runtime.
+-r requirements.txt
+# pytest 9.2 fails while importing tests/test_profile_writing.py
+# ("AST identifier must be of type str" in its assertion rewriter).
+pytest>=8.4,<9

@@ -204,7 +204,7 @@ def test_opt_out_and_unwritable_cache_do_not_break_recording(tmp_path, recording
     monkeypatch.setattr(config, "VOICE_CACHE_DIR", str(not_directory))
     narrator.generate_narration(script(), tmp_path / "still-recorded", use_cache=True)
     assert len(calls) == 8
-    assert not_directory.read_text() == "A user file, never replace it."
+    assert not_directory.read_text(encoding="utf-8") == "A user file, never replace it."
 
 
 def test_cancelled_new_section_retains_previous_output_and_atomic_cache(tmp_path, recordings, monkeypatch):

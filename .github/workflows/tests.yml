@@ -15,14 +15,20 @@ concurrency:
 
 jobs:
   pytest:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
+        os: [ubuntu-latest]
         # Every version the README promises. 3.13+ is unsupported until the
         # numpy<2 / moviepy 1.x pins are lifted (no numpy<2 wheels for 3.13).
         python-version: ["3.10", "3.11", "3.12"]
+        include:
+          # SETUP.md's instructions are for Windows, where the default text
+          # encoding, line endings, sockets and symlink rights all differ.
+          - os: windows-latest
+            python-version: "3.12"
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
@@ -34,7 +40,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt pytest
+          python -m pip install -r requirements-dev.txt
           python -m pip check
       - name: Run tests
         run: python -m pytest -q

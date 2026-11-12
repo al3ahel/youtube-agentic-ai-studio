@@ -13,6 +13,14 @@ import os
 import sys
 import threading
 
+# The studio prints "⚠", "→" and titles in any language. A console or log file
+# using a legacy Windows code page cannot encode all of them, and an encoding
+# error there would abort startup or a running job. Substitute instead.
+try:
+    sys.stdout.reconfigure(errors="replace")
+except (AttributeError, ValueError, OSError):
+    pass
+
 ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, ROOT)
 os.chdir(ROOT)   # relative paths (output/, token file) resolve the same from anywhere
@@ -30,7 +38,10 @@ def _bind_server(port):
         return make_server("127.0.0.1", port, app, threaded=True)
     except (OSError, SystemExit) as exc:
         cause = exc if isinstance(exc, OSError) else exc.__context__
-        occupied = getattr(cause, "errno", None) in {errno.EADDRINUSE, 10048}
+        # Windows reports a port held by another process as WSAEACCES (10013,
+        # surfaced as PermissionError/EACCES) as often as WSAEADDRINUSE (10048).
+        occupied = (getattr(cause, "errno", None) in {errno.EADDRINUSE, 10048}
+                    or getattr(cause, "winerror", None) in {10013, 10048})
         reason = f"Port {port} is already in use." if occupied else f"Could not listen on port {port}."
         raise SystemExit(
             f"{reason} YAAS was not started and no browser was opened. "

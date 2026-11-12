@@ -25,29 +25,65 @@ def _load_env(path: str = ENV_PATH) -> None:
     """Minimal .env reader (no extra dependency). Real env vars win."""
     if not os.path.exists(path):
         return
-    with open(path, encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line or line.startswith("#") or "=" not in line:
-                continue
-            k, v = line.split("=", 1)
-            os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
+    try:
+        # utf-8-sig: Windows editors and PowerShell often add a byte-order mark,
+        # which would otherwise become part of the first key's name.
+        with open(path, encoding="utf-8-sig") as f:
+            lines = f.read().splitlines()
+    except (OSError, UnicodeError) as e:
+        # e.g. UTF-16 written by Windows PowerShell's `>`. Starting without the
+        # keys and saying why is more useful than a traceback at import.
+        print(f"   ⚠ Ignoring {os.path.basename(path)}: save it as UTF-8 text ({e})")
+        return
+    for line in lines:
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        k, v = line.split("=", 1)
+        k = _env_name(k)
+        if k:
+            os.environ.setdefault(k, v.strip().strip('"').strip("'"))
+
+
+def _env_name(text: str) -> str:
+    """'export KEY ' → 'KEY' (shell-style .env files are common)."""
+    name = text.strip()
+    return name[len("export "):].strip() if name.startswith("export ") else name
 
 
 def save_env(values: dict, path: str = ENV_PATH) -> None:
-    """Update KEY=value pairs in .env, keeping comments and unrelated keys."""
+    """Update KEY=value pairs in .env, keeping comments and unrelated keys.
+
+    A value is one line: a pasted key containing a line break would otherwise
+    add or overwrite other entries. The file is replaced atomically so a crash
+    cannot leave the keys half written, and is created private to its owner.
+    """
+    remaining = {}
+    for k, v in values.items():
+        v = str(v)
+        if any(c in v for c in "\r\n\0"):
+            raise ValueError(f"{k} must be a single line of text.")
+        remaining[k] = v
     lines = []
     if os.path.exists(path):
-        with open(path, encoding="utf-8") as f:
+        with open(path, encoding="utf-8-sig") as f:
             lines = f.read().splitlines()
-    remaining = dict(values)
     for i, line in enumerate(lines):
-        k = line.split("=", 1)[0].strip()
+        k = _env_name(line.split("=", 1)[0])
         if "=" in line and not line.lstrip().startswith("#") and k in remaining:
             lines[i] = f"{k}={remaining.pop(k)}"
     lines += [f"{k}={v}" for k, v in remaining.items()]
-    with open(path, "w", encoding="utf-8") as f:
-        f.write("\n".join(lines) + "\n")
+    tmp = path + ".tmp"
+    try:
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines) + "\n")
+        os.replace(tmp, path)
+    finally:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
 
 
 _load_env()

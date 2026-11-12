@@ -44,9 +44,16 @@ def section_key(section_id: int | str) -> str:
     return f"{int(value):02d}" if value.isdigit() else value
 
 
+# Keys Pexels answered 401 for. Remembered here instead of blanking
+# config.PEXELS_API_KEY: an emptied value is what Settings would show and then
+# save, silently deleting the user's key from .env. A corrected key is a
+# different string, so it is tried again without a restart.
+_rejected_pexels_keys: set = set()
+
+
 def _pexels_ready() -> bool:
     key = getattr(config, "PEXELS_API_KEY", "") or ""
-    return bool(key) and not key.upper().startswith("YOUR_")
+    return bool(key) and not key.upper().startswith("YOUR_") and key not in _rejected_pexels_keys
 
 
 def _pexels(query: str, orientation: str, count: int) -> list:
@@ -59,7 +66,7 @@ def _pexels(query: str, orientation: str, count: int) -> list:
     r = requests.get(PEXELS_SEARCH, headers=headers, params=params, timeout=15)
     if r.status_code == 401:
         print("   ⚠ Pexels API key invalid — using free fallback sources")
-        config.PEXELS_API_KEY = ""
+        _rejected_pexels_keys.add(config.PEXELS_API_KEY)
         return []
     r.raise_for_status()
     photos = r.json().get("photos", [])
@@ -170,9 +177,13 @@ def download_images(script: dict, output_dir: str) -> dict:
     for section in script.get("sections", []):
         sid   = section["id"]
         # Collect all image queries defined for this section
-        queries = [section.get("image_query", "science universe space")]
+        # A script without a usable query searches for its own subject, never
+        # for an unrelated stock theme.
+        queries = [str(section.get("image_query") or "").strip()
+                   or " ".join(str(section.get("title") or "").split()[:6])
+                   or topic_hint or "landscape"]
         for extra_key in ("image_query_2", "image_query_3", "image_query_4"):
-            q = section.get(extra_key, "").strip()
+            q = str(section.get(extra_key) or "").strip()
             if q:
                 queries.append(q)
 

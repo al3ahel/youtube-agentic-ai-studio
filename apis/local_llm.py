@@ -9,6 +9,7 @@ from __future__ import annotations
 import http.client
 import json
 import math
+import os
 import re
 import socket
 import threading
@@ -91,6 +92,18 @@ def _request_json(base_url, endpoint, *, body=None, stop_event=None, timeout=10)
                         sock.shutdown(socket.SHUT_RDWR)
                     except OSError:
                         pass
+                    if os.name == "nt":
+                        # Winsock's shutdown() does not wake a recv() that is
+                        # already blocked in another thread, so Stop and the
+                        # deadline would wait for the full socket timeout.
+                        # Closing the handle does interrupt it. sock.close()
+                        # alone is deferred while http.client's response file
+                        # still references the socket, so release the handle
+                        # from the object and close it directly.
+                        try:
+                            socket.close(sock.detach())
+                        except (OSError, ValueError):
+                            pass
                 return
 
     watcher = threading.Thread(target=monitor, daemon=True, name="ollama-request-deadline")

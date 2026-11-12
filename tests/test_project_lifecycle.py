@@ -84,7 +84,7 @@ def test_archive_roundtrip_restores_portable_motion_narration_and_timing(project
     script, original_plan = _motion_project(output)
     pid = library.archive_project()
     archive = Path(library.lib_path(pid))
-    archived_plan = json.loads((archive / "scene_plan.json").read_text())
+    archived_plan = json.loads((archive / "scene_plan.json").read_text(encoding="utf-8"))
     asset = archived_plan["scenes"][1]["footage"]["path"]
     assert not Path(asset).is_absolute() and (archive / asset).is_file()
     assert ".." not in Path(asset).parts
@@ -93,7 +93,7 @@ def test_archive_roundtrip_restores_portable_motion_narration_and_timing(project
     assert (archive / "timeline.json").is_file()
     assert (archive / "motion" / "assets" / "narration.wav").is_file()
     assert (archive / "visual_qa.json").is_file()
-    assert json.loads((archive / "video_credits.json").read_text())[0]["path"] == asset
+    assert json.loads((archive / "video_credits.json").read_text(encoding="utf-8"))[0]["path"] == asset
     for name in ("motion", "assets"):
         shutil.rmtree(output / name)
     for name in ("narration.wav", "narration.srt", "narration.timings.json", "timeline.json"):
@@ -112,8 +112,8 @@ def test_archive_roundtrip_restores_portable_motion_narration_and_timing(project
     restored_path = Path(state["visual_plan"]["scenes"][1]["footage"]["path"])
     assert restored_path.is_relative_to(output) and restored_path.read_bytes() == b"licensed footage"
     assert state["visual_plan"]["scenes"][0] == original_plan["scenes"][0]
-    assert json.loads((output / "script.json").read_text()) == script
-    assert json.loads((output / "research.json").read_text())["topic"] == "Networks"
+    assert json.loads((output / "script.json").read_text(encoding="utf-8")) == script
+    assert json.loads((output / "research.json").read_text(encoding="utf-8"))["topic"] == "Networks"
     assert (output / "narration.srt").is_file()
     assert state["visual_qa"]["passed"] is True
     assert not state["preview_only"] and state["preview_path"] is None
@@ -144,8 +144,8 @@ def _review_evidence(output):
                   "samples": [{"shot_id": "scene-001", "frames": frames}],
                   "render": {"file": "final_video.mp4", "sha256": hashlib.sha256(encoded).hexdigest(),
                              "snapshot": relative + "/encoded.mp4"}}
-        (folder / "plan.json").write_text(json.dumps(state["visual_plan"]))
-        (folder / "review.json").write_text(json.dumps(report))
+        (folder / "plan.json").write_text(json.dumps(state["visual_plan"]), encoding="utf-8")
+        (folder / "review.json").write_text(json.dumps(report), encoding="utf-8")
         reports.append(report)
     state["visual_qa"] = reports[1]
     return output / "render_review" / identifier
@@ -158,12 +158,12 @@ def test_review_attempts_and_decoded_evidence_survive_archive_and_load(project):
     contents = {path.relative_to(original).as_posix(): path.read_bytes() for path in original.rglob("*") if path.is_file()}
     unrelated = output / "render_review" / ("b" * 32)
     unrelated.mkdir()
-    (unrelated / "unrelated.json").write_text('{"not_this_project":true}')
+    (unrelated / "unrelated.json").write_text('{"not_this_project":true}', encoding="utf-8")
     pid = library.archive_project()
     archive = Path(library.lib_path(pid))
     manifest_name = library.read_meta(pid)["files"]["render_review"]
     assert manifest_name == "render_review/" + "a" * 32 + "/manifest.json"
-    manifest = json.loads((archive / manifest_name).read_text())
+    manifest = json.loads((archive / manifest_name).read_text(encoding="utf-8"))
     assert {row["path"] for row in manifest["files"]} == set(contents)
     assert not (archive / "render_review" / ("b" * 32)).exists()
     shutil.rmtree(output / "render_review")
@@ -190,17 +190,17 @@ def test_archived_review_inventory_cannot_escape_or_restore_modified_evidence(pr
     pid = library.archive_project()
     archive = Path(library.lib_path(pid))
     name = library.read_meta(pid)["files"]["render_review"]
-    manifest = json.loads((archive / name).read_text())
+    manifest = json.loads((archive / name).read_text(encoding="utf-8"))
     if corruption == "escape":
         manifest["files"][0]["path"] = "../../outside.json"
-        (archive / name).write_text(json.dumps(manifest))
+        (archive / name).write_text(json.dumps(manifest), encoding="utf-8")
     else:
         (archive / "render_review" / ("a" * 32) / "attempt-0" / "scene-001-action.jpg").write_bytes(b"changed evidence")
     previous = deepcopy(state)
-    (output / "script.json").write_text('{"title":"Current project must remain"}')
+    (output / "script.json").write_text('{"title":"Current project must remain"}', encoding="utf-8")
     response = client.post(f"/api/library/{pid}/load", json={})
     assert response.json["ok"] is False and state == previous
-    assert json.loads((output / "script.json").read_text())["title"] == "Current project must remain"
+    assert json.loads((output / "script.json").read_text(encoding="utf-8"))["title"] == "Current project must remain"
 
 
 def test_evidence_size_limit_keeps_reports_and_records_omitted_attempt_movies(project, monkeypatch):
@@ -211,7 +211,7 @@ def test_evidence_size_limit_keeps_reports_and_records_omitted_attempt_movies(pr
     monkeypatch.setattr(library, "_REVIEW_LIMIT", small_bytes + 1)
     pid = library.archive_project()
     archive = Path(library.lib_path(pid))
-    manifest = json.loads((archive / library.read_meta(pid)["files"]["render_review"]).read_text())
+    manifest = json.loads((archive / library.read_meta(pid)["files"]["render_review"]).read_text(encoding="utf-8"))
     assert len(manifest["omitted"]) == 2
     assert all(not row["path"].endswith(".mp4") for row in manifest["files"])
     assert all((archive / "render_review" / ("a" * 32) / row["path"]).is_file() for row in manifest["files"])
@@ -235,7 +235,7 @@ def test_loading_legacy_classic_project_clears_stale_motion_audio_and_captions(p
     for name in ("motion", "narration.wav", "narration.timings.json", "timeline.json", "narration.srt", "motion_preview.mp4"):
         assert not (output / name).exists(), name
     assert not client.get("/api/status").json["has_captions"]
-    assert json.loads((output / "script.json").read_text())["title"] == "Old classic"
+    assert json.loads((output / "script.json").read_text(encoding="utf-8"))["title"] == "Old classic"
 
 
 def test_library_rejects_escaping_scene_paths_before_changing_current_project(project):
@@ -243,7 +243,7 @@ def test_library_rejects_escaping_scene_paths_before_changing_current_project(pr
     _motion_project(output)
     pid = library.archive_project()
     plan_path = Path(library.lib_path(pid, "scene_plan.json"))
-    plan = json.loads(plan_path.read_text())
+    plan = json.loads(plan_path.read_text(encoding="utf-8"))
     plan["scenes"][1]["footage"]["path"] = "../../private.mp4"
     plan_path.write_text(json.dumps(plan), encoding="utf-8")
     state.update(workspace_warning="This current project was recovered without a playable draft.",
@@ -253,7 +253,7 @@ def test_library_rejects_escaping_scene_paths_before_changing_current_project(pr
     response = client.post(f"/api/library/{pid}/load", json={})
     assert not response.json["ok"]
     assert state == previous_state
-    assert json.loads((output / "script.json").read_text())["title"] == "Current cached script"
+    assert json.loads((output / "script.json").read_text(encoding="utf-8"))["title"] == "Current cached script"
 
 
 def test_motion_archive_rejects_symlinked_assets(project, tmp_path):
@@ -300,12 +300,12 @@ def test_new_footage_receipt_survives_portable_archive_and_rejects_changed_bytes
     _bind_test_footage(script, plan)
     receipt = deepcopy(plan["scenes"][1]["footage"]["selection"])
     # A rejected search result should not become part of this saved video.
-    (output / "video_credits.json").write_text(json.dumps([{"provider": "pexels", "path": "/missing/unrelated.mp4"}]))
+    (output / "video_credits.json").write_text(json.dumps([{"provider": "pexels", "path": "/missing/unrelated.mp4"}]), encoding="utf-8")
     pid = library.archive_project()
     archive = Path(library.lib_path(pid))
-    archived_plan = json.loads((archive / "scene_plan.json").read_text())
+    archived_plan = json.loads((archive / "scene_plan.json").read_text(encoding="utf-8"))
     assert archived_plan["scenes"][1]["footage"]["selection"] == receipt
-    assert len(json.loads((archive / "video_credits.json").read_text())) == 1
+    assert len(json.loads((archive / "video_credits.json").read_text(encoding="utf-8"))) == 1
     assert client.post(f"/api/library/{pid}/load", json={}).json == {"ok": True}
     assert state["visual_plan"]["scenes"][1]["footage"]["selection"] == receipt
     previous = deepcopy(state)
@@ -319,11 +319,11 @@ def test_new_footage_receipt_survives_portable_archive_and_rejects_changed_bytes
 def test_classic_archive_does_not_adopt_a_previous_hybrid_plan_from_disk(project):
     output, _ = project
     _, plan = _motion_project(output)
-    (output / "scene_plan.json").write_text(json.dumps(plan))
+    (output / "scene_plan.json").write_text(json.dumps(plan), encoding="utf-8")
     state.update(visual_plan=None, visual_mode="classic")
     pid = library.archive_project()
     archive = Path(library.lib_path(pid))
-    assert json.loads((archive / "video_credits.json").read_text()) == []
+    assert json.loads((archive / "video_credits.json").read_text(encoding="utf-8")) == []
     assert not (archive / "scene_plan.json").exists()
     assert not (archive / "assets" / "media").exists()
 
@@ -351,7 +351,7 @@ def test_archive_preserves_the_selected_soundtrack_after_setting_changes(project
     mixed.unlink()
     assert client.post(f"/api/library/{pid}/load", json={}).json["ok"]
     assert Path(state["render_audio_path"]).read_bytes() == b"voice plus music"
-    assert json.loads((output / "render_audio.json").read_text())["path"] == "narration_mixed.mp3"
+    assert json.loads((output / "render_audio.json").read_text(encoding="utf-8"))["path"] == "narration_mixed.mp3"
 
 
 def test_archive_restores_applied_effects_and_source_metadata_without_the_library(project, monkeypatch):
@@ -377,7 +377,7 @@ def test_archive_restores_applied_effects_and_source_metadata_without_the_librar
     monkeypatch.setattr(config, "SFX_TRACK", "")
     assert client.post(f"/api/library/{pid}/load", json={}).json["ok"]
     assert Path(state["render_audio_path"]).read_bytes() == b"saved voice plus imported effects"
-    restored = json.loads((output / "audio_credits.json").read_text())
+    restored = json.loads((output / "audio_credits.json").read_text(encoding="utf-8"))
     assert restored["assets"] == manifest["assets"]
     assert restored["path"] == Path(state["render_audio_path"]).name
     assert client.get("/api/output").json["audio_credits"][0]["source_url"] == manifest["assets"][0]["source_url"]

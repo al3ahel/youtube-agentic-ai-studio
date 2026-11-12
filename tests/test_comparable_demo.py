@@ -25,8 +25,8 @@ def _recorded_fixture(folder):
               "audio_sha256": audio_signature(audio), "script_signature": script_signature(script),
               "sections": [{"id": "one", "start": 0, "duration": 1.0, "caption_timing": "word"}],
               "words": [{"word": "phrase", "start": .65, "end": .95, "section_id": "one"}]}
-    (folder / "narration.timings.json").write_text(json.dumps(timing))
-    (folder / "narration.srt").write_text("1\n00:00:00,100 --> 00:00:00,950\nComplete recorded phrase.\n")
+    (folder / "narration.timings.json").write_text(json.dumps(timing), encoding="utf-8")
+    (folder / "narration.srt").write_text("1\n00:00:00,100 --> 00:00:00,950\nComplete recorded phrase.\n", encoding="utf-8")
     return script, frames, timing
 
 
@@ -76,7 +76,7 @@ def test_local_diagnostics_preserve_response_and_do_not_save_inputs(tmp_path, mo
         assert local_llm._request_json(None, "/api/chat", body=body) is reply
     assert local_llm._request_json is request
     assert reply["message"]["content"].endswith(key)
-    text = (tmp_path / audit["files"][0]).read_text()
+    text = (tmp_path / audit["files"][0]).read_text(encoding="utf-8")
     assert key not in text and "PRIVATE_REQUEST_TEXT" not in text and "PRIVATE_IMAGE_DATA" not in text
     saved = json.loads(text)
     assert saved["native_json_schema"] is True and saved["image_count"] == 1
@@ -93,7 +93,7 @@ def test_local_diagnostic_file_size_is_bounded_without_changing_response(tmp_pat
         assert local_llm._request_json(None, "/api/chat", body={"model": "local:4b"}) is reply
     file = tmp_path / audit["files"][0]
     assert file.stat().st_size <= 4096
-    assert json.loads(file.read_text())["truncated"] is True
+    assert json.loads(file.read_text(encoding="utf-8"))["truncated"] is True
     assert len(reply["message"]["content"]) == 30000
 
 
@@ -110,7 +110,7 @@ def test_local_diagnostics_keep_transport_error_and_restore_adapter(tmp_path, mo
         with demo._capture_local_responses(tmp_path, lambda: "visual_planning") as audit:
             local_llm._request_json(None, "/api/chat", body={"model": "local:4b"})
     assert caught.value is failure and local_llm._request_json is request
-    saved = json.loads((tmp_path / audit["files"][0]).read_text())
+    saved = json.loads((tmp_path / audit["files"][0]).read_text(encoding="utf-8"))
     assert saved["status"] == "transport_failed"
 
 
@@ -121,7 +121,7 @@ def _replay_fixture(tmp_path, monkeypatch, count=1):
     monkeypatch.setattr(config, "OLLAMA_MODEL", "fixture:4b")
     monkeypatch.setattr(config, "CHANNEL_PRESET", "general")
     for name in demo.VISUAL_BINDING_FILES:
-        (tmp_path / name).write_text(json.dumps({"timeline_signature": "fixture-timeline"}))
+        (tmp_path / name).write_text(json.dumps({"timeline_signature": "fixture-timeline"}), encoding="utf-8")
     report = {"started_at": "2026-01-01T00:00:00+00:00", "script_sha256": "fixture-script",
               "configuration": demo._configuration(), "stages": {"local_runtime": {
                   "status": "installed", "model": {"id": "fixture:4b", "digest": "a" * 64, "size": 123}}}}
@@ -187,7 +187,7 @@ def test_visual_replay_refuses_changed_evidence(tmp_path, monkeypatch, changed):
         binding["visual_director_functions_sha256"]["_ai_schema"] = "changed"
         demo._write(binding_path, binding)
     else:
-        (tmp_path / binding["response_captures"][0]["file"]).write_text("{}")
+        (tmp_path / binding["response_captures"][0]["file"]).write_text("{}", encoding="utf-8")
     ordinary = gemini_client.generate
     with pytest.raises(ComparisonBlocked, match="replay refused"):
         with demo._replay_visual_responses(binding_path, tmp_path, report, "motion"):
@@ -260,19 +260,19 @@ def _checkpoint_fixture(tmp_path):
     demo._write(source / "image_map.json", {"one": ["images/met-123.jpg"]})
     demo._write(source / "comparison_report.json", {"status": "rendered_needs_review", "comparison_complete": False})
     # Credentials and unrelated run files must never be swept into a package.
-    (source / "private-settings.json").write_text('{"token":"not-for-export"}')
+    (source / "private-settings.json").write_text('{"token":"not-for-export"}', encoding="utf-8")
     return demo, source, script
 
 
 def test_checkpoint_round_trip_reuses_exact_recordings_without_provider_calls(tmp_path, monkeypatch):
     from video import narrator
     demo, source, script = _checkpoint_fixture(tmp_path)
-    original = {str(path.relative_to(source)): path.read_bytes() for path in source.rglob("*") if path.is_file()}
+    original = {path.relative_to(source).as_posix(): path.read_bytes() for path in source.rglob("*") if path.is_file()}
     checkpoint, restored = tmp_path / "saved", tmp_path / "resumed"
     manifest = demo._export_checkpoint(source, checkpoint)
     assert manifest["new_inference"] is False and manifest["approval_granted"] is False
     assert "private-settings.json" not in {row["path"] for row in manifest["files"]}
-    assert original == {str(path.relative_to(source)): path.read_bytes() for path in source.rglob("*") if path.is_file()}
+    assert original == {path.relative_to(source).as_posix(): path.read_bytes() for path in source.rglob("*") if path.is_file()}
     receipt = demo._restore_checkpoint(checkpoint, restored)
     assert receipt["new_inference_during_restore"] is False
     for row in manifest["files"]:
@@ -345,12 +345,12 @@ def test_checkpoint_refuses_partial_exports_and_existing_destinations(tmp_path):
     assert not destination.exists()
     destination.mkdir()
     marker = destination / "owned.txt"
-    marker.write_text("keep this")
+    marker.write_text("keep this", encoding="utf-8")
     with pytest.raises(ComparisonBlocked, match="new checkpoint directory"):
         demo._export_checkpoint(source, destination)
     with pytest.raises(ComparisonBlocked, match="new output directory"):
         demo._restore_checkpoint(source, destination)
-    assert marker.read_text() == "keep this"
+    assert marker.read_text(encoding="utf-8") == "keep this"
 
 
 def test_checkpoint_cli_export_never_enters_pipeline(tmp_path, monkeypatch):

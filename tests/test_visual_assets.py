@@ -372,14 +372,14 @@ def _archive(project):
 def test_archive_roundtrip_rebinds_portable_photos_after_remapping(project):
     pid = _archive(project)
     archive = Path(library.lib_path(pid))
-    archived_map = json.loads((archive / "image_map.json").read_text())
+    archived_map = json.loads((archive / "image_map.json").read_text(encoding="utf-8"))
     assert library.read_meta(pid)["files"]["image_binding"] == "image_binding.json"
     assert _valid(project, output=archive, images=archived_map) is True
     # A bad previous-project binding is replaced together with its map.
     (project["output"] / "image_binding.json").write_text("stale previous project", encoding="utf-8")
     assert project["client"].post(f"/api/library/{pid}/load", json={}).json == {"ok": True}
     assert _valid(project, images=state["image_map"]) is True
-    persisted = json.loads((project["output"] / "image_map.json").read_text())
+    persisted = json.loads((project["output"] / "image_map.json").read_text(encoding="utf-8"))
     assert all("\\" not in path and not Path(path).is_absolute() for paths in persisted.values() for path in paths)
     assert persisted == archived_map
 
@@ -398,7 +398,7 @@ def test_invalid_archive_binding_cannot_replace_current_work(project, change):
         script["sections"][0]["narration"] = "A different project's narration."
         _json(archive / "script.json", script)
     elif change == "photo":
-        saved = json.loads((archive / "image_map.json").read_text())
+        saved = json.loads((archive / "image_map.json").read_text(encoding="utf-8"))
         (archive / saved["1"][0]).write_bytes(b"another image")
     elif change == "map":
         _json(archive / "image_map.json", {})
@@ -457,8 +457,8 @@ def test_graphics_only_archive_ignores_unused_previous_photo_map(project, monkey
     monkeypatch.setattr(visual_assets, "validate_binding", forbidden)
     pid = library.archive_project()
     archive = Path(library.lib_path(pid))
-    assert json.loads((archive / "image_map.json").read_text()) == {}
-    assert json.loads((archive / "image_binding.json").read_text())["files"] == {}
+    assert json.loads((archive / "image_map.json").read_text(encoding="utf-8")) == {}
+    assert json.loads((archive / "image_binding.json").read_text(encoding="utf-8"))["files"] == {}
     assert not list((archive / "photos").iterdir())
 
 

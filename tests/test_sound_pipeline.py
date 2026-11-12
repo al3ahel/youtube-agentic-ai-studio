@@ -138,7 +138,7 @@ def test_automatic_sound_is_owned_measured_and_committed_with_actual_credits(pro
     output, voice = project["output"], project["voice"]
     original = voice.read_bytes()
     final = Path(mix(project))
-    manifest = json.loads((output / "render_audio.json").read_text())
+    manifest = json.loads((output / "render_audio.json").read_text(encoding="utf-8"))
     assert final.parent == output / "soundtracks" and final.is_file()
     assert manifest["version"] == 2 and manifest["path"] == final.relative_to(output).as_posix()
     assert manifest["audio_sha256"] == audio_signature(voice)
@@ -192,7 +192,7 @@ def test_unavailable_catalogue_has_honest_voice_only_design(project, monkeypatch
         yield
     monkeypatch.setattr(audio_sources, "_response", unavailable)
     final = Path(mix(project))
-    manifest = json.loads((project["output"] / "render_audio.json").read_text())
+    manifest = json.loads((project["output"] / "render_audio.json").read_text(encoding="utf-8"))
     assert manifest["credits"] == [] and load_audio_credits() == []
     design = manifest["sound_design"]
     assert design["music"] is None and design["ambience"] is None and design["events"] == []
@@ -234,7 +234,7 @@ def test_video_only_reuses_committed_audio_and_archive_reopens_matching_reports(
     client = create_app().test_client()
     response = client.post(f"/api/library/{project_id}/load", json={})
     assert response.status_code == 200 and response.json["ok"], response.json
-    restored = json.loads((output / "render_audio.json").read_text())
+    restored = json.loads((output / "render_audio.json").read_text(encoding="utf-8"))
     assert restored["version"] == 2 and restored["path"] == "render_audio.wav"
     assert restored["soundtrack_sha256"] == checksum == audio_signature(state["render_audio_path"])
     assert all(restored[key]["path"] == restored["path"] for key in ("sound_design", "audio_master"))

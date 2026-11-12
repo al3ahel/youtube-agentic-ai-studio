@@ -89,7 +89,7 @@ def test_separate_mood_constraint_cannot_select_a_calm_recording_for_aggressive_
 def test_raw_tempo_and_calming_constraints_select_the_verified_matching_recording(catalog, direction, required_tag):
     candidate = audio_sources._bundled_candidate(f"ambient instrumental music, {direction}", "music", 3, 600, "subtle")
     assert candidate and "Cylinder One" in candidate["title"]
-    assets = json.loads((catalog / "catalog.json").read_text())["assets"]
+    assets = json.loads((catalog / "catalog.json").read_text(encoding="utf-8"))["assets"]
     entry = next(asset for asset in assets if asset["provider_id"] == candidate["provider_id"])
     assert required_tag in entry["tags"]
 
@@ -105,9 +105,9 @@ def test_bundled_copies_are_channel_owned_and_cache_cannot_relabel_their_source(
     b = audio_sources.acquire_audio("paper turn", kind="sfx", profile_id=second["id"])
     assert a["path"] != b["path"] and a["sha256"] == b["sha256"]
     metadata = next(Path(a["path"]).parent.glob("*.json"))
-    payload = json.loads(metadata.read_text())
+    payload = json.loads(metadata.read_text(encoding="utf-8"))
     payload["asset"]["creator"] = "Incorrect cached attribution"
-    metadata.write_text(json.dumps(payload))
+    metadata.write_text(json.dumps(payload), encoding="utf-8")
     restored = audio_sources.acquire_audio("paper turn", kind="sfx", profile_id=first["id"])
     assert restored["creator"] == a["creator"] and audio_sources.get_status()["reason"] == "bundled"
     channels.delete_profile(first["id"])
@@ -117,7 +117,7 @@ def test_bundled_copies_are_channel_owned_and_cache_cannot_relabel_their_source(
 
 def test_corrupt_shipped_bytes_are_never_used_or_returned_from_an_old_cache(catalog, monkeypatch):
     asset = audio_sources.acquire_audio("paper turn", kind="sfx", profile_id="default")
-    manifest = json.loads((catalog / "catalog.json").read_text())
+    manifest = json.loads((catalog / "catalog.json").read_text(encoding="utf-8"))
     entry = next(row for row in manifest["assets"] if row["family"] == "paper_turn")
     path = catalog / entry["filename"]
     corrupted = bytearray(path.read_bytes())
@@ -156,7 +156,7 @@ def test_offered_recordings_are_verified_public_metadata_and_real_supported_sear
 
 @pytest.mark.parametrize("fault", ["missing", "tampered", "license", "outside_path"])
 def test_unusable_recordings_are_not_offered_to_the_model(catalog, fault):
-    manifest = json.loads((catalog / "catalog.json").read_text())
+    manifest = json.loads((catalog / "catalog.json").read_text(encoding="utf-8"))
     row = next(item for item in manifest["assets"] if item["family"] == "metal_impact")
     media = catalog / row["filename"]
     if fault == "missing":
@@ -169,7 +169,7 @@ def test_unusable_recordings_are_not_offered_to_the_model(catalog, fault):
     else:
         shutil.copyfile(media, catalog.parent / "outside.ogg")
         row["filename"] = "../outside.ogg"
-    (catalog / "catalog.json").write_text(json.dumps(manifest))
+    (catalog / "catalog.json").write_text(json.dumps(manifest), encoding="utf-8")
     offered = audio_sources.bundled_recording_options()
     assert len(offered) == 4
     assert all(item["sha256"] != row["sha256"] and item["query"] != "metal contact" for item in offered)
@@ -231,7 +231,7 @@ def test_model_selected_offered_queries_mix_real_music_and_effects_with_complete
     try:
         with config.profile_context(capture_profile_settings(owner["id"])):
             soundtrack = Path(runner._mix_project_audio(voice, timeline, output, owner["id"]))
-        manifest = json.loads((output / "render_audio.json").read_text())
+        manifest = json.loads((output / "render_audio.json").read_text(encoding="utf-8"))
         design = manifest["sound_design"]
         assert manifest["version"] == 2 and manifest["soundtrack_sha256"] == audio_signature(soundtrack)
         assert design["music"] and [event["start"] for event in design["events"]] == [8, 18]

@@ -20,7 +20,7 @@ RESULT = "A surviving dent showed that particular shot had stopped."
 def vendor(monkeypatch):
     def copy_vendor(project):
         (project / "vendor").mkdir(exist_ok=True)
-        (project / "vendor" / "gsap.min.js").write_text("/* preparation fixture */")
+        (project / "vendor" / "gsap.min.js").write_text("/* preparation fixture */", encoding="utf-8")
     monkeypatch.setattr(renderer, "_copy_vendor", copy_vendor)
 
 
@@ -125,7 +125,7 @@ def test_render_payload_derives_flag_without_changing_saved_model_plan_or_outcom
     assert renderer._validate_plan(validated) == validated
     assert all("mechanism_result_view" not in scene for scene in validated["scenes"])
     entry = renderer.prepare_motion_project(validated, "", str(tmp_path))
-    clean = json.loads((entry.parent / "project.json").read_text())
+    clean = json.loads((entry.parent / "project.json").read_text(encoding="utf-8"))
     assert "mechanism_result_view" not in clean["scenes"][0]
     assert clean["scenes"][1]["mechanism_result_view"] is True
     assert [scene["mechanism"] for scene in clean["scenes"]] == [scene["mechanism"] for scene in plan["scenes"]]
@@ -164,7 +164,7 @@ def test_encoded_static_result_does_not_require_another_contact_and_still_needs_
     assert not any(issue["code"] == "action_not_visible" and issue["shot_id"] == "shot-1" for issue in report["issues"])
     assert report["passed"] is None and report["vision"]["complete"] is False
     assert plan == original
-    saved = json.loads((tmp_path / report["evidence_directory"] / "plan.json").read_text())
+    saved = json.loads((tmp_path / report["evidence_directory"] / "plan.json").read_text(encoding="utf-8"))
     assert saved == original and "mechanism_result_view" not in saved["scenes"][1]
     # A settled-view declaration cannot excuse a blank or unreadable frame.
     issues = render_review._technical_shot_issues({**plan["scenes"][1], "mechanism_result_view": True},
@@ -174,7 +174,7 @@ def test_encoded_static_result_does_not_require_another_contact_and_still_needs_
 
 def test_semantic_review_receives_settled_expectation_without_claiming_visible_success(tmp_path, vendor):
     entry = renderer.prepare_motion_project(proof_plan(), "", str(tmp_path))
-    plan = json.loads((entry.parent / "project.json").read_text())
+    plan = json.loads((entry.parent / "project.json").read_text(encoding="utf-8"))
     scene = plan["scenes"][1]
     sampled = {scene["id"]: {"frames": [{"id": scene["id"] + ":" + phase, "time": 2 + fraction}
         for phase, fraction in render_review.PHASES], "source_narration": RESULT}}

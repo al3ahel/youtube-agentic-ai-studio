@@ -193,8 +193,8 @@ def test_scheduled_media_and_status_follow_captured_job_not_selected_channel(tmp
     manual, job = tmp_path / "manual", tmp_path / "job"
     manual.mkdir()
     job.mkdir()
-    (manual / "narration.srt").write_text("Manual channel captions")
-    (job / "narration.srt").write_text("Scheduled channel captions")
+    (manual / "narration.srt").write_text("Manual channel captions", encoding="utf-8")
+    (job / "narration.srt").write_text("Scheduled channel captions", encoding="utf-8")
     monkeypatch.setattr(config, "OUTPUT_DIR", str(manual))
     state.update(running=True, profile_id=other["id"], job_profile_id=other["id"],
                  job_profile_name="Quiet channel", job_output_dir=str(job),

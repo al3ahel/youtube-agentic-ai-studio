@@ -35,11 +35,13 @@ def test_profile_duration_and_style_reach_writer_without_changing_base(monkeypat
         news = scriptwriter.write_script({**RESEARCH, "grounding": SOURCES, "news_evidence": "background_only"})
     assert calm["channel_preset"] == "asmr" and calm["target_duration_seconds"] == 600
     assert news["channel_preset"] == "news" and news["target_duration_seconds"] == 180
+    # The fixture is far shorter than either target, so each script is requested twice.
+    assert len(prompts) == 4 and prompts[1].startswith(prompts[0]) and prompts[3].startswith(prompts[2])
     assert "Quiet River" in prompts[0] and "Restful river walks." in prompts[0] and "River News" not in prompts[0]
-    assert "River News" in prompts[1] and "Regional reporting." in prompts[1] and "Quiet River" not in prompts[1]
+    assert "River News" in prompts[2] and "Regional reporting." in prompts[2] and "Quiet River" not in prompts[2]
     assert "No urgency, loud exclamations" in prompts[0]
     assert "Do not claim to generate binaural" in prompts[0]
-    assert "A trend title is a lead" in prompts[1]
+    assert "A trend title is a lead" in prompts[2]
     assert "MANDATORY: Second re-hook" not in " ".join(prompts)
     assert config.CHANNEL_NAME == original
 
@@ -75,7 +77,7 @@ def test_empty_narration_is_rejected_before_recording(monkeypatch):
 def test_news_exact_topic_keeps_real_sources_and_marks_background(monkeypatch):
     prompts = []
     invented = {**RESEARCH, "topic": "An unrelated story", "grounding": {"sources": [{"url": "https://fake.invalid"}]}}
-    monkeypatch.setattr(researcher, "generate", lambda prompt: prompts.append(prompt) or json.dumps(invented))
+    monkeypatch.setattr(researcher, "generate", lambda prompt, **kwargs: prompts.append(prompt) or json.dumps(invented))
     monkeypatch.setattr(researcher, "_grounding", lambda topic: deepcopy(SOURCES))
     with config.profile_context({"CHANNEL_PRESET": "news", "TARGET_DURATION_MINUTES": 5}):
         result = researcher.research_topic("Regional reporting", topic_override="The local river", focus_angle="Random science")
@@ -90,7 +92,7 @@ def test_news_exact_topic_keeps_real_sources_and_marks_background(monkeypatch):
 
 def test_automatic_news_has_a_source_informed_second_planning_pass(monkeypatch):
     prompts = []
-    monkeypatch.setattr(researcher, "generate", lambda prompt: prompts.append(prompt) or json.dumps(RESEARCH))
+    monkeypatch.setattr(researcher, "generate", lambda prompt, **kwargs: prompts.append(prompt) or json.dumps(RESEARCH))
     monkeypatch.setattr(researcher, "_grounding", lambda topic: deepcopy(SOURCES))
     with config.profile_context({"CHANNEL_PRESET": "news"}):
         result = researcher.research_topic("Regional reporting", trend_context=["A river headline"])
@@ -101,7 +103,7 @@ def test_automatic_news_has_a_source_informed_second_planning_pass(monkeypatch):
 
 def test_calm_research_uses_channel_niche_without_random_science_topic(monkeypatch):
     prompts = []
-    monkeypatch.setattr(researcher, "generate", lambda prompt: prompts.append(prompt) or json.dumps(RESEARCH))
+    monkeypatch.setattr(researcher, "generate", lambda prompt, **kwargs: prompts.append(prompt) or json.dumps(RESEARCH))
     monkeypatch.setattr(researcher, "_grounding", lambda topic: {"facts": "", "sources": []})
     with config.profile_context({"CHANNEL_PRESET": "asmr", "TARGET_DURATION_MINUTES": 10}):
         researcher.research_topic("Quiet walks beside a river")

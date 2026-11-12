@@ -98,11 +98,11 @@ def test_same_size_runtime_edit_with_preserved_mtime_requires_restart(checkout):
 def test_runtime_inventory_and_dependency_changes_require_restart(checkout, change):
     app, _ = app_for(checkout)
     if change == "add":
-        (checkout / "studio" / "new_agent.py").write_text("VERSION = 1\n")
+        (checkout / "studio" / "new_agent.py").write_text("VERSION = 1\n", encoding="utf-8")
     elif change == "remove":
         (checkout / "studio" / "runner.py").unlink()
     else:
-        (checkout / "requirements.txt").write_text("Flask==3.1.0\n")
+        (checkout / "requirements.txt").write_text("Flask==3.1.0\n", encoding="utf-8")
     assert app.test_client().get("/api/build").get_json()["restart_required"]
 
 
@@ -114,7 +114,7 @@ def test_docs_assets_profiles_and_output_do_not_require_restart(checkout, monkey
                      "studio/templates/index.html", "studio/__pycache__/runner.pyc"):
         path = checkout / relative
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text("changed")
+        path.write_text("changed", encoding="utf-8")
     monkeypatch.setattr(build_info, "_git_identity", lambda root: {
         "commit": "b" * 40, "short_commit": "b" * 8, "branch": "main"})
     data = app.test_client().get("/api/build").get_json()
@@ -125,7 +125,7 @@ def test_docs_assets_profiles_and_output_do_not_require_restart(checkout, monkey
 @pytest.mark.parametrize("method", ["post", "put", "patch", "delete"])
 def test_stale_runtime_blocks_api_mutation_but_allows_reads_and_stop(checkout, method):
     app, mutations = app_for(checkout)
-    (checkout / "gui.py").write_text("print('new')\n")
+    (checkout / "gui.py").write_text("print('new')\n", encoding="utf-8")
     client = app.test_client()
     response = getattr(client, method)("/api/change", json={})
     assert response.status_code == 409
@@ -143,7 +143,7 @@ def test_stale_runtime_blocks_api_mutation_but_allows_reads_and_stop(checkout, m
 
 def test_restarted_app_accepts_new_runtime_without_manual_reset(checkout):
     first, _ = app_for(checkout)
-    (checkout / "gui.py").write_text("print('new')\n")
+    (checkout / "gui.py").write_text("print('new')\n", encoding="utf-8")
     assert first.test_client().post("/api/change", json={}).status_code == 409
     restarted, mutations = app_for(checkout)
     assert not restarted.test_client().get("/api/build").get_json()["restart_required"]
@@ -167,7 +167,7 @@ def test_code_fingerprint_is_bounded_and_does_not_follow_symlinks(checkout, monk
     assert build_info._code_digest(checkout) is None
     monkeypatch.setattr(build_info, "_MAX_FILE_BYTES", 2 * 1024 * 1024)
     external = tmp_path / "private.py"
-    external.write_text("SECRET = 'outside-checkout'\n")
+    external.write_text("SECRET = 'outside-checkout'\n", encoding="utf-8")
     try:
         (checkout / "studio" / "outside.py").symlink_to(external)
     except (OSError, NotImplementedError):
@@ -188,26 +188,26 @@ def test_local_git_identity_and_docs_only_commit(tmp_path):
         pytest.skip("Git is unavailable")
     git("config", "user.name", "Build Test")
     git("config", "user.email", "build-test@example.invalid")
-    (root / "gui.py").write_text("print('app')\n")
+    (root / "gui.py").write_text("print('app')\n", encoding="utf-8")
     git("add", "gui.py")
     git("-c", "commit.gpgsign=false", "commit", "-m", "runtime")
     identity = build_info.BuildIdentity(root)
     assert identity.running["commit"] == git("rev-parse", "HEAD")
     assert identity.running["branch"] == "main"
     assert identity.running["runtime_modified"] is False
-    (root / "README.md").write_text("Docs only\n")
+    (root / "README.md").write_text("Docs only\n", encoding="utf-8")
     git("add", "README.md")
     git("-c", "commit.gpgsign=false", "commit", "-m", "docs")
     status = identity.status()
     assert status["checkout_changed"] and not status["restart_required"]
     assert status["disk"]["runtime_modified"] is False
     (root / "studio" / "static").mkdir(parents=True)
-    (root / "studio" / "static" / "app.css").write_text("body {color:blue}")
-    (root / "settings.json").write_text('{"secret":"private"}')
+    (root / "studio" / "static" / "app.css").write_text("body {color:blue}", encoding="utf-8")
+    (root / "settings.json").write_text('{"secret":"private"}', encoding="utf-8")
     assert build_info._git_identity(root)["runtime_modified"] is False
     (root / ".gitignore").write_text(
         "__pycache__/\n.pytest_cache/\noutput/\nnode_modules/\n"
-        "renderers/hyperframes/.smoke/\nstudio/ignored_local.py\n")
+        "renderers/hyperframes/.smoke/\nstudio/ignored_local.py\n", encoding="utf-8")
     for relative in (".pytest_cache/cache.json", "__pycache__/gui.pyc", "output/script.json",
                      "renderers/hyperframes/.smoke/video.mp4",
                      "renderers/hyperframes/node_modules/pkg/package.json",
@@ -215,17 +215,17 @@ def test_local_git_identity_and_docs_only_commit(tmp_path):
                      "studio/.pytest_cache/cached_helper.py"):
         path = root / relative
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text("ignored generated data\n")
+        path.write_text("ignored generated data\n", encoding="utf-8")
     assert build_info._git_identity(root)["runtime_modified"] is False
     ignored_source = root / "studio" / "ignored_local.py"
-    ignored_source.write_text("VERSION = 1\n")
+    ignored_source.write_text("VERSION = 1\n", encoding="utf-8")
     assert build_info._git_identity(root)["runtime_modified"] is True
     ignored_source.unlink()
     assert build_info._git_identity(root)["runtime_modified"] is False
-    (root / "studio" / "worker.py").write_text("VERSION = 1\n")
+    (root / "studio" / "worker.py").write_text("VERSION = 1\n", encoding="utf-8")
     assert build_info._git_identity(root)["runtime_modified"] is True
     (root / "studio" / "worker.py").unlink()
-    (root / "gui.py").write_text("print('new')\n")
+    (root / "gui.py").write_text("print('new')\n", encoding="utf-8")
     assert build_info._git_identity(root)["runtime_modified"] is True
     # A ZIP nested inside another checkout must not claim its parent's commit.
     nested = root / "nested-zip"

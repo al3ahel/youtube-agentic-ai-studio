@@ -116,7 +116,7 @@ def test_real_audio_is_cached_with_exact_license_and_attribution_without_changin
     assert asset["content_id"] == "unknown"
     assert Path(asset["path"]).parent == Path(config.DATA_DIR).resolve() / "audio-auto" / "default" / "sfx"
     metadata = next(path for path in _cached_files() if path.suffix == ".json")
-    assert "path" not in json.loads(metadata.read_text())["asset"]
+    assert "path" not in json.loads(metadata.read_text(encoding="utf-8"))["asset"]
     assert not (Path(config.DATA_DIR) / "audio-library").exists()
     assert channels.get_profile("default")["defaults"] == before and state == previous_state
     assert len(calls) == 2
@@ -526,10 +526,10 @@ def test_music_cached_before_suitability_checks_is_not_reused(monkeypatch):
     options = {"kind": "music", "profile_id": "default", "mood": "subtle"}
     assert audio_sources.acquire_audio(query, **options) is not None
     metadata = next(path for path in _cached_files() if path.suffix == ".json")
-    saved = json.loads(metadata.read_text())
+    saved = json.loads(metadata.read_text(encoding="utf-8"))
     saved.pop("music_selection_version")
     saved["asset"]["title"] = "Rain recording previously labelled as music"
-    metadata.write_text(json.dumps(saved))
+    metadata.write_text(json.dumps(saved), encoding="utf-8")
     searches = []
     monkeypatch.setattr(audio_sources, "_search", lambda query, *args: searches.append(query) or [])
     assert audio_sources.acquire_audio(query, **options) is None

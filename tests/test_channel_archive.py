@@ -109,7 +109,7 @@ def test_profile_draft_archive_load_remains_a_draft_and_activates_its_owner(work
     assert client.post("/api/upload", json={}).status_code == 409
     assert client.get("/api/settings").json["voice_rate"] == "+0%"
     assert state["description"] == "A creator-written explanation."
-    identity = json.loads((output / "project_profile.json").read_text())
+    identity = json.loads((output / "project_profile.json").read_text(encoding="utf-8"))
     assert identity["profile_id"] == news["id"]
 
 
@@ -119,18 +119,18 @@ def test_portable_photo_paths_and_individual_credits_survive_archive_roundtrip(w
     _, credits, originals = _completed_project(output, news)
     pid = library.archive_project()
     archive = Path(library.lib_path(pid))
-    image_map = json.loads((archive / "image_map.json").read_text())
+    image_map = json.loads((archive / "image_map.json").read_text(encoding="utf-8"))
     assert {key: len(paths) for key, paths in image_map.items()} == {"1": 2, "2": 1}
     for paths in image_map.values():
         for relative in paths:
             assert not Path(relative).is_absolute() and Path(relative).parts[0] == "images"
             assert ".." not in Path(relative).parts and (archive / relative).is_file()
-    photo_credit_map = {item["file"]: item for item in json.loads((archive / "credits.json").read_text())}
+    photo_credit_map = {item["file"]: item for item in json.loads((archive / "credits.json").read_text(encoding="utf-8"))}
     for relative in (image_map["1"][0], image_map["2"][0]):
         assert {key: value for key, value in photo_credit_map[Path(relative).name].items() if key != "file"} == {
             key: value for key, value in credits[0].items() if key != "file"}
     assert photo_credit_map[Path(image_map["1"][1]).name]["license"] == "CC BY-SA 4.0"
-    plan = json.loads((archive / "scene_plan.json").read_text())
+    plan = json.loads((archive / "scene_plan.json").read_text(encoding="utf-8"))
     scene_image = plan["scenes"][0]["image"]["path"]
     assert not Path(scene_image).is_absolute() and (archive / scene_image).is_file()
 
@@ -144,11 +144,11 @@ def test_portable_photo_paths_and_individual_credits_survive_archive_roundtrip(w
     assert Path(restored["2"][0]).read_bytes() == Path(restored["1"][0]).read_bytes()
     assert all(Path(path).is_relative_to(output / "images") for paths in restored.values() for path in paths)
     assert not (output / "images" / "unrelated-current-project.jpg").exists()
-    assert json.loads((output / "credits.json").read_text()) == list(photo_credit_map.values())
+    assert json.loads((output / "credits.json").read_text(encoding="utf-8")) == list(photo_credit_map.values())
     assert Path(state["visual_plan"]["scenes"][0]["image"]["path"]).read_bytes() == Path(restored["1"][0]).read_bytes()
     # The persisted map keeps the same section association when process state
     # is lost and a partial pipeline run reloads the cached project.
-    persisted = json.loads((output / "image_map.json").read_text())
+    persisted = json.loads((output / "image_map.json").read_text(encoding="utf-8"))
     assert set(persisted) == {"1", "2"}
     assert [len(persisted[key]) for key in ("1", "2")] == [2, 1]
 
@@ -171,7 +171,7 @@ def test_all_collage_layers_and_their_original_binding_survive_archive_load(work
     script, original_layers, originals = _collage_project(output, profile)
     pid = library.archive_project()
     archive = Path(library.lib_path(pid))
-    saved = json.loads((archive / "scene_plan.json").read_text())["scenes"][0]
+    saved = json.loads((archive / "scene_plan.json").read_text(encoding="utf-8"))["scenes"][0]
     for before, layer in zip(original_layers, saved["media_layers"]):
         assert not Path(layer["path"]).is_absolute()
         assert (archive / layer["path"]).read_bytes() == originals[before["path"]]
@@ -219,7 +219,7 @@ def test_escaping_collage_layer_cannot_replace_the_current_project(workspace):
     _collage_project(output, profile)
     pid = library.archive_project()
     archive = Path(library.lib_path(pid))
-    stored = json.loads((archive / "scene_plan.json").read_text())
+    stored = json.loads((archive / "scene_plan.json").read_text(encoding="utf-8"))
     stored["scenes"][0]["media_layers"][1]["path"] = "../../outside.png"
     _json(archive / "scene_plan.json", stored)
     current_state = deepcopy(state)
@@ -227,7 +227,7 @@ def test_escaping_collage_layer_cannot_replace_the_current_project(workspace):
     response = client.post(f"/api/library/{pid}/load", json={})
     assert response.json["ok"] is False
     assert state == current_state
-    assert json.loads((output / "script.json").read_text())["title"] == "Current unsaved work"
+    assert json.loads((output / "script.json").read_text(encoding="utf-8"))["title"] == "Current unsaved work"
 
 
 def test_legacy_mp4_recovers_soundtrack_and_photos_without_narration_file(workspace):
@@ -268,7 +268,7 @@ def test_legacy_mp4_recovers_soundtrack_and_photos_without_narration_file(worksp
         assert any(recovered.readframes(recovered.getnframes()))
     assert state["stages"]["narration"] == "done"
     assert not (output / "narration.timings.json").exists()
-    assert (output / "narration.srt").read_text() == captions
+    assert (output / "narration.srt").read_text(encoding="utf-8") == captions
     assert set(state["image_map"]) == {"10", "20", "30"}
     assert Path(state["image_map"]["10"][0]).read_bytes() == Path(first).read_bytes()
     assert Path(state["image_map"]["20"][0]).read_bytes() == Path(second).read_bytes()

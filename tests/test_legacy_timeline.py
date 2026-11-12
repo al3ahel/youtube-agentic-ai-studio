@@ -50,7 +50,7 @@ def test_reuses_audio_and_original_cues_with_inferred_section_boundaries(legacy)
     assert any("exact word alignment is unavailable" in warning for warning in timeline["warnings"])
     assert (audio.read_bytes(), srt.read_bytes(), script) == (audio_before, captions_before, original)
     assert not (output / "narration.timings.json").exists()
-    assert json.loads((output / "timeline.json").read_text()) == timeline
+    assert json.loads((output / "timeline.json").read_text(encoding="utf-8")) == timeline
     assert import_legacy_timeline(script, str(audio), str(output)) == timeline
 
 
@@ -58,7 +58,7 @@ def test_cue_that_crosses_sections_is_explicitly_interpolated(legacy):
     output, audio, script, srt = legacy
     script["sections"][0]["narration"] = "Alpha beta gamma."
     script["sections"][1]["narration"] = "Delta epsilon zeta."
-    srt.write_text("1\n00:00:01,000 --> 00:00:07,000\nAlpha beta gamma. Delta epsilon zeta.\n")
+    srt.write_text("1\n00:00:01,000 --> 00:00:07,000\nAlpha beta gamma. Delta epsilon zeta.\n", encoding="utf-8")
     result = import_legacy_timeline(script, str(audio), str(output))
     assert result["sections"][1]["start"] == 4
     assert result["sections"][1]["start_boundary"] == "subtitle_interpolated"
@@ -82,7 +82,7 @@ def test_no_subtitles_uses_measured_audio_length_and_labelled_estimates(legacy):
 
 def test_unrelated_subtitles_keep_their_cues_but_do_not_control_sections(legacy):
     output, audio, script, srt = legacy
-    srt.write_text("1\n00:00:02,000 --> 00:00:04,000\nAn unrelated discussion of medieval architecture.\n")
+    srt.write_text("1\n00:00:02,000 --> 00:00:04,000\nAn unrelated discussion of medieval architecture.\n", encoding="utf-8")
     result = import_legacy_timeline(script, str(audio), str(output))
     assert result["timing_source"] == "estimated_duration"
     assert result["captions"] == read_srt(str(srt))
@@ -96,7 +96,7 @@ def test_partial_subtitle_match_uses_available_anchors_without_fake_precision(le
     ])]
     srt.write_text("1\n00:00:00,000 --> 00:00:02,000\nRed green blue purple\n\n"
                    "2\n00:00:03,000 --> 00:00:05,000\nMercury Venus Earth Mars\n\n"
-                   "3\n00:00:06,000 --> 00:00:08,000\nNorth south east west\n")
+                   "3\n00:00:06,000 --> 00:00:08,000\nNorth south east west\n", encoding="utf-8")
     result = import_legacy_timeline(script, str(audio), str(output))
     assert result["timing_source"] == "legacy_srt"
     assert result["sections"][1]["start"] == 3
@@ -116,7 +116,7 @@ def test_unreadable_subtitle_file_does_not_require_recording_again(legacy):
 
 def test_windows_utf16_subtitles_are_imported_with_their_original_timestamps(legacy):
     output, audio, script, srt = legacy
-    text = srt.read_text()
+    text = srt.read_text(encoding="utf-8")
     srt.write_text(text, encoding="utf-16")
     result = import_legacy_timeline(script, str(audio), str(output))
     assert result["timing_source"] == "legacy_srt"
@@ -125,7 +125,7 @@ def test_windows_utf16_subtitles_are_imported_with_their_original_timestamps(leg
 
 def test_legacy_import_cannot_bypass_stale_measured_metadata(legacy):
     output, audio, script, _ = legacy
-    (output / "narration.timings.json").write_text(json.dumps({"script_signature": "stale"}))
+    (output / "narration.timings.json").write_text(json.dumps({"script_signature": "stale"}), encoding="utf-8")
     with pytest.raises(ValueError, match="script changed"):
         import_legacy_timeline(script, str(audio), str(output))
     assert not (output / "timeline.json").exists()
@@ -134,7 +134,7 @@ def test_legacy_import_cannot_bypass_stale_measured_metadata(legacy):
 def test_import_identity_changes_with_subtitles_or_same_length_audio(legacy):
     output, audio, script, srt = legacy
     first = import_legacy_timeline(script, str(audio), str(output))
-    srt.write_text(srt.read_text().replace("04,800", "04,900"))
+    srt.write_text(srt.read_text(encoding="utf-8").replace("04,800", "04,900"), encoding="utf-8")
     second = import_legacy_timeline(script, str(audio), str(output))
     assert second["timeline_signature"] != first["timeline_signature"]
     data = bytearray(audio.read_bytes())
@@ -148,7 +148,7 @@ def test_import_identity_changes_with_subtitles_or_same_length_audio(legacy):
 def test_invalid_timestamp_is_not_treated_as_a_valid_cue(tmp_path):
     source = tmp_path / "captions.srt"
     source.write_text("1\n00:99:00,000 --> 00:99:01,000\nInvalid minutes.\n\n"
-                      "2\n00:00:00,100 --> 00:00:01,000\nValid cue.\n")
+                      "2\n00:00:00,100 --> 00:00:01,000\nValid cue.\n", encoding="utf-8")
     assert read_srt(str(source)) == [{"start": .1, "end": 1.0, "text": "Valid cue."}]
 
 
@@ -194,7 +194,7 @@ def test_replaced_recording_can_be_imported_with_a_changed_script(legacy):
     assert second["script_signature"] != first["script_signature"]
     assert second["audio_sha256"] != first["audio_sha256"]
     assert second["audio_duration"] == first["audio_duration"]
-    assert json.loads((output / "timeline.json").read_text()) == second
+    assert json.loads((output / "timeline.json").read_text(encoding="utf-8")) == second
 
 
 def test_renaming_unchanged_audio_cannot_bypass_the_script_check(legacy):
@@ -237,13 +237,13 @@ def test_malformed_existing_identity_fails_clearly_without_replacing_it(legacy, 
 
 def test_measured_sidecar_remains_authoritative_over_old_import_metadata(legacy):
     output, audio, script, _ = legacy
-    (output / "timeline.json").write_text("invalid old import metadata")
+    (output / "timeline.json").write_text("invalid old import metadata", encoding="utf-8")
     (output / "narration.timings.json").write_text(json.dumps({
         "version": 1, "duration": 8.05, "script_signature": script_signature(script),
         "audio_sha256": audio_signature(audio), "words": [],
         "sections": [{"id": 1, "start": 0, "duration": 4.5, "caption_timing": "phrase"},
                      {"id": 2, "start": 4.5, "duration": 3.55, "caption_timing": "phrase"}],
-    }))
+    }), encoding="utf-8")
     result = import_legacy_timeline(script, str(audio), str(output))
     assert result["timing_source"] == "measured_sections"
     assert result["sections"][1]["speech_start"] == 4.5

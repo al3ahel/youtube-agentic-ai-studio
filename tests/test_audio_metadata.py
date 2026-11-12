@@ -159,8 +159,8 @@ def test_v2_receipt_is_authoritative_and_binds_actual_soundtrack_bytes(tmp_path,
     monkeypatch.setattr(config, "OUTPUT_DIR", str(tmp_path))
     write_commit(tmp_path, [asset()])
     # Failed compatibility-copy writes cannot revive an earlier sound design.
-    (tmp_path / "audio_credits.json").write_text(json.dumps({"version": 1, "assets": [asset(99)]}))
-    (tmp_path / "sound_design.json").write_text(json.dumps({"version": 1, "summary": "Old design"}))
+    (tmp_path / "audio_credits.json").write_text(json.dumps({"version": 1, "assets": [asset(99)]}), encoding="utf-8")
+    (tmp_path / "sound_design.json").write_text(json.dumps({"version": 1, "summary": "Old design"}), encoding="utf-8")
     assert load_audio_credits()[0]["id"] == asset()["id"]
     assert load_sound_report("sound_design.json")["summary"] == "Current design"
     assert load_sound_report("audio_master.json")["status"] == "applied"
@@ -174,7 +174,7 @@ def test_inline_reports_must_match_the_committed_path_and_voice(tmp_path, monkey
     monkeypatch.setattr(config, "OUTPUT_DIR", str(tmp_path))
     manifest = write_commit(tmp_path, [asset()])
     manifest["sound_design"]["path"] = "a-different-soundtrack.wav"
-    (tmp_path / "render_audio.json").write_text(json.dumps(manifest))
+    (tmp_path / "render_audio.json").write_text(json.dumps(manifest), encoding="utf-8")
     assert load_sound_report("sound_design.json") is None
     assert load_sound_report("audio_master.json", {"audio_sha256": "other-voice"}) is None
 

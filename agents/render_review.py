@@ -15,6 +15,7 @@ import hashlib
 import io
 import json
 import math
+import os
 from pathlib import Path
 import re
 import shutil
@@ -77,7 +78,11 @@ def _write(path, value):
 def _run(command, stop_event=None, timeout=45):
     """Bound decoding and stop the real child when the user cancels a review."""
     _check_stop(stop_event)
-    process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    # Review decodes dozens of frames; without this each FFmpeg call opens a
+    # console window when the studio itself runs without one on Windows.
+    flags = {"creationflags": subprocess.CREATE_NO_WINDOW} if os.name == "nt" else {}
+    process = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                               stderr=subprocess.PIPE, **flags)
     deadline = time.monotonic() + timeout
     try:
         while True:
@@ -679,8 +684,10 @@ def review_render(video_path, plan, output_dir, *, stop_event=None, progress=Non
     _write(folder / "plan.json", plan)
     report = {"version": 1, "run_id": run_id, "attempt": attempt, "plan_sha256": _plan_hash(plan),
               "status": "needs_review", "passed": None, "issues": [], "samples": [],
-              "render": {"file": str(video.relative_to(output)), "sha256": _hash(video, stop_event)},
-              "evidence_directory": str(folder.relative_to(output)),
+              # Portable separators: these records are archived and compared
+              # across machines, and the preview routes refuse backslashes.
+              "render": {"file": video.relative_to(output).as_posix(), "sha256": _hash(video, stop_event)},
+              "evidence_directory": folder.relative_to(output).as_posix(),
               "qualification": ["Three decoded phases inspect sampled shot progression, not every frame or smooth playback.",
                                 "Pixel heuristics do not establish subject relevance, correctness, readability or artistic quality.",
                                 "Encoded audio is measured; music suitability, intelligibility and sound aesthetics have not been listened to."]}
@@ -996,7 +1003,7 @@ def _snapshot(video, report, output, stop_event):
     shutil.copy2(video, destination)
     if _hash(destination, stop_event) != report["render"]["sha256"]:
         raise ValueError("The video changed after review; do not apply a stale repair.")
-    report["render"]["snapshot"] = str(destination.relative_to(output))
+    report["render"]["snapshot"] = destination.relative_to(output).as_posix()
     _save_report(report, output)
     return destination
 

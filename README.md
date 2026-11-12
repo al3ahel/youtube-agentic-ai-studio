@@ -517,7 +517,7 @@ if you move the studio to another machine. [Storage and migration details](docs/
 ## 🧪 Running the tests
 
 ```bash
-python -m pip install pytest
+python -m pip install -r requirements-dev.txt
 python -m pytest -q
 ```
 

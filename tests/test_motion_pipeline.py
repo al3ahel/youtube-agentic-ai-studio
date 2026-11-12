@@ -43,8 +43,8 @@ def job(tmp_path, monkeypatch):
         audio.writeframes(b"\x00\x00" * 48000 * 6)
     (tmp_path / "narration.timings.json").write_text(json.dumps({
         "version": 1, "script_signature": script_signature(script), "duration": 6,
-        "sections": [{"id": 1, "start": 0, "duration": 6, "caption_timing": "estimated"}], "words": []}))
-    (tmp_path / "script.json").write_text(json.dumps(script))
+        "sections": [{"id": 1, "start": 0, "duration": 6, "caption_timing": "estimated"}], "words": []}), encoding="utf-8")
+    (tmp_path / "script.json").write_text(json.dumps(script), encoding="utf-8")
     state.update(script=script, research={}, visual_plan=None, timeline=None, audio_path=None,
                  video_path=None, preview_path=None, image_map={}, error=None, visual_qa=None,
                  running=False, library_id=None, visual_editing=False, description=None, thumb_path=None)
@@ -171,7 +171,7 @@ def test_graphics_rebuild_migrates_old_stock_credits_without_changing_user_prose
         "credit": "Video by Prior Camera Artist on Pixabay", "in_point": 0,
     }
     state["visual_plan"] = old
-    (path / "scene_plan.json").write_text(json.dumps(old))
+    (path / "scene_plan.json").write_text(json.dumps(old), encoding="utf-8")
     prose = "My custom opening.\n\nMy carefully edited final paragraph."
     state["description"] = prose + "\n\n" + "\n".join(_credit_lines(credits_for_plan(old)))
     voice = (path / "narration.wav").read_bytes()
@@ -294,7 +294,7 @@ def test_explicit_sound_regeneration_repairs_missing_v2_asset(job, monkeypatch):
 
     assert state["error"] is None
     assert rendered == [str(voice)]  # This test's explicit saved mode disables added sound.
-    repaired = json.loads((path / "render_audio.json").read_text())
+    repaired = json.loads((path / "render_audio.json").read_text(encoding="utf-8"))
     assert repaired["version"] == 2 and repaired["path"] == voice.name
     assert repaired["soundtrack_sha256"] == repaired["audio_sha256"] == voice_hash
 
@@ -758,7 +758,11 @@ def test_apply_audio_uses_project_profile_and_retains_edits_and_prepared_mix(job
             self.target, self.args, self.kwargs = target, args, kwargs
         def start(self):
             self.target(*self.args, **self.kwargs)
-    monkeypatch.setattr(pipeline.threading, "Thread", InlineThread)
+    # Only the pipeline worker runs inline; on Windows subprocess.run builds
+    # its pipe readers from this same shared threading.Thread class.
+    real_thread = pipeline.threading.Thread
+    monkeypatch.setattr(pipeline.threading, "Thread", lambda *args, **kwargs: (
+        InlineThread if kwargs.get("target") is pipeline.run_pipeline_thread else real_thread)(*args, **kwargs))
     app = create_app()
     app.testing = True
     client = app.test_client()

@@ -32,8 +32,8 @@ def spoken(tmp_path, monkeypatch):
               "sections": [{"id": 1, "start": 0, "duration": .817, "caption_timing": "word"},
                            {"id": 2, "start": .817, "duration": 1.223, "caption_timing": "phrase"}],
               "words": [{"word": "Then", "start": .9, "end": 1.05, "section_id": 2}]}
-    (tmp_path / "narration.timings.json").write_text(json.dumps(timing))
-    (tmp_path / "narration.srt").write_text("1\n00:00:00,900 --> 00:00:01,600\nThen we test\nthe explanation.\n")
+    (tmp_path / "narration.timings.json").write_text(json.dumps(timing), encoding="utf-8")
+    (tmp_path / "narration.srt").write_text("1\n00:00:00,900 --> 00:00:01,600\nThen we test\nthe explanation.\n", encoding="utf-8")
     return tmp_path, script, timing
 
 
@@ -48,7 +48,7 @@ def test_measured_clock_covers_complete_audio_without_accumulated_rounding(spoke
     assert 0 <= timeline["duration"] - timeline["audio_duration"] < 1 / 24
     assert timeline["captions"][0] == {"start": .9, "end": 1.6, "text": "Then we test the explanation."}
     assert timeline["words"][0]["start"] == .9
-    assert json.loads((path / "timeline.json").read_text()) == timeline
+    assert json.loads((path / "timeline.json").read_text(encoding="utf-8")) == timeline
 
 
 @pytest.mark.parametrize("damage", ["signature", "duration", "gap", "overlap", "order", "last_end", "nan"])
@@ -68,7 +68,7 @@ def test_stale_or_inconsistent_timing_is_rejected(spoken, damage):
         timing["sections"][1]["duration"] += .3
     elif damage == "nan":
         timing["duration"] = float("nan")
-    (path / "narration.timings.json").write_text(json.dumps(timing))
+    (path / "narration.timings.json").write_text(json.dumps(timing), encoding="utf-8")
     with pytest.raises(ValueError):
         build_timeline(script, str(path / "narration.wav"), str(path))
 
@@ -85,7 +85,7 @@ def test_audio_hash_detects_interrupted_or_replaced_same_length_recording(spoken
     path, script, timing = spoken
     voice = path / "narration.wav"
     timing["audio_sha256"] = audio_signature(voice)
-    (path / "narration.timings.json").write_text(json.dumps(timing))
+    (path / "narration.timings.json").write_text(json.dumps(timing), encoding="utf-8")
     data = bytearray(voice.read_bytes())
     data[-2:] = b"\x01\x00"
     voice.write_bytes(data)
@@ -95,7 +95,7 @@ def test_audio_hash_detects_interrupted_or_replaced_same_length_recording(spoken
 
 def test_srt_clamps_overrun_without_inventing_word_events(tmp_path):
     path = tmp_path / "voice.srt"
-    path.write_text("1\n00:00:00,100 --> 00:00:04,000\nWords belong together.\n")
+    path.write_text("1\n00:00:00,100 --> 00:00:04,000\nWords belong together.\n", encoding="utf-8")
     assert read_srt(str(path), 2) == [{"start": .1, "end": 2, "text": "Words belong together."}]
 
 
@@ -112,15 +112,15 @@ def test_segmented_narration_preserves_samples_and_offsets_cues(spoken, monkeypa
         calls.append(text)
         # FFmpeg recognizes the WAV header even at the temporary .mp3 path.
         wave_file(audio_path, durations[index])
-        Path(srt_path).write_text("1\n00:00:00,100 --> 00:00:00,500\nSpoken words\n")
+        Path(srt_path).write_text("1\n00:00:00,100 --> 00:00:00,500\nSpoken words\n", encoding="utf-8")
         Path(timings_path).write_text(json.dumps({"source": "word", "words": [
-            {"word": "Spoken", "start": .1, "end": .3}]}))
+            {"word": "Spoken", "start": .1, "end": .3}]}), encoding="utf-8")
         return 1
     monkeypatch.setattr(narrator, "_synthesise", fake_speech)
     result = narrator.generate_narration(script, str(path))
     assert result.endswith("narration.wav")
     assert probe_duration(result) == sum(durations)
-    metadata = json.loads((path / "narration.timings.json").read_text())
+    metadata = json.loads((path / "narration.timings.json").read_text(encoding="utf-8"))
     assert metadata["sections"][1]["start"] == .817
     assert metadata["words"][1]["start"] == pytest.approx(.917)
     assert read_srt(str(path / "narration.srt"))[1]["start"] == .917
@@ -156,4 +156,4 @@ def test_synthesiser_requests_actual_word_boundaries(tmp_path, monkeypatch):
     timings = tmp_path / "words.json"
     asyncio.run(narrator._synthesise("Hello", str(tmp_path / "audio.mp3"), str(tmp_path / "audio.srt"), str(timings)))
     assert calls[0]["boundary"] == "WordBoundary"
-    assert json.loads(timings.read_text())["words"] == [{"word": "Hello", "start": .1, "end": .3}]
+    assert json.loads(timings.read_text(encoding="utf-8"))["words"] == [{"word": "Hello", "start": .1, "end": .3}]

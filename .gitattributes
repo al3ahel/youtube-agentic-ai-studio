@@ -1,0 +1,16 @@
+# Keep every text file byte-identical on all platforms. The sample evidence in
+# docs/samples and the renderer fixtures are verified by SHA-256; Git for
+# Windows' default CRLF conversion would otherwise change those bytes and make
+# the published-provenance checks fail on a fresh Windows clone.
+* text=auto eol=lf
+
+*.mp4  binary
+*.ogg  binary
+*.mp3  binary
+*.wav  binary
+*.jpg  binary
+*.jpeg binary
+*.png  binary
+*.webp binary
+*.ttf  binary
+*.woff2 binary

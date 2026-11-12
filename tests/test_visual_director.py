@@ -64,7 +64,7 @@ def test_no_key_produces_repeatable_saved_motion_plan_and_word_anchors(tmp_path)
     assert all(2 <= len(scene["items"]) <= 6 for scene in plan["scenes"])
     assert all(len(item["label"]) <= 64 for scene in plan["scenes"] for item in scene["items"])
     assert plan["sections"][0]["speech_end"] == 8.8
-    assert json.loads((tmp_path / "scene_plan.json").read_text()) == plan
+    assert json.loads((tmp_path / "scene_plan.json").read_text(encoding="utf-8")) == plan
 
 
 def test_long_section_has_multiple_scenes_and_exact_coverage():
@@ -190,7 +190,7 @@ def test_arabic_text_survives_and_credentials_never_reach_saved_plan(monkeypatch
     script["title"] = "كيف تعمل الطاقة الشمسية"
     script["sections"][0]["title"] = "الشمس والكهرباء " + key
     director.plan_scenes(script, timeline, use_ai=False, output_dir=tmp_path)
-    saved = (tmp_path / "scene_plan.json").read_text()
+    saved = (tmp_path / "scene_plan.json").read_text(encoding="utf-8")
     assert "كيف تعمل الطاقة الشمسية" in saved
     assert key not in saved
 
@@ -204,7 +204,7 @@ def test_saved_stock_pictures_and_credits_are_reused_without_network(tmp_path, m
     (tmp_path / "credits.json").write_text(json.dumps([{
         "file": image.name, "source": "NASA", "author": "NASA/JPL", "license": "Public domain",
         "link": "https://images.nasa.gov/details/example",
-    }]))
+    }]), encoding="utf-8")
     image_map = {1: [str(image)], "2": [str(image)]}
     original = copy.deepcopy(image_map)
     timeline.update(timing_source="legacy_srt", timing_precision="phrase", narration_reused=True,
@@ -281,7 +281,7 @@ def _photo_plan(output):
     (output / "credits.json").write_text(json.dumps([{
         "file": second.name, "source": "NASA", "author": "NASA/JPL", "license": "Public domain",
         "link": "https://images.nasa.gov/details/alternate",
-    }]))
+    }]), encoding="utf-8")
     script, timeline = source()
     image_map = {1: [path.name for path in (first, duplicate, broken, second)], "2": [second.name]}
     plan = director.plan_scenes(script, timeline, use_ai=False, image_map=image_map,
@@ -449,7 +449,7 @@ def test_graphics_planning_never_reads_or_inherits_cached_photos(tmp_path, monke
     assert all(scene["items"] and scene["beats"] for scene in plan["scenes"])
     actions = {beat["action"] for scene in plan["scenes"] for beat in scene["beats"]}
     assert {"reveal", "connect"} <= actions
-    assert json.loads((tmp_path / "scene_plan.json").read_text())["use_project_photos"] is False
+    assert json.loads((tmp_path / "scene_plan.json").read_text(encoding="utf-8"))["use_project_photos"] is False
     assert (script, timeline, image_map) == before
     assert saved_photo.read_bytes() == b"A cached picture from a previous draft"
 

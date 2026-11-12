@@ -42,7 +42,7 @@ def vendor(monkeypatch):
     # Unit tests exercise preparation without requiring npm/network installation.
     def copy_vendor(project):
         (project / "vendor").mkdir(exist_ok=True)
-        (project / "vendor" / "gsap.min.js").write_text("/* fixture */")
+        (project / "vendor" / "gsap.min.js").write_text("/* fixture */", encoding="utf-8")
     monkeypatch.setattr(renderer, "_copy_vendor", copy_vendor)
 
 
@@ -53,11 +53,11 @@ def test_plan_is_data_and_original_is_unchanged(plan, audio, tmp_path, vendor):
     plan["scenes"][0]["items"][0]["label"] = '<img src=x onerror=alert(1)>'
     original = copy.deepcopy(plan)
     entry = renderer.prepare_motion_project(plan, str(audio), str(tmp_path))
-    output = entry.read_text()
+    output = entry.read_text(encoding="utf-8")
     assert "<script>window.attacked" not in output
     assert "\\u003c/script\\u003e" in output
     assert "@@WIDTH@@" in output  # text is not recursively interpolated
-    saved = json.loads((entry.parent / "project.json").read_text())
+    saved = json.loads((entry.parent / "project.json").read_text(encoding="utf-8"))
     assert saved["title"] == attack
     assert saved["audio"]["path"].endswith(".wav")
     assert (entry.parent / saved["audio"]["path"]).read_bytes() == audio.read_bytes()
@@ -70,11 +70,11 @@ def test_bounded_art_direction_and_scene_override_survive_preparation(plan, audi
     plan["scenes"][0].update(look="blueprint", rhythm="calm", composition="split")
     original = copy.deepcopy(plan)
     entry = renderer.prepare_motion_project(plan, str(audio), str(tmp_path))
-    saved = json.loads((entry.parent / "project.json").read_text())
+    saved = json.loads((entry.parent / "project.json").read_text(encoding="utf-8"))
     assert saved["visual_direction"] == plan["visual_direction"]
     assert {key: saved["scenes"][0][key] for key in ("look", "rhythm", "composition")} == {
         "look": "blueprint", "rhythm": "calm", "composition": "split"}
-    assert "<not executable>" not in entry.read_text()
+    assert "<not executable>" not in entry.read_text(encoding="utf-8")
     assert plan == original
 
 
@@ -88,14 +88,14 @@ def test_composed_world_contract_and_palette_survive_preparation(plan, audio, tm
                                         {"label": "Battery storage", "symbol": "battery", "role": "support"}])
     original = copy.deepcopy(plan)
     entry = renderer.prepare_motion_project(plan, str(audio), str(tmp_path))
-    saved = json.loads((entry.parent / "project.json").read_text())
+    saved = json.loads((entry.parent / "project.json").read_text(encoding="utf-8"))
     assert saved["scenes"][0]["staging"] == scene["staging"]
     assert saved["scenes"][0]["items"] == scene["items"]
     assert saved["palette_colors"] == renderer.PALETTES["forest"]
     assert saved["scenes"][0]["palette_colors"] == renderer.PALETTES["sand"]
     assert (entry.parent / "worlds.js").is_file()
     assert (entry.parent / "worlds.css").is_file()
-    assert "untrusted.invalid" not in entry.read_text()
+    assert "untrusted.invalid" not in entry.read_text(encoding="utf-8")
     assert plan == original
 
 
@@ -175,11 +175,11 @@ def test_measured_word_captions_survive_preparation_as_safe_data(plan, audio, tm
                        {"word": "<world>", "start": .8, "end": 1.2, "section_id": "section"}])
     original = copy.deepcopy(plan)
     entry = renderer.prepare_motion_project(plan, str(audio), str(tmp_path))
-    saved = json.loads((entry.parent / "project.json").read_text())
+    saved = json.loads((entry.parent / "project.json").read_text(encoding="utf-8"))
     assert saved["caption_style"] == "highlight"
     assert saved["words"] == plan["words"]
     assert saved["sections"][0]["caption_timing"] == "word"
-    assert "<world>" not in entry.read_text()
+    assert "<world>" not in entry.read_text(encoding="utf-8")
     assert plan == original
 
 
@@ -279,14 +279,14 @@ def test_local_image_is_normalized_copied_and_attributed_without_mutating_plan(p
                 warnings=["Section boundaries are inferred from subtitle text."])
     before = copy.deepcopy(plan)
     entry = renderer.prepare_motion_project(plan, str(audio), str(tmp_path))
-    saved = json.loads((entry.parent / "project.json").read_text())
+    saved = json.loads((entry.parent / "project.json").read_text(encoding="utf-8"))
     asset = saved["scenes"][0]["image"]
     assert asset["path"].startswith("assets/picture-")
     assert asset["credit"] == "NASA/JPL" and asset["license"] == "Public domain"
     with Image.open(entry.parent / asset["path"]) as result:
         assert result.size == (40, 80)
         assert not result.getexif()
-    assert 'id="image-0"' in entry.read_text()
+    assert 'id="image-0"' in entry.read_text(encoding="utf-8")
     assert saved["timing_source"] == "legacy_srt" and saved["narration_reused"] is True
     assert plan == before
 
@@ -299,18 +299,18 @@ def test_graphics_motion_replaces_old_photo_composition_in_same_output(plan, aud
     old["use_project_photos"] = True
     old["scenes"][0]["image"] = {"path": str(picture)}
     entry = renderer.prepare_motion_project(old, str(audio), str(tmp_path))
-    previous = json.loads((entry.parent / "project.json").read_text())
+    previous = json.loads((entry.parent / "project.json").read_text(encoding="utf-8"))
     old_asset = previous["scenes"][0]["image"]["path"]
     assert previous["use_project_photos"] is True
-    assert 'id="image-0"' in entry.read_text()
+    assert 'id="image-0"' in entry.read_text(encoding="utf-8")
 
     plan["use_project_photos"] = False
     entry = renderer.prepare_motion_project(plan, str(audio), str(tmp_path))
-    current = json.loads((entry.parent / "project.json").read_text())
+    current = json.loads((entry.parent / "project.json").read_text(encoding="utf-8"))
     assert current["use_project_photos"] is False
     assert all("image" not in scene and "footage" not in scene for scene in current["scenes"])
-    assert 'id="image-' not in entry.read_text()
-    assert old_asset not in entry.read_text()
+    assert 'id="image-' not in entry.read_text(encoding="utf-8")
+    assert old_asset not in entry.read_text(encoding="utf-8")
     assert current["scenes"][0]["template"] == "flow"
     assert current["scenes"][0]["beats"] == plan["scenes"][0]["beats"]
 
@@ -342,7 +342,7 @@ def test_scene_pictures_cannot_fetch_or_embed_unsupported_files(plan, audio, tmp
         Path(path).write_bytes(b"private")
     else:
         path = str(output / ("script.svg" if kind == "svg" else "script.png"))
-        Path(path).write_text("<svg onload='alert(1)'/>")
+        Path(path).write_text("<svg onload='alert(1)'/>", encoding="utf-8")
     plan["scenes"][0]["image"] = {"path": path}
     with pytest.raises(ValueError):
         renderer.prepare_motion_project(plan, str(audio), str(output))
@@ -356,7 +356,7 @@ def test_animated_image_is_imported_as_a_single_seekable_still(plan, audio, tmp_
         append_images=[Image.new("RGB", (32, 24), "blue")], duration=200, loop=0, lossless=True)
     plan["scenes"][0]["image"] = {"path": str(source)}
     entry = renderer.prepare_motion_project(plan, str(audio), str(tmp_path))
-    saved = json.loads((entry.parent / "project.json").read_text())
+    saved = json.loads((entry.parent / "project.json").read_text(encoding="utf-8"))
     with Image.open(entry.parent / saved["scenes"][0]["image"]["path"]) as result:
         assert getattr(result, "n_frames", 1) == 1
         red, green, blue = result.convert("RGB").getpixel((16, 12))
@@ -377,7 +377,7 @@ def test_render_subprocess_forces_offline_flags_and_preserves_parent_config(tmp_
     child = f"import json, os; print(json.dumps({{key: os.environ.get(key) for key in {names!r}}}))"
     renderer._run_render([sys.executable, "-c", child], tmp_path, timeout=5,
                          progress=lambda message: None)
-    received = json.loads((tmp_path / "render.log").read_text())
+    received = json.loads((tmp_path / "render.log").read_text(encoding="utf-8"))
     assert {name: received[name] for name in forced} == dict.fromkeys(forced, "1")
     assert {name: received[name] for name in inherited} == inherited
     assert {name: os.environ[name] for name in forced} == dict.fromkeys(forced, "0")
@@ -396,7 +396,7 @@ def test_render_subprocess_cancels_promptly(tmp_path):
     finally:
         timer.cancel()
     assert time.monotonic() - started < 4
-    assert "started" in (tmp_path / "render.log").read_text()
+    assert "started" in (tmp_path / "render.log").read_text(encoding="utf-8")
 
 
 def test_render_subprocess_has_a_real_timeout(tmp_path):

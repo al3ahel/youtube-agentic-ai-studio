@@ -16,23 +16,23 @@ def _clip():
 def test_unused_search_results_are_neither_credited_nor_resurrected(tmp_path):
     (tmp_path / "video_credits.json").write_text(json.dumps([
         {"provider": "pexels", "source": "Pexels video", "path": "/old/unrelated.mp4",
-         "credit": "Unused clip", "source_url": "https://pexels.com/video/999/"}]))
+         "credit": "Unused clip", "source_url": "https://pexels.com/video/999/"}]), encoding="utf-8")
     plan = {"scenes": [{"id": "scene-1", "template": "footage", "footage": _clip()}]}
-    (tmp_path / "scene_plan.json").write_text(json.dumps(plan))
+    (tmp_path / "scene_plan.json").write_text(json.dumps(plan), encoding="utf-8")
     credits = current_video_credits(tmp_path)
     assert len(credits) == 1 and credits[0]["provider"] == "pixabay"
     assert "unrelated" not in json.dumps(credits)
     plan["scenes"][0].pop("footage")
-    (tmp_path / "scene_plan.json").write_text(json.dumps(plan))
+    (tmp_path / "scene_plan.json").write_text(json.dumps(plan), encoding="utf-8")
     assert current_video_credits(tmp_path) == []
-    (tmp_path / "scene_plan.json").write_text("{broken")
+    (tmp_path / "scene_plan.json").write_text("{broken", encoding="utf-8")
     assert current_video_credits(tmp_path) == []
 
 
 def test_pixabay_source_and_license_are_in_description(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "OUTPUT_DIR", str(tmp_path))
     plan = {"scenes": [{"template": "footage", "footage": _clip()}]}
-    (tmp_path / "scene_plan.json").write_text(json.dumps(plan))
+    (tmp_path / "scene_plan.json").write_text(json.dumps(plan), encoding="utf-8")
     credits = description.load_credits()
     text = "\n".join(description._credit_lines(credits))
     assert "Pixabay video" in text and "Video by River on Pixabay" in text

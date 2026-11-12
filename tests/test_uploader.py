@@ -59,7 +59,7 @@ def test_token_round_trips_as_json(in_tmp):
     from google.oauth2.credentials import Credentials
     youtube._save_token(Credentials.from_authorized_user_info(TOKEN))
     assert youtube.has_token()
-    saved = json.loads((in_tmp / youtube.TOKEN_FILE).read_text())
+    saved = json.loads((in_tmp / youtube.TOKEN_FILE).read_text(encoding="utf-8"))
     assert saved["refresh_token"] == "refresh"
     if os.name == "posix":
         assert (os.stat(youtube.TOKEN_FILE).st_mode & 0o777) == 0o600
@@ -67,7 +67,7 @@ def test_token_round_trips_as_json(in_tmp):
 
 
 def test_unreadable_token_means_sign_in_again(in_tmp):
-    (in_tmp / youtube.TOKEN_FILE).write_text('{"token": "x"}')   # no refresh fields
+    (in_tmp / youtube.TOKEN_FILE).write_text('{"token": "x"}', encoding="utf-8")   # no refresh fields
     assert youtube._load_token() is None
 
 
@@ -79,7 +79,7 @@ def test_legacy_pickle_is_never_loaded(in_tmp):
 
 def test_expired_token_is_refreshed_and_saved(in_tmp, monkeypatch):
     from google.oauth2.credentials import Credentials
-    (in_tmp / youtube.TOKEN_FILE).write_text(json.dumps({**TOKEN, "expiry": "2000-01-01T00:00:00Z"}))
+    (in_tmp / youtube.TOKEN_FILE).write_text(json.dumps({**TOKEN, "expiry": "2000-01-01T00:00:00Z"}), encoding="utf-8")
 
     def fake_refresh(self, request):
         self.token = "fresh"
@@ -88,7 +88,7 @@ def test_expired_token_is_refreshed_and_saved(in_tmp, monkeypatch):
 
     creds = youtube.get_credentials()
     assert creds.token == "fresh"
-    assert json.loads((in_tmp / youtube.TOKEN_FILE).read_text())["token"] == "fresh"
+    assert json.loads((in_tmp / youtube.TOKEN_FILE).read_text(encoding="utf-8"))["token"] == "fresh"
 
 
 def test_missing_client_secret_is_a_clear_error(in_tmp, monkeypatch):
@@ -180,7 +180,7 @@ def test_gui_upload_uses_the_uploader(fake_yt, monkeypatch):
     monkeypatch.setattr(youtube, "_service", lambda creds: service)
     channels.get_profile("default")
     channels._save_channel("default", {"id": ident, "title": "Verified test channel"})
-    channels.token_path("default").write_text("fixture-token")
+    channels.token_path("default").write_text("fixture-token", encoding="utf-8")
     fake_yt_dir = os.getcwd()
     monkeypatch.setattr(studio_upload, "secret_ok", lambda profile_id=None: True)
     monkeypatch.setattr(studio_upload, "sync_library", lambda: None)
@@ -217,7 +217,7 @@ def test_noninteractive_missing_token_never_opens_browser(in_tmp, monkeypatch):
 
 def test_old_upload_only_scope_is_not_relabelled_as_channel_read(in_tmp):
     path = in_tmp / "profile.json"
-    path.write_text(json.dumps(TOKEN))
+    path.write_text(json.dumps(TOKEN), encoding="utf-8")
     assert youtube._load_token(path).scopes == TOKEN["scopes"]
     with pytest.raises(youtube.YouTubeAuthRequired, match="channel-read"):
         youtube.get_credentials(token_file=path, interactive=False, scopes=youtube.CHANNEL_SCOPES)
@@ -227,9 +227,9 @@ def test_profile_refresh_writes_only_its_own_token(in_tmp, monkeypatch):
     from google.oauth2.credentials import Credentials
     profile = in_tmp / "channels" / "token.json"
     profile.parent.mkdir()
-    profile.write_text(json.dumps({**TOKEN, "scopes": list(youtube.CHANNEL_SCOPES), "expiry": "2000-01-01T00:00:00Z"}))
+    profile.write_text(json.dumps({**TOKEN, "scopes": list(youtube.CHANNEL_SCOPES), "expiry": "2000-01-01T00:00:00Z"}), encoding="utf-8")
     legacy = in_tmp / youtube.TOKEN_FILE
-    legacy.write_text("leave this token alone")
+    legacy.write_text("leave this token alone", encoding="utf-8")
 
     def refresh(self, request):
         self.token, self.expiry = "fresh-profile-token", None
@@ -237,8 +237,8 @@ def test_profile_refresh_writes_only_its_own_token(in_tmp, monkeypatch):
     monkeypatch.setattr(Credentials, "refresh", refresh)
     credentials = youtube.get_credentials(token_file=profile, interactive=False, scopes=youtube.CHANNEL_SCOPES)
     assert credentials.token == "fresh-profile-token"
-    assert json.loads(profile.read_text())["token"] == "fresh-profile-token"
-    assert legacy.read_text() == "leave this token alone"
+    assert json.loads(profile.read_text(encoding="utf-8"))["token"] == "fresh-profile-token"
+    assert legacy.read_text(encoding="utf-8") == "leave this token alone"
     if os.name == "posix":
         assert (profile.stat().st_mode & 0o777) == 0o600
 
@@ -247,7 +247,7 @@ def test_revoked_profile_token_fails_without_interactive_fallback(in_tmp, monkey
     from google.oauth2.credentials import Credentials
     from google_auth_oauthlib.flow import InstalledAppFlow
     path = in_tmp / "profile.json"
-    path.write_text(json.dumps({**TOKEN, "scopes": list(youtube.CHANNEL_SCOPES), "expiry": "2000-01-01T00:00:00Z"}))
+    path.write_text(json.dumps({**TOKEN, "scopes": list(youtube.CHANNEL_SCOPES), "expiry": "2000-01-01T00:00:00Z"}), encoding="utf-8")
 
     def revoked(self, request):
         raise RuntimeError("refresh_token=private-value")

@@ -50,5 +50,15 @@ def local_only():
     return None
 
 
+def no_foreign_framing(response):
+    # The Origin checks stop another site *sending* writes, but not embedding
+    # the studio invisibly and tricking the user into clicking Upload
+    # (clickjacking). The app's own sandboxed storyboard preview is same-origin
+    # by URL, so it keeps working.
+    response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
+    return response
+
+
 def init_app(app):
     app.before_request(local_only)
+    app.after_request(no_foreign_framing)

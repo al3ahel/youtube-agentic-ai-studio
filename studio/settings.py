@@ -219,8 +219,13 @@ def get_banned_topics():
 def post_banned_topics():
     if state.get("running") or state.get("visual_editing"):
         return jsonify({"ok": False, "error": "Wait for the current job to finish before editing topics."}), 409
-    body   = request.get_json(force=True) or {}
-    topics = body.get("topics", [])
+    body   = request.get_json(force=True)
+    topics = body.get("topics") if isinstance(body, dict) else None
+    # A bare string would be saved one character per line, and a non-text entry
+    # would crash the writer after it had already truncated the file.
+    if (not isinstance(topics, list) or len(topics) > 500
+            or any(not isinstance(t, str) or len(t) > 300 for t in topics)):
+        return jsonify({"ok": False, "error": "Send the banned topics as a list of short lines of text."}), 400
     try:
         save_banned_topics(topics)
         return jsonify({"ok": True})

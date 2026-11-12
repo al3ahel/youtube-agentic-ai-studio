@@ -226,7 +226,7 @@ def test_close_collage_edit_preserves_verified_photo_identity_and_binding(mode, 
         assets.append(str(path))
         credits.append({"file": path.name, "source": "Museum", "credit": f"Verified object {i}",
                         "source_url": f"https://example.org/object/{i}", "license": "Public domain"})
-    (tmp_path / "credits.json").write_text(json.dumps(credits))
+    (tmp_path / "credits.json").write_text(json.dumps(credits), encoding="utf-8")
     plan = visual_director.plan_scenes(script, timeline, mode=mode, use_ai=False,
         image_map={"source": assets}, output_dir=tmp_path, use_project_photos=True)
     old = deepcopy(plan["scenes"][0])

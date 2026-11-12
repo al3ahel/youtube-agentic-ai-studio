@@ -231,6 +231,8 @@ test("studio: profiles keep identities, defaults and recurring jobs separate", {
   await page.waitForFunction(() => !document.querySelector(".schedule-item"));
   assert.equal(await page.$eval("#quick-voice", node => node.value), "en-US-BrianNeural");
   assert.match(await page.$eval("#format-seg", node => node.textContent), /10 min/);
+  // Edit is disabled until the preceding channel switch has finished loading.
+  await page.waitForFunction(() => !channelMutation && !document.querySelector("#edit-channel").disabled);
   await page.click("#edit-channel");
   await page.waitForSelector("#channel-dialog[open]");
   assert.equal(await page.$eval("#profile-voice-rate", node => node.value), "-15%");
@@ -530,6 +532,10 @@ test("studio: Motion selection survives delayed defaults and a new video resets 
     if (pathname === "/api/run") requests.push(JSON.parse(request.postData()));
     return false;
   });
+  // openStudio returns once the channel's name is shown; its settings request
+  // can still be in flight (it reliably is on Windows), so wait for the
+  // channel's default to be applied rather than reading the control at once.
+  await page.waitForFunction(() => document.querySelector("#visual-mode").value === "classic");
   assert.equal(await page.$eval("#visual-mode", node => node.value), "classic");
   hold = true;
   const settingsRequested = page.waitForRequest(request => new URL(request.url()).pathname === "/api/settings");
@@ -544,6 +550,9 @@ test("studio: Motion selection survives delayed defaults and a new video resets 
   await page.waitForFunction(id => settingsProfileId === id && document.querySelector("#visual-mode").value === "hybrid", {}, other.id);
   assert.equal(await page.$eval('#steps input[value="images"]', node => node.disabled), false);
   assert.equal(await page.$eval('#steps input[value="images"]', node => node.checked), true);
+  // Channel buttons stay disabled until the previous switch has finished
+  // loading its library, schedules and health; a click before that is ignored.
+  await page.waitForFunction(() => !channelMutation);
   await page.click(`[data-profile-id="${project.id}"]`);
   await page.waitForFunction(id => settingsProfileId === id && document.querySelector("#visual-mode").value === "motion", {}, project.id);
 
@@ -801,8 +810,12 @@ test("studio: two tabs receive every real run event and resume with emitted time
   try {
     const started = await emit("start", [{kind: "log", msg: "Recording section 1/3"}]);
     await Promise.all([a.page.evaluate(() => pollOnce()), b.page.evaluate(() => pollOnce())]);
+    // Only one of two tabs is in front. Puppeteer's default wait polls on
+    // animation frames, which Chrome on Windows never delivers to the hidden
+    // tab, so these waits use a timer instead.
+    const hiddenTabSafe = {polling: 100};
     for (const page of [a.page, b.page]) {
-      await page.waitForFunction(() => document.querySelector("#console").textContent.includes("Recording section 1/3"));
+      await page.waitForFunction(() => document.querySelector("#console").textContent.includes("Recording section 1/3"), hiddenTabSafe);
       const stamp = await page.evaluate(value => new Date(value).toTimeString().slice(0, 8), started.events[0].timestamp);
       assert.equal(await page.$eval("#console .t", node => node.textContent), stamp, "Log clock must use the server's original emission time");
     }
@@ -810,7 +823,7 @@ test("studio: two tabs receive every real run event and resume with emitted time
     await emit("append", [{kind: "log", msg: "Recording section 2/3"}, {kind: "log", msg: "Recording section 3/3"}]);
     await a.page.evaluate(() => startSSE(status));
     for (const page of [a.page, b.page]) {
-      await page.waitForFunction(() => document.querySelector("#console").textContent.includes("Recording section 3/3"));
+      await page.waitForFunction(() => document.querySelector("#console").textContent.includes("Recording section 3/3"), hiddenTabSafe);
       const lines = await page.$$eval("#console > div", nodes => nodes.map(node => node.lastElementChild.textContent));
       assert.deepEqual(lines, ["Recording section 1/3", "Recording section 2/3", "Recording section 3/3"]);
     }
@@ -818,7 +831,7 @@ test("studio: two tabs receive every real run event and resume with emitted time
     assert.ok(streamRequests.every(url => url.searchParams.get("run_id") === started.run_id && url.searchParams.get("profile_id") === started.profile_id));
     await emit("append", [{kind: "stopped"}]);
     for (const page of [a.page, b.page]) {
-      await page.waitForFunction(() => es === null && streamEndedScope === eventScopeKey(status));
+      await page.waitForFunction(() => es === null && streamEndedScope === eventScopeKey(status), hiddenTabSafe);
       await page.evaluate(() => pollOnce());
       assert.equal(await page.evaluate(() => es === null), true, "A terminal event must not reopen while the worker finishes its checkpoint");
     }
@@ -864,6 +877,7 @@ test("studio: narrow layouts and profile forms remain usable without horizontal 
     await page.waitForFunction(() => getComputedStyle(document.querySelector(".channel-mobile")).display !== "none");
     assert.ok(await page.$eval("#channel-select", node => node.getBoundingClientRect().width > 100));
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `Home overflows at ${width}px`);
+    await page.waitForFunction(() => !channelMutation && !document.querySelector("#edit-channel").disabled);
     await page.click("#edit-channel");
     await page.waitForSelector("#channel-dialog[open]");
     assert.ok(await page.$eval("#channel-dialog", node => node.scrollWidth <= node.clientWidth + 1), `Profile editor overflows at ${width}px`);

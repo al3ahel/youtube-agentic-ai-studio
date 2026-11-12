@@ -238,8 +238,8 @@ def test_single_scene_edit_rebuilds_preview_and_invalidates_final(client, monkey
     assert state["video_path"] is None and state["preview_path"] is None
     assert not state["visual_editing"]
     output = Path(config.OUTPUT_DIR)
-    assert (output / "motion" / "index.html").read_text() == "Improved"
-    assert json.loads((output / "scene_plan.json").read_text())["scenes"][0]["title"] == "Improved"
+    assert (output / "motion" / "index.html").read_text(encoding="utf-8") == "Improved"
+    assert json.loads((output / "scene_plan.json").read_text(encoding="utf-8"))["scenes"][0]["title"] == "Improved"
     assert not list(output.glob(".motion-edit-*"))
 
 
@@ -251,7 +251,7 @@ def test_failed_scene_edit_keeps_previous_plan_and_preview(client, monkeypatch):
     response = client.post("/api/visuals/scenes/scene-001/regenerate", json={})
     assert response.status_code == 422
     assert state["visual_plan"] == original and state["video_path"] == "previous-final.mp4"
-    assert (Path(config.OUTPUT_DIR) / "motion" / "index.html").read_text() == "original preview"
+    assert (Path(config.OUTPUT_DIR) / "motion" / "index.html").read_text(encoding="utf-8") == "original preview"
     assert not state["visual_editing"]
 
 

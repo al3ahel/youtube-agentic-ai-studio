@@ -103,16 +103,58 @@ def _read_json(root, name):
         return None
 
 
+def _change_time(path, status):
+    """A timestamp every write advances and that a caller cannot set back.
+
+    POSIX st_ctime is exactly that. On Windows st_ctime is the *creation* time,
+    so a same-size rewrite with its modified time restored looked unchanged and
+    the cached hash of the old content was trusted. NTFS keeps the equivalent
+    ChangeTime, which os.stat does not expose. None means "unknown".
+    """
+    if os.name != "nt":
+        return status.st_ctime_ns
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        class BasicInfo(ctypes.Structure):
+            _fields_ = [("CreationTime", ctypes.c_longlong), ("LastAccessTime", ctypes.c_longlong),
+                        ("LastWriteTime", ctypes.c_longlong), ("ChangeTime", ctypes.c_longlong),
+                        ("FileAttributes", wintypes.DWORD)]
+
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.CreateFileW.restype = wintypes.HANDLE
+        kernel32.CreateFileW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, wintypes.LPVOID,
+                                         wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE]
+        kernel32.GetFileInformationByHandleEx.argtypes = [wintypes.HANDLE, ctypes.c_int, wintypes.LPVOID, wintypes.DWORD]
+        kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+        # FILE_READ_ATTRIBUTES, share read/write/delete, OPEN_EXISTING, backup semantics
+        handle = kernel32.CreateFileW(str(path), 0x80, 0x7, None, 3, 0x02000000, None)
+        if handle in (None, wintypes.HANDLE(-1).value):
+            return None
+        try:
+            info = BasicInfo()
+            if not kernel32.GetFileInformationByHandleEx(handle, 0, ctypes.byref(info), ctypes.sizeof(info)):
+                return None
+            return info.ChangeTime or None
+        finally:
+            kernel32.CloseHandle(handle)
+    except (OSError, AttributeError, ValueError, TypeError):
+        return None
+
+
 def _fingerprint(root, path):
     if path is None:
         return None
     before = path.stat()
     if not 0 < before.st_size <= _MEDIA_LIMIT:
         raise ValueError("A saved media file is too large to verify automatically.")
+    changed_before = _change_time(path, before)
     cache_key = (str(path), before.st_dev, before.st_ino, before.st_size,
-                 before.st_mtime_ns, before.st_ctime_ns)
+                 before.st_mtime_ns, changed_before)
     with _fingerprint_lock:
-        cached = _fingerprints.get(cache_key)
+        # Without a trustworthy change time the file is hashed again.
+        cached = _fingerprints.get(cache_key) if changed_before is not None else None
         if cached:
             _fingerprints.move_to_end(cache_key)
             return {"path": path.relative_to(root).as_posix(), **cached}
@@ -125,8 +167,8 @@ def _fingerprint(root, path):
                 raise ValueError("A saved media file changed while it was being checked.")
             digest.update(block)
     after = path.stat()
-    if (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns, before.st_ctime_ns) != (
-            after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns, after.st_ctime_ns):
+    if (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns, changed_before) != (
+            after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns, _change_time(path, after)):
         raise ValueError("A saved media file changed while it was being checked.")
     identity = {"bytes": after.st_size, "sha256": digest.hexdigest()}
     with _fingerprint_lock:

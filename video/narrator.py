@@ -320,7 +320,7 @@ def _build_sentence_srt(text: str, audio_path: str, srt_path: str) -> int:
     all_words = [w for s in sentences for w in s.split()]
 
     if not all_words:
-        open(srt_path, "w").close()
+        open(srt_path, "w", encoding="utf-8").close()
         return 0
 
     # Each gap between words is modelled as 1.5 "equivalent characters"
@@ -621,7 +621,7 @@ def _generate_segmented(script: dict, output_dir: str, stop_event=None, *, use_c
                     conversion = subprocess.run(
                         [ffmpeg, "-nostdin", "-y", "-v", "error", "-i", str(mp3),
                          "-ar", str(sample_rate), "-ac", "1", "-c:a", "pcm_s16le", str(wav)],
-                        capture_output=True, text=True, timeout=180)
+                        capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=180)
                     if conversion.returncode:
                         raise RuntimeError(f"Could not decode voice section {index + 1}: {conversion.stderr[-500:]}")
                     _save_voice_section(cache_root, key, wav, srt, timing, stop_event)

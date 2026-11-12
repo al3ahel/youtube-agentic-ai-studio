@@ -44,22 +44,22 @@ def test_unknown_keys_wrong_types_and_secrets_are_ignored(settings_file):
         "GEMINI_API_KEY": "secret",      # secrets never come from here
         "OUTPUT_DIR": "/tmp/x",          # not a user setting
         "NOPE": 1,
-    }))
+    }), encoding="utf-8")
     assert config.load_settings() == {"CHANNEL_NAME": "Mine", "MUSIC_VOLUME": 0.5}
 
 
 @pytest.mark.parametrize("content", ["{not json", "[1, 2]"])
 def test_broken_file_is_ignored_not_fatal(settings_file, content):
-    settings_file.write_text(content)
+    settings_file.write_text(content, encoding="utf-8")
     assert config.load_settings() == {}
 
 
 def test_save_keeps_only_values_that_differ_from_defaults(settings_file):
     config.save_settings({"CHANNEL_NAME": "Mine", "VOICE_ID": config.DEFAULTS["VOICE_ID"]})
     config.save_settings({"MUSIC_VOLUME": 0.3})                       # merges
-    assert json.loads(settings_file.read_text()) == {"CHANNEL_NAME": "Mine", "MUSIC_VOLUME": 0.3}
+    assert json.loads(settings_file.read_text(encoding="utf-8")) == {"CHANNEL_NAME": "Mine", "MUSIC_VOLUME": 0.3}
     config.save_settings({"CHANNEL_NAME": config.DEFAULTS["CHANNEL_NAME"]})   # back to default
-    assert json.loads(settings_file.read_text()) == {"MUSIC_VOLUME": 0.3}
+    assert json.loads(settings_file.read_text(encoding="utf-8")) == {"MUSIC_VOLUME": 0.3}
     assert not os.path.exists(str(settings_file) + ".tmp")
 
 
@@ -74,7 +74,7 @@ def test_save_rejects_unknown_or_mistyped_values(settings_file):
 def test_saved_settings_override_defaults_at_import(tmp_path):
     shutil.copy(os.path.join(ROOT, "config.py"), tmp_path / "config.py")
     (tmp_path / "settings.json").write_text(json.dumps(
-        {"CHANNEL_NAME": "From JSON", "IMAGE_SOURCES": ["nasa"], "KB_ZOOM_END": 1.2}))
+        {"CHANNEL_NAME": "From JSON", "IMAGE_SOURCES": ["nasa"], "KB_ZOOM_END": 1.2}), encoding="utf-8")
     out = subprocess.run(
         [sys.executable, "-c",
          "import json, config; print(json.dumps([config.CHANNEL_NAME, config.IMAGE_SOURCES,"
@@ -98,7 +98,7 @@ def test_settings_page_writes_settings_json_not_config_py(settings_file, monkeyp
     })
     assert r.get_json() == {"ok": True, "profile_id": "default"}
     assert open(cfg, encoding="utf-8").read() == before
-    saved = json.loads(settings_file.read_text())
+    saved = json.loads(settings_file.read_text(encoding="utf-8"))
     assert saved == {
         "CHANNEL_NAME": "Space Facts", "MUSIC_VOLUME": 0.25, "SHOW_CHANNEL_BRAND": False,
         "IMAGE_SOURCES": ["nasa", "openverse"],
@@ -173,7 +173,7 @@ SHOW_CHANNEL_BRAND = "nope"              # wrong type → skipped
 def test_import_legacy_config_reads_values_without_running_it(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     old = tmp_path / "old_config.py"
-    old.write_text(OLD_CONFIG)
+    old.write_text(OLD_CONFIG, encoding="utf-8")
     assert config.import_legacy_config(str(old)) == {
         "CHANNEL_NAME": "Old Channel",
         "CHANNEL_DESCRIPTION": "My old description.",
@@ -185,7 +185,7 @@ def test_import_legacy_config_reads_values_without_running_it(tmp_path, monkeypa
 
 def test_import_settings_command(tmp_path, settings_file, capsys):
     old = tmp_path / "old_config.py"
-    old.write_text(OLD_CONFIG)
+    old.write_text(OLD_CONFIG, encoding="utf-8")
     studio_settings.import_settings(str(old))
-    assert json.loads(settings_file.read_text())["CHANNEL_NAME"] == "Old Channel"
+    assert json.loads(settings_file.read_text(encoding="utf-8"))["CHANNEL_NAME"] == "Old Channel"
     assert "Imported 4 setting(s)" in capsys.readouterr().out

@@ -405,7 +405,7 @@ def test_runner_commits_only_valid_replacement_then_invalidates_previous_media(s
     assert state["stages"]["script"] == "done"
     assert state["script"]["title"] == replacement["title"]
     assert state["script"]["timing_source"] == "estimated_before_recording"
-    assert json.loads((output / "script.json").read_text()) == state["script"]
+    assert json.loads((output / "script.json").read_text(encoding="utf-8")) == state["script"]
     assert state["research"] == before["research"] and (output / "research.json").read_bytes() == files["research.json"]
     assert state["audio_path"] is None and state["thumb_path"] is None
     assert not (output / "narration.wav").exists() and not (output / "narration.timings.json").exists()

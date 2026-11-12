@@ -98,7 +98,10 @@ Return JSON only: {"notes":["brief editorial finding"],"sections":[{"id":1,"narr
         candidate = deepcopy(script)
         original_words = max(1, before["word_count"])
         for old, row, edited in zip(original, rows, candidate["sections"]):
-            if (not isinstance(row, dict) or set(row) != {"id", "narration"}
+            # The request shows each section's title, and small models often
+            # echo it back. An unchanged title is not an edit; anything else is.
+            if (not isinstance(row, dict) or not {"id", "narration"} <= set(row) <= {"id", "narration", "title"}
+                    or row.get("title", old["title"]) != old["title"]
                     or str(row["id"]) != str(old["id"]) or not isinstance(row["narration"], str)
                     or not row["narration"].strip() or len(row["narration"]) > 30000):
                 raise ValueError("The editor changed section identity or returned invalid narration")

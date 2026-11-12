@@ -68,7 +68,7 @@ def test_direct_prepare_preserves_verified_receipt_and_owner(workspace, portable
         plan["scenes"][0]["footage"]["path"] = clip.name
     original = copy.deepcopy(plan)
     entry = renderer.prepare_motion_project(plan, str(audio), str(root))
-    saved = json.loads((entry.parent / "project.json").read_text())
+    saved = json.loads((entry.parent / "project.json").read_text(encoding="utf-8"))
     footage = saved["scenes"][0]["footage"]
     assert saved["profile_id"] == plan["profile_id"]
     assert footage["selection"] == original["scenes"][0]["footage"]["selection"]
@@ -107,7 +107,7 @@ def test_scene_edit_staging_can_verify_source_in_trusted_workspace(workspace, tm
     root, audio, clip, plan = workspace
     staging = tmp_path / "scene-edit-stage"
     entry = renderer.prepare_motion_project(plan, str(audio), str(staging))
-    saved = json.loads((entry.parent / "project.json").read_text())
+    saved = json.loads((entry.parent / "project.json").read_text(encoding="utf-8"))
     assert (entry.parent / saved["scenes"][0]["footage"]["path"]).read_bytes() == clip.read_bytes()
     assert not (root / "motion").exists()
 
@@ -147,6 +147,6 @@ def test_legacy_without_receipt_stays_prepareable(workspace):
     plan["scenes"][0]["footage"].pop("selection")
     plan.pop("profile_id")
     entry = renderer.prepare_motion_project(plan, str(audio), str(root))
-    saved = json.loads((entry.parent / "project.json").read_text())
+    saved = json.loads((entry.parent / "project.json").read_text(encoding="utf-8"))
     assert "selection" not in saved["scenes"][0]["footage"]
     assert (entry.parent / saved["scenes"][0]["footage"]["path"]).read_bytes() == clip.read_bytes()

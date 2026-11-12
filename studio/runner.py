@@ -444,6 +444,29 @@ def run_pipeline_thread(steps: list, topic_override: str = "", video_type: str =
                         profile_values=None, schedule_id=None, release_job=True,
                         use_project_photos=None, run_id=None, build_identity=None):
     """Capture a channel for the whole job, independent of the Home selection."""
+    entered = []
+    try:
+        return _start_pipeline(entered, steps, topic_override, video_type, focus_angle, use_trends,
+                               visual_mode, preview_only, profile_id, profile_values, schedule_id,
+                               release_job, use_project_photos, run_id, build_identity)
+    except Exception as exc:
+        if entered:
+            raise
+        # /api/run reserved the job before starting this thread. A failure
+        # during setup (a profile deleted in between, for example) happens
+        # before _run_pipeline's own cleanup exists, so report and release here.
+        state["error"] = str(exc)
+        log(f"ERROR: {exc}", "error")
+        log_queue.put(("error", str(exc)))
+        with job_lock:
+            if release_job:
+                state["running"] = False
+                state.update(job_profile_id=None, job_profile_name=None, job_profile_values=None, job_output_dir=None)
+
+
+def _start_pipeline(entered, steps, topic_override, video_type, focus_angle, use_trends,
+                    visual_mode, preview_only, profile_id, profile_values, schedule_id,
+                    release_job, use_project_photos, run_id, build_identity):
     values = profile_values
     if profile_id and values is None:
         from studio.profile_context import capture_profile_settings
@@ -468,6 +491,7 @@ def run_pipeline_thread(steps: list, topic_override: str = "", video_type: str =
             log(f"Job {identity['run_id'][:12]} · channel {identity.get('profile_name') or owner} · build {version}.")
             selected = ", ".join(step for step in ("research", "script", "images", "narration", "music", "visuals", "video") if step in steps)
             log(f"Requested stages: {selected}. Mode: {visual_mode or config.VISUAL_MODE}; {'draft' if preview_only else 'final'}.")
+            entered.append(True)
             return _run_pipeline(steps, topic_override, video_type, focus_angle, use_trends,
                                  visual_mode, preview_only, profile_id, schedule_id, release_job,
                                  use_project_photos)
@@ -881,7 +905,12 @@ def _run_pipeline(steps, topic_override, video_type, focus_angle, use_trends,
         log_queue.put(("stopped", ""))
     except Exception as exc:
         import traceback
-        traceback.print_exc(file=orig_stdout)
+        try:
+            traceback.print_exc(file=orig_stdout)
+        except Exception:
+            # A console that cannot encode the message (or no console at all)
+            # must not replace the real error and skip the reporting below.
+            pass
         state["error"] = str(exc)
         for name, status in list(state["stages"].items()):
             if status == "running":
@@ -889,9 +918,16 @@ def _run_pipeline(steps, topic_override, video_type, focus_angle, use_trends,
         log(f"ERROR: {exc}", "error")
         log_queue.put(("error", str(exc)))
     finally:
-        checkpoint_workspace(output)
-        with job_lock:
-            if release_job:
-                state["running"] = False
-                state.update(job_profile_id=None, job_profile_name=None, job_profile_values=None, job_output_dir=None)
-        sys.stdout = orig_stdout
+        # Releasing the job must not depend on the checkpoint: if saving it
+        # raised here, every later request would be refused with "A job is
+        # already running" until the studio was restarted.
+        try:
+            checkpoint_workspace(output)
+        except Exception as exc:
+            state["workspace_warning"] = f"The current project could not be saved for restart recovery: {exc}"
+        finally:
+            with job_lock:
+                if release_job:
+                    state["running"] = False
+                    state.update(job_profile_id=None, job_profile_name=None, job_profile_values=None, job_output_dir=None)
+            sys.stdout = orig_stdout

@@ -30,7 +30,7 @@ def write_audio(output):
     path.write_bytes(b"exact soundtrack fixture")
     manifest = {"version": 2, "path": path.name, "audio_sha256": "voice-hash",
                 "soundtrack_sha256": hashlib.sha256(path.read_bytes()).hexdigest(), "credits": [asset]}
-    (output / "render_audio.json").write_text(json.dumps(manifest))
+    (output / "render_audio.json").write_text(json.dumps(manifest), encoding="utf-8")
     return asset
 
 
@@ -58,7 +58,7 @@ def test_managed_footage_refresh_preserves_prose_and_applied_audio(output):
 
 
 def test_explicit_no_plan_ignores_stale_plan_file_but_omitted_plan_loads_it(output):
-    (output / "scene_plan.json").write_text(json.dumps(plan_with_clip()))
+    (output / "scene_plan.json").write_text(json.dumps(plan_with_clip()), encoding="utf-8")
     text = descriptions.ensure_media_credits("User prose")
     assert "water-filter-1/" in text
     assert descriptions.ensure_media_credits(text, plan=None) == "User prose"
@@ -99,7 +99,7 @@ def test_same_used_clip_is_credited_once_even_when_copied_for_multiple_scenes(ou
 def test_generated_description_reserves_complete_audio_and_footage_blocks(output):
     sound = write_audio(output)
     plan = {"scenes": [plan_with_clip(index)["scenes"][0] for index in range(1, 9)]}
-    (output / "scene_plan.json").write_text(json.dumps(plan))
+    (output / "scene_plan.json").write_text(json.dumps(plan), encoding="utf-8")
     text = descriptions.build_description({"description": "Generated prose. " * 700, "sections": []}, {})
     assert len(text) <= 5000 and text.endswith(descriptions.AUDIO_CREDIT_END)
     assert text.count(descriptions.FOOTAGE_CREDIT_START) == 1
@@ -139,7 +139,7 @@ def client(output, monkeypatch):
                  video_path=str(video), audio_path=str(audio), render_audio_path=str(audio),
                  profile_id="default", timeline=None, script={"title": "Video", "sections": [], "tags": []},
                  research={}, image_map={}, description="Creator's own prose.", stages={"video": "done"})
-    (output / "scene_plan.json").write_text(json.dumps(state["visual_plan"]))
+    (output / "scene_plan.json").write_text(json.dumps(state["visual_plan"]), encoding="utf-8")
     monkeypatch.setattr(review, "sync_library", lambda: None)
     monkeypatch.setattr(upload, "sync_library", lambda: None)
     monkeypatch.setattr(visuals, "checkpoint_workspace", lambda *args: None)
@@ -204,14 +204,14 @@ def test_scene_edit_updates_description_only_with_successful_preview_commit(outp
         prepared.append(True)
         path = Path(directory) / "motion" / "index.html"
         path.parent.mkdir(parents=True)
-        path.write_text("new preview")
+        path.write_text("new preview", encoding="utf-8")
         return path
     monkeypatch.setattr(html, "prepare_motion_project", prepare)
     response = browser.post("/api/visuals/scenes/one/regenerate", json={"instructions": "Use another clip"})
     if overflow:
         assert response.status_code == 422 and "Shorten your description" in response.json["error"]
         assert state == previous and not prepared
-        assert json.loads((output / "scene_plan.json").read_text()) == previous["visual_plan"]
+        assert json.loads((output / "scene_plan.json").read_text(encoding="utf-8")) == previous["visual_plan"]
     else:
         assert response.json["ok"] and prepared
         assert state["description"].startswith("My prose.\n\n")

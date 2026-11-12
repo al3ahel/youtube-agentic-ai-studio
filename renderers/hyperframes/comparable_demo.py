@@ -795,7 +795,8 @@ def _verify_encoded(path, target):
     if not ffprobe:
         raise ComparisonBlocked("FFprobe is required to verify the encoded comparison.")
     result = subprocess.run([ffprobe, "-v", "error", "-count_frames", "-show_streams", "-show_format",
-                             "-of", "json", str(path)], capture_output=True, text=True, check=True, timeout=90)
+                             "-of", "json", str(path)], capture_output=True, text=True,
+                            encoding="utf-8", errors="replace", check=True, timeout=90)
     probe = json.loads(result.stdout)
     video = next((row for row in probe["streams"] if row.get("codec_type") == "video"), {})
     audio = next((row for row in probe["streams"] if row.get("codec_type") == "audio"), {})

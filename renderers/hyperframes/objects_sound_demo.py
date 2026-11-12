@@ -73,7 +73,8 @@ def build(source: Path, *, directed=False):
                     "-threads", "1", "-movflags", "+faststart", str(output)], check=True, timeout=60)
     probe = subprocess.run([shutil.which("ffprobe") or "ffprobe", "-v", "error", "-count_frames",
                             "-show_streams", "-of", "json", str(output)],
-                           check=True, capture_output=True, text=True, timeout=60)
+                           check=True, capture_output=True, text=True,
+                           encoding="utf-8", errors="replace", timeout=60)
     streams = json.loads(probe.stdout)["streams"]
     picture = next(row for row in streams if row["codec_type"] == "video")
     if (picture.get("r_frame_rate") != "12/1" or int(picture.get("nb_read_frames", 0)) != 168

@@ -1,4 +1,5 @@
 """Channel-aware scripts with estimated word budgets and real image queries."""
+import copy
 import json
 import math
 import re
@@ -73,36 +74,119 @@ def _style_rules(preset):
 - Make the title accurate and specific. Use a brief closing invitation only if it suits this channel."""
 
 
-def _validate_script(script: dict, wpm: float) -> dict:
-    """Validate model data before the runner changes any saved script or media."""
+# The prompt shows the expected shape with these instructions as values. A small
+# model sometimes returns them unchanged; they must never be spoken, searched
+# for or published as if the model had written them.
+_EXAMPLE_SECTION = {
+    "title": "Short descriptive heading",
+    "narration": "Complete spoken sentences for this section, following the selected channel style.",
+    "image_query": "Specific literal photograph query matching this section",
+    "image_query_2": "A different view or detail of the same subject",
+    "image_query_3": "A related setting or subject that adds context",
+    "image_query_4": "One additional distinct view for a Short",
+    "bullet_points": ["A concise, supported point"],
+    "caption_text": "Brief, readable on-screen text",
+}
+_EXAMPLE_DESCRIPTION = "Accurate two-sentence description of this video."
+_QUERY_FIELDS = ("image_query", "image_query_2", "image_query_3", "image_query_4")
+
+
+def _plain(text) -> str:
+    return re.sub(r"\W+", " ", str(text).casefold()).strip()
+
+
+_EXAMPLE_TEXT = {_plain(value) for value in (
+    _EXAMPLE_DESCRIPTION, *_EXAMPLE_SECTION["bullet_points"],
+    *(value for value in _EXAMPLE_SECTION.values() if isinstance(value, str)))}
+
+
+def _spoken_text(text: str) -> str:
+    """Remove markup and production directions that speech synthesis would read aloud."""
+    cleaned = re.sub(r"\[[^\[\]\n]{1,60}\]", " ", text)            # [pause], [soft music], [1]
+    cleaned = re.sub(r"\*\*|__|`+", "", cleaned)
+    cleaned = re.sub(r"(?<!\w)\*(?=\S)|(?<=\S)\*(?!\w)", "", cleaned)
+    cleaned = re.sub(r"(?m)^\s*#{1,6}\s+", "", cleaned)
+    cleaned = re.sub(r"(?im)^\s*(?:narrator|voice[- ]?over|host|speaker)\s*:\s*", "", cleaned)
+    if cleaned == text:
+        return text.strip()
+    return re.sub(r"[ \t]{2,}", " ", cleaned).strip()
+
+
+def _word_count(script: dict) -> int:
+    return sum(len(section["narration"].split()) for section in script["sections"])
+
+
+def _validate_script(script: dict, wpm: float, *, lenient: bool = False) -> dict:
+    """Validate model data before the runner changes any saved script or media.
+
+    ``lenient`` is used only when no response passed the strict check. It never
+    touches what is spoken: it drops or trims optional details (tags, search
+    queries, on-screen points) that are unusable, so a sound narration is not
+    discarded because a small model wrote a list as a sentence.
+    """
+    def unusable(container, field, message):
+        if not lenient:
+            raise ValueError(message)
+        container.pop(field, None)
+
     title = script.get("title")
     if not isinstance(title, str) or not title.strip() or len(title) > 500:
         raise ValueError("Script needs a nonempty title of at most 500 characters.")
-    if "description" in script and (not isinstance(script["description"], str)
-                                     or len(script["description"]) > 10000):
-        raise ValueError("Script description must be text of at most 10,000 characters.")
-    if "tags" in script and (not isinstance(script["tags"], list) or len(script["tags"]) > 50
-            or any(not isinstance(tag, str) or len(tag) > 100 for tag in script["tags"])):
-        raise ValueError("Script tags must be a list of at most 50 short text tags.")
+    if "description" in script:
+        description = script["description"]
+        if not isinstance(description, str) or len(description) > 10000:
+            unusable(script, "description", "Script description must be text of at most 10,000 characters.")
+        elif _plain(description) in _EXAMPLE_TEXT:
+            unusable(script, "description", "Script description repeats the example text instead of describing this video.")
+    if "tags" in script:
+        tags = script["tags"]
+        if lenient:
+            tags = re.split(r"[,;\n]", tags) if isinstance(tags, str) else tags if isinstance(tags, list) else []
+            tags = [tag.strip() for tag in tags if isinstance(tag, str) and tag.strip() and len(tag) <= 100][:50]
+            script["tags"] = tags
+            if not tags:
+                del script["tags"]
+        elif (not isinstance(tags, list) or len(tags) > 50
+                or any(not isinstance(tag, str) or len(tag) > 100 for tag in tags)):
+            raise ValueError("Script tags must be a list of at most 50 short text tags.")
     sections = script.get("sections")
     if not isinstance(sections, list) or not 2 <= len(sections) <= 30:
         raise ValueError("Script must contain between 2 and 30 sections.")
-    text_fields = {"title": 500, "section_type": 32, "caption_text": 1000,
-                   **{key: 500 for key in ("image_query", "image_query_2", "image_query_3", "image_query_4")}}
+    text_fields = {"title": 500, "section_type": 32, "caption_text": 1000, **{key: 500 for key in _QUERY_FIELDS}}
+    spoken = {}
     for index, section in enumerate(sections, 1):
         if not isinstance(section, dict) or not isinstance(section.get("narration"), str) or not section["narration"].strip():
             raise ValueError(f"Script section {index} is missing spoken narration.")
         if len(section["narration"]) > 30_000:
             raise ValueError(f"Script section {index} is too long to record safely.")
+        narration = _spoken_text(section["narration"])
+        if not narration:
+            raise ValueError(f"Script section {index} contains only markup or production directions, not spoken narration.")
+        if _plain(narration) in _EXAMPLE_TEXT:
+            raise ValueError(f"Script section {index} repeats the example narration instead of writing this video.")
+        earlier = spoken.setdefault(_plain(narration), index)
+        if earlier != index:
+            raise ValueError(f"Script sections {earlier} and {index} repeat the same narration; every section must be distinct.")
         for field, limit in text_fields.items():
-            if field in section and (not isinstance(section[field], str) or len(section[field]) > limit):
-                raise ValueError(f"Script section {index} has invalid {field}; it must be text of at most {limit} characters.")
+            if field not in section:
+                continue
+            if not isinstance(section[field], str) or len(section[field]) > limit:
+                unusable(section, field, f"Script section {index} has invalid {field}; it must be text of at most {limit} characters.")
+            elif field != "section_type" and _plain(section[field]) in _EXAMPLE_TEXT:
+                unusable(section, field, f"Script section {index} repeats the example {field} instead of writing its own.")
         bullets = section.get("bullet_points", [])
-        if not isinstance(bullets, list) or len(bullets) > 8 or any(
+        if lenient:
+            bullets = [bullets] if isinstance(bullets, str) else bullets if isinstance(bullets, list) else []
+            bullets = [point.strip() for point in bullets if isinstance(point, str) and point.strip()
+                       and len(point) <= 500 and _plain(point) not in _EXAMPLE_TEXT][:8]
+            section["bullet_points"] = bullets
+        elif not isinstance(bullets, list) or len(bullets) > 8 or any(
                 not isinstance(point, str) or len(point) > 500 for point in bullets):
             raise ValueError(f"Script section {index} bullet_points must be a list of at most 8 short text points.")
+        elif any(_plain(point) in _EXAMPLE_TEXT for point in bullets):
+            raise ValueError(f"Script section {index} repeats the example bullet point instead of writing its own.")
         section["id"] = index
-        section["narration"] = section["narration"].strip()
+        section["narration"] = narration
         # Model timing is unnecessary and may contain invalid arithmetic. The
         # app computes writing estimates; the later recording is measured.
         section["duration_seconds"] = round(max(1, len(section["narration"].split()) / wpm * 60), 2)
@@ -114,16 +198,38 @@ def _validate_script(script: dict, wpm: float) -> dict:
     return script
 
 
-def _generate_script(prompt: str, wpm: float, *, stop_event=None) -> dict:
-    """Allow one complete regeneration for invalid JSON/schema, never a loop.
+def _length_problem(script: dict, target_words) -> str | None:
+    """A script far from the requested length makes a video far from the requested duration."""
+    if not target_words:
+        return None
+    words, sections = _word_count(script), len(script["sections"])
+    if .65 <= words / target_words <= 1.35:
+        return None
+    low, high = round(target_words * .9), round(target_words * 1.1)
+    if words < target_words:
+        return (f"The script has only {words} spoken words; about {target_words} are needed ({low}–{high}). "
+                f"Write roughly {max(1, round(target_words / sections))} words of narration in each section, developing "
+                "each point with explanation, examples and context from the supplied research rather than repeating sentences.")
+    return (f"The script has {words} spoken words; about {target_words} are needed ({low}–{high}). "
+            "Cover the same subject more concisely.")
+
+
+def _generate_script(prompt: str, wpm: float, *, stop_event=None, target_words=None) -> dict:
+    """Allow one complete regeneration for an invalid or badly sized script, never a loop.
 
     Both responses share routing health and a cloud request budget. The retry
     keeps the original source/profile prompt and never feeds back malformed
     text as new evidence or exposes it in the run log.
+
+    A response that cannot be parsed, is cut off, or has unusable narration is
+    never adopted. When neither response is fully acceptable, the best complete
+    one is still used with a warning instead of failing the whole video: a
+    script of the wrong length, or one whose only faults are in optional details.
     """
     event = effective_stop_event(stop_event)
     with session_scope(event), request_scope():
         request = prompt
+        usable = []      # (wrong length, optional details removed, distance from target, order, script, warning)
         for attempt in range(2):
             check_stop(event)
             response_info = {}
@@ -135,18 +241,37 @@ def _generate_script(prompt: str, wpm: float, *, stop_event=None) -> dict:
                 # not an outage. It shares this same single replacement budget.
                 invalid_response = True
             check_stop(event)
+            parsed, script, reason = None, None, None
             try:
                 if invalid_response:
                     raise ValueError("The provider could not produce a valid JSON response.")
                 if response_info.get("finish_reason") == "length":
                     raise ValueError("Scriptwriter reached the model output limit before completing the script.")
-                script = _validate_script(extract_complete_json(raw, "Scriptwriter"), wpm)
+                parsed = extract_complete_json(raw, "Scriptwriter")
+                script = _validate_script(copy.deepcopy(parsed), wpm)
             except ValueError as exc:
-                check_stop(event)
                 reason = str(exc)  # Only fixed parser/schema diagnostics reach this branch.
-                if attempt:
-                    raise ValueError("Scriptwriter could not produce a valid complete script after one automatic retry. "
-                                     + reason + " Retry the Script step or choose another configured free/local model.") from None
+                if parsed is not None:
+                    try:
+                        script = _validate_script(copy.deepcopy(parsed), wpm, lenient=True)
+                    except ValueError:
+                        script = None
+            check_stop(event)
+            if script is not None:
+                length = _length_problem(script, target_words)
+                if reason is None and length is None:
+                    if attempt:
+                        print(f"   ✓ Script recovered: complete JSON with {len(script['sections'])} narrated sections.")
+                    return script
+                words = _word_count(script)
+                warning = " ".join(filter(None, [
+                    "Unusable optional details (tags, image queries or on-screen points) were left out." if reason else "",
+                    (f"It has {words} spoken words against a target of about {target_words}, so the video will be "
+                     f"{'shorter' if words < target_words else 'longer'} than requested.") if length else ""]))
+                usable.append((length is not None, reason is not None, abs(words - (target_words or words)),
+                               attempt, script, warning))
+                reason = reason or length
+            if not attempt:
                 print(f"   ⚠ Script response failed validation: {reason} Requesting one complete replacement…")
                 request = prompt + "\n\nRETRY — RETURN ONE COMPLETE JSON OBJECT:\n" + (
                     "The previous response failed application validation: " + reason
@@ -158,10 +283,12 @@ def _generate_script(prompt: str, wpm: float, *, stop_event=None) -> dict:
                     "Do not return a patch or only the missing fragment."
                 )
                 continue
-            check_stop(event)
-            if attempt:
-                print(f"   ✓ Script recovered: complete JSON with {len(script['sections'])} narrated sections.")
-            return script
+            if usable:
+                *_, script, warning = min(usable, key=lambda row: row[:4])
+                print(f"   ⚠ Using the best complete script of two responses. {warning}")
+                return script
+            raise ValueError("Scriptwriter could not produce a valid complete script after one automatic retry. "
+                             + reason + " Retry the Script step or choose another configured free/local model.") from None
     raise AssertionError("Script generation attempts were exhausted unexpectedly")
 
 
@@ -178,19 +305,11 @@ def write_script(research: dict, video_type: str = "normal", *, stop_event=None)
     )}
     example = {
         "title": str(research.get("video_title") or research["topic"]),
-        "description": "Accurate two-sentence description of this video.",
+        "description": _EXAMPLE_DESCRIPTION,
         "tags": research.get("tags", []),
-        "sections": [{
-            "id": 1, "section_type": "intro", "title": "Short descriptive heading",
-            "narration": "Complete spoken sentences for this section, following the selected channel style.",
-            "image_query": "Specific literal photograph query matching this section",
-            "image_query_2": "A different view or detail of the same subject",
-            "image_query_3": "A related setting or subject that adds context",
-            "image_query_4": "One additional distinct view for a Short",
-            "bullet_points": ["A concise, supported point"],
-            "caption_text": "Brief, readable on-screen text",
-        }],
+        "sections": [{"id": 1, "section_type": "intro", **_EXAMPLE_SECTION}],
     }
+    per_section = max(1, round(words / section_count))
     prompt = f"""You are writing a video for the selected YouTube channel.
 
 Channel name: {config.CHANNEL_NAME}
@@ -209,6 +328,10 @@ LENGTH AND STRUCTURE:
 - Format: {'vertical Short' if video_type == 'shorts' else 'long-form video'}.
 - Aim for approximately {seconds:g} seconds of narration, about {words} words total
   ({round(words * .9)}–{round(words * 1.1)} words), across {section_count} sections.
+- That is roughly {per_section} words of narration in EACH section. A section of one or two sentences is too
+  short: develop it with explanation, examples and context from the research, without repeating yourself.
+- The values in the JSON shape below are instructions describing each field. Replace every one with your own
+  writing for this video; never copy them.
 - This is a writing target, not measured timing. Real audio duration will determine the final video.
 - For a Short, cover one idea at this profile's natural pace; do not cram in more words or speed up delivery.
 - Start with an introduction, develop the subject, and end with a conclusion. Use section_type values
@@ -227,7 +350,7 @@ VISUALS AND OUTPUT:
 {json.dumps(example, ensure_ascii=False, indent=2)}
 """
     print(f"   → Writing a {preset} script for approximately {seconds:g} seconds…")
-    script = _generate_script(prompt, wpm, stop_event=stop_event)
+    script = _generate_script(prompt, wpm, stop_event=stop_event, target_words=words)
     script["video_type"] = video_type
     script["channel_preset"] = preset
     script["target_duration_seconds"] = seconds

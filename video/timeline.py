@@ -50,7 +50,7 @@ def probe_duration(path: str) -> float:
         result = subprocess.run(
             [ffprobe, "-v", "error", "-show_entries", "format=duration",
              "-of", "json", str(source.resolve())],
-            capture_output=True, text=True, timeout=30, check=True)
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30, check=True)
         try:
             duration = float(json.loads(result.stdout)["format"]["duration"])
             if math.isfinite(duration) and duration > 0:
